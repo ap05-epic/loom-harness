@@ -3,6 +3,7 @@
   "references": [
     { "path": "packages/core" },
     { "path": "packages/test-kit" },
-    { "path": "packages/agents" }
+    { "path": "packages/agents" },
+    { "path": "packages/cli" }
   ]
 }
