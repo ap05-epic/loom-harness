@@ -30,6 +30,16 @@ importers:
         specifier: ^3.2.3
         version: 3.2.6(@types/node@22.19.21)(yaml@2.9.0)
 
+  packages/agents:
+    dependencies:
+      '@harness/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@harness/test-kit':
+        specifier: workspace:*
+        version: link:../test-kit
+
   packages/core:
     dependencies:
       better-sqlite3:
@@ -45,6 +55,8 @@ importers:
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13
+
+  packages/test-kit: {}
 
 packages:
 
