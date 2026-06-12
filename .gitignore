@@ -1,0 +1,28 @@
+# dependencies / build
+node_modules/
+dist/
+*.tsbuildinfo
+
+# environment & secrets — NEVER commit project data
+.env
+.env.*
+!.env.example
+
+# harness project data must live OUTSIDE the repo; belt and braces:
+harness-data/
+profiles/*
+!profiles/fixture/
+!profiles/example/
+
+# test & tool output
+coverage/
+playwright-report/
+test-results/
+*.log
+
+# fixture build output
+fixtures/legacy-webapp/target/
+
+# OS noise
+.DS_Store
+Thumbs.db
