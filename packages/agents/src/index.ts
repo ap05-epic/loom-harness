@@ -22,3 +22,17 @@ export {
   type RunOptions,
   type RunResult,
 } from './agent-runner.js';
+export {
+  ContextPacker,
+  computeBudgets,
+  counterFor,
+  heuristicCount,
+  packWorkOrder,
+  type Budgets,
+  type TokenCounter,
+  type Slot,
+  type SlotShrink,
+  type PackedSlot,
+  type PackResult,
+  type PackOptions,
+} from './context/index.js';
