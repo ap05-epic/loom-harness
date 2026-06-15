@@ -16,6 +16,12 @@ export {
 } from './model-profile.js';
 export { OpenAiDriver, type OpenAiDriverOptions } from './drivers/openai-driver.js';
 export {
+  AnthropicDriver,
+  buildAnthropicRequest,
+  parseAnthropicResponse,
+  type AnthropicDriverOptions,
+} from './drivers/anthropic-driver.js';
+export {
   AgentRunner,
   type GuardConfig,
   type GuardKind,
