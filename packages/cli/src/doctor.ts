@@ -50,6 +50,29 @@ export const BUILTIN_CHECKS: DoctorCheck[] = [
     },
     hint: 'git is required for harness update.',
   },
+  {
+    name: 'pnpm',
+    run: () => {
+      const pnpm = spawnSync('pnpm', ['--version'], { encoding: 'utf8', shell: true });
+      if (pnpm.status === 0) return `pnpm ${pnpm.stdout.trim()}`;
+      const corepack = spawnSync('corepack', ['--version'], { encoding: 'utf8', shell: true });
+      if (corepack.status === 0)
+        return `pnpm absent; corepack ${corepack.stdout.trim()} present (run: corepack enable)`;
+      throw new Error('neither pnpm nor corepack found');
+    },
+    hint: 'On the pod pnpm is absent — bootstrap with `corepack enable` or `npm i -g pnpm`.',
+  },
+  {
+    name: 'jdk',
+    run: () => {
+      const res = spawnSync('java', ['-version'], { encoding: 'utf8', shell: true });
+      // `java -version` prints to stderr
+      const out = (res.stderr || res.stdout || '').split('\n')[0]?.trim();
+      if (res.status !== 0 || !out) throw new Error('java not runnable');
+      return out;
+    },
+    hint: 'JDK 17 is needed for the fixture app and Java scanners.',
+  },
 ];
 
 /** Run checks sequentially; failures never abort the remaining checks. */
