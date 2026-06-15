@@ -49,7 +49,10 @@ line "java: $(java -version 2>&1 | head -1)    docker: $(docker -v 2>&1 || echo 
 line "os: $(uname -srm 2>&1)    glibc: $(ldd --version 2>&1 | head -1)"
 line "disk(HOME): $(df -h "$HOME" 2>/dev/null | awk 'NR==2{print $4" free / "$2}')"
 line "npm registry: $(npm config get registry 2>&1)"
-line "proxy: HTTP_PROXY=${HTTP_PROXY:-unset} HTTPS_PROXY=${HTTPS_PROXY:-unset} NO_PROXY=${NO_PROXY:-unset}"
+# Proxy URLs often embed user:pass@ credentials — strip them before printing.
+mask_url() { printf '%s' "$1" | sed -E 's#://[^:@/]+:[^@/]+@#://<creds-redacted>@#g'; }
+line "proxy: HTTP_PROXY=$(mask_url "${HTTP_PROXY:-unset}")  HTTPS_PROXY=$(mask_url "${HTTPS_PROXY:-unset}")"
+line "no_proxy: ${NO_PROXY:-unset}"
 line "public clone: $(git ls-remote https://github.com/sindresorhus/is.git HEAD 2>&1 | head -1)"
 line "playwright cdn: $(curl -sS -o /dev/null -w 'HTTP %{http_code}' --max-time 20 https://playwright.azureedge.net/ 2>&1)"
 line "playwright browsers present: $(ls ~/.cache/ms-playwright 2>/dev/null | tr '\n' ' ' || echo none)"

@@ -8,6 +8,14 @@ dist/
 .env.*
 !.env.example
 
+# pod recon OUTPUT (contains internal hostnames, proxy creds, skill IP) — never commit
+harness_recon*.txt
+harness-recon*.txt
+harness_min*.txt
+harness-min*.txt
+*recon*.txt
+*.recon.txt
+
 # harness project data must live OUTSIDE the repo; belt and braces:
 harness-data/
 profiles/*
