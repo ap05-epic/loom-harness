@@ -6,7 +6,7 @@ describe('runChecks', () => {
     const results = await runChecks();
     const byName = new Map(results.map((r) => [r.name, r]));
     expect(byName.get('node-version')?.ok).toBe(true);
-    expect(byName.get('sqlite-native')?.ok).toBe(true);
+    expect(byName.get('sqlite')?.ok).toBe(true);
     expect(byName.get('git')?.ok).toBe(true);
   });
 

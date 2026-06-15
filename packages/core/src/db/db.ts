@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import { openSqlite, type OpenSqliteOptions, type SqliteDatabase } from './sqlite-driver.js';
 
 export type Migration = {
   version: number;
@@ -7,8 +7,8 @@ export type Migration = {
 };
 
 /** Open (creating if needed) a SQLite database with the harness's standard pragmas. */
-export function openDb(path: string): Database.Database {
-  const db = new Database(path);
+export function openDb(path: string, options: OpenSqliteOptions = {}): SqliteDatabase {
+  const db = openSqlite(path, options);
   db.pragma('journal_mode = WAL');
   db.pragma('synchronous = NORMAL');
   db.pragma('busy_timeout = 5000');
@@ -20,7 +20,7 @@ export function openDb(path: string): Database.Database {
  * Apply forward-only migrations in version order, each atomically (DDL + bookkeeping
  * in one transaction). Returns the versions applied in this call.
  */
-export function runMigrations(db: Database.Database, migrations: Migration[]): number[] {
+export function runMigrations(db: SqliteDatabase, migrations: Migration[]): number[] {
   const versions = migrations.map((m) => m.version);
   if (new Set(versions).size !== versions.length) {
     throw new Error('duplicate migration versions provided');

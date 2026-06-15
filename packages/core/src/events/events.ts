@@ -1,4 +1,4 @@
-import type Database from 'better-sqlite3';
+import type { SqliteDatabase } from '../db/sqlite-driver.js';
 
 export type AppendEvent = {
   type: string;
@@ -42,7 +42,7 @@ function toEvent(row: EventRow): HarnessEvent {
 
 /** Append-only event log over harness.db — the observability spine. */
 export class EventLog {
-  constructor(private readonly db: Database.Database) {}
+  constructor(private readonly db: SqliteDatabase) {}
 
   append(event: AppendEvent): HarnessEvent {
     const result = this.db

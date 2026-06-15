@@ -5,10 +5,10 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { openDb, runMigrations } from '../db/db.js';
 import { MIGRATIONS } from '../db/migrations.js';
 import { EventLog } from './events.js';
-import type Database from 'better-sqlite3';
+import type { SqliteDatabase } from '../db/sqlite-driver.js';
 
 let dir: string;
-let db: Database.Database;
+let db: SqliteDatabase;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'harness-events-'));
   db = openDb(join(dir, 'harness.db'));

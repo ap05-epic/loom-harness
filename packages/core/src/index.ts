@@ -1,4 +1,12 @@
 export { newId } from './ids.js';
+export {
+  openSqlite,
+  type SqliteBackend,
+  type SqliteDatabase,
+  type SqliteStatement,
+  type RunResult,
+  type OpenSqliteOptions,
+} from './db/sqlite-driver.js';
 export { openDb, runMigrations, type Migration } from './db/db.js';
 export { MIGRATIONS } from './db/migrations.js';
 export { EventLog, type AppendEvent, type HarnessEvent } from './events/events.js';

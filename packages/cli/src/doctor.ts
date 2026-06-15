@@ -31,14 +31,15 @@ export const BUILTIN_CHECKS: DoctorCheck[] = [
     hint: 'Install Node 20.11+ (the pod image or nvm).',
   },
   {
-    name: 'sqlite-native',
+    name: 'sqlite',
     run: () => {
       const db = openDb(':memory:');
       const row = db.prepare('SELECT sqlite_version() AS v').get() as { v: string };
+      const backend = db.backend;
       db.close();
-      return `better-sqlite3 OK (SQLite ${row.v})`;
+      return `${backend} OK (SQLite ${row.v})`;
     },
-    hint: 'Native module failed to load — check Node version matches the prebuild, or rebuild with pnpm rebuild better-sqlite3.',
+    hint: 'If better-sqlite3 fails, the harness auto-falls back to node:sqlite; force it with HARNESS_SQLITE_BACKEND=node:sqlite.',
   },
   {
     name: 'git',

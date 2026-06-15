@@ -8,6 +8,16 @@ import { MIGRATIONS, openDb, runMigrations } from '@harness/core';
 import { BUILTIN_CHECKS, runChecks } from './doctor.js';
 import { resolveTargetTag } from './update.js';
 
+// When the harness falls back to Node's built-in SQLite, Node emits a one-time
+// experimental notice. Silence only that line so CLI output stays clean; every
+// other warning passes through.
+const originalEmitWarning = process.emitWarning.bind(process);
+process.emitWarning = ((warning: string | Error, ...rest: unknown[]) => {
+  const message = typeof warning === 'string' ? warning : warning?.message;
+  if (typeof message === 'string' && message.includes('SQLite is an experimental feature')) return;
+  return (originalEmitWarning as (...args: unknown[]) => void)(warning, ...rest);
+}) as typeof process.emitWarning;
+
 function findRepoRoot(start: string): string {
   let current = resolve(start);
   for (;;) {
