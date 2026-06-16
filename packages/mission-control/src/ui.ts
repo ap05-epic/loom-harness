@@ -101,6 +101,8 @@ body {
 .spacer { flex: 1; }
 .tagline { color: var(--muted); font-size: 11.5px; letter-spacing: .02em; }
 @media (max-width: 720px) { .tagline { display: none; } }
+.project-switch { font: inherit; font-size: 12px; background: var(--surface); color: var(--text); border: 1px solid var(--border-2); border-radius: 8px; padding: 4px 9px; cursor: pointer; }
+.project-switch:hover { border-color: var(--brand); }
 .toggle {
   border: 1px solid var(--border-2); background: var(--surface); color: var(--text);
   width: 38px; height: 38px; border-radius: 10px; cursor: pointer; font-size: 16px;
@@ -231,6 +233,7 @@ a:hover { text-decoration: underline; }
     <header class="topbar">
       <span class="runline"><span class="livedot"></span><span class="runlabel">Run</span><span id="run"></span></span>
       <span class="spacer"></span>
+      <select id="project-switch" class="project-switch" title="Switch project" style="display:none"></select>
       <span class="tagline">${TAGLINE}</span>
       <button class="toggle" id="theme" title="Toggle light / dark">&#9789;</button>
     </header>
@@ -392,8 +395,10 @@ function renderInventory(inv) {
 }
 
 async function refresh() {
-  try { renderState(await (await fetch('/api/state')).json()); } catch (e) {}
-  try { renderInventory(await (await fetch('/api/inventory')).json()); } catch (e) {}
+  const sw = $('project-switch');
+  const q = sw && sw.value ? '?project=' + encodeURIComponent(sw.value) : '';
+  try { renderState(await (await fetch('/api/state' + q)).json()); } catch (e) {}
+  try { renderInventory(await (await fetch('/api/inventory' + q)).json()); } catch (e) {}
 }
 refresh();
 setInterval(refresh, 2000);
@@ -427,6 +432,17 @@ setInterval(refresh, 2000);
   try {
     const close = document.getElementById('detail-close');
     if (close) close.addEventListener('click', () => { const d = document.getElementById('detailwrap'); if (d) d.style.display = 'none'; });
+  } catch (e) {}
+
+  // project switcher: populate from /api/projects; re-poll the board on change (only when >1 project)
+  try {
+    fetch('/api/projects').then((r) => r.json()).then((r) => {
+      const sw = document.getElementById('project-switch');
+      if (!sw || !r.projects || r.projects.length < 2) return;
+      sw.innerHTML = r.projects.map((p) => '<option' + (p === r.active ? ' selected' : '') + '>' + p + '</option>').join('');
+      sw.style.display = '';
+      sw.addEventListener('change', () => { if (typeof refresh === 'function') refresh(); });
+    }).catch(() => {});
   } catch (e) {}
 }());
 </script>
