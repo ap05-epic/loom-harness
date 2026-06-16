@@ -86,7 +86,10 @@ export function resolvePipelineConfig(
     viewport: profile.eval?.viewport ?? DEFAULT_VIEWPORT,
     screens: overrides.screens,
     maxAttempts: overrides.maxAttempts,
-    skillsDir: profile.skills?.dir ? underDir(profile.dir, profile.skills.dir) : undefined,
+    // Default to a per-project skills dir under the data dir, so drafted skills stay isolated.
+    skillsDir: profile.skills?.dir
+      ? underDir(profile.dir, profile.skills.dir)
+      : join(dataDir, 'skills'),
   };
 }
 

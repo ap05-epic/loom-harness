@@ -23,11 +23,13 @@ function profile(overrides: Partial<Profile> = {}): Profile {
 }
 
 describe('resolvePipelineConfig', () => {
-  test('derives db/atlas/baseline paths under the data dir', () => {
+  test('derives db/atlas/baseline/skills paths under the data dir', () => {
     const c = resolvePipelineConfig(profile(), {});
     expect(c.dbPath).toBe(join(resolve('/data/fixture'), 'loom.db'));
     expect(c.atlasPath).toBe(join(resolve('/data/fixture'), 'codeatlas.db'));
     expect(c.baselineDir).toBe(join(resolve('/data/fixture'), 'baseline'));
+    // each project's drafted skills live under its own data dir (per-project isolation)
+    expect(c.skillsDir).toBe(join(resolve('/data/fixture'), 'skills'));
   });
 
   test('resolves the struts config relative to the profile dir', () => {
