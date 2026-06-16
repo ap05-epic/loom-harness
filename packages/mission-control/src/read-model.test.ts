@@ -13,7 +13,7 @@ import {
   type SqliteDatabase,
 } from '@loom/core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { dashboardState } from './read-model.js';
+import { dashboardState, wpDetail } from './read-model.js';
 
 let dir: string;
 let db: SqliteDatabase;
@@ -124,5 +124,35 @@ describe('dashboardState', () => {
     expect(dashboardState(db).run).toBeNull();
     const runId = seed();
     expect(dashboardState(db).run?.id).toBe(runId); // no runId → latest
+  });
+
+  test("wpDetail returns a work package's attempt timeline + best eval", () => {
+    const tasks = new TaskStore(db);
+    const run = tasks.createRun({ project: 'fixture' });
+    const wp = tasks.createWorkPackage({
+      runId: run.id,
+      title: 'login',
+      screenKey: 'login',
+      spec: {},
+    });
+    const a1 = tasks.createAttempt({ wpId: wp.id, role: 'builder', model: 'm', pid: 1 });
+    tasks.finishAttempt(a1.id, { status: 'failed', failureReason: 'visual diff 3%' });
+    const a2 = tasks.createAttempt({ wpId: wp.id, role: 'builder', model: 'm', pid: 2 });
+    tasks.finishAttempt(a2.id, { status: 'passed', inputTokens: 500, outputTokens: 100 });
+    tasks.recordEval({
+      wpId: wp.id,
+      attemptId: a2.id,
+      scorecard: {},
+      visualPct: 0.5,
+      passed: true,
+    });
+
+    const d = wpDetail(db, wp.id)!;
+    expect(d.screenKey).toBe('login');
+    expect(d.attempts).toHaveLength(2);
+    expect(d.attempts[0]!.failureReason).toContain('visual diff');
+    expect(d.attempts[1]!.status).toBe('passed');
+    expect(d.bestEval).toEqual({ visualPct: 0.5, passed: true });
+    expect(wpDetail(db, 'nope')).toBeNull();
   });
 });

@@ -158,6 +158,7 @@ a { color: var(--info); }
   <section class="wide"><h2>Live now <span class="count" id="c-live">0</span></h2><div id="live"></div></section>
   <section class="wide"><h2>Pipeline <span class="count" id="c-screens">0</span></h2>
     <div id="tally" class="tally"></div><div id="screens"></div></section>
+  <section class="wide" id="detailwrap" style="display:none"><h2>Work package &mdash; <span id="detail-title"></span></h2><div id="detail"></div></section>
   <section><h2>Cost</h2><div id="cost" class="cost"></div></section>
   <section><h2>Eval analytics</h2><div id="evals"></div></section>
   <section class="wide"><h2>Inbox &mdash; gates &amp; questions <span class="count" id="c-inbox">0</span></h2>
@@ -190,10 +191,28 @@ async function post(url, body) {
 }
 document.addEventListener('click', (ev) => {
   const t = ev.target;
-  if (!t.dataset) return;
-  if (t.dataset.gate) post('/api/gates/' + t.dataset.gate, { decision: t.dataset.decision });
-  if (t.dataset.answer) { const v = $('q-' + t.dataset.answer).value; if (v) post('/api/questions/' + t.dataset.answer, { answer: v }); }
+  if (t.dataset && t.dataset.gate) post('/api/gates/' + t.dataset.gate, { decision: t.dataset.decision });
+  if (t.dataset && t.dataset.answer) { const v = $('q-' + t.dataset.answer).value; if (v) post('/api/questions/' + t.dataset.answer, { answer: v }); }
+  const wpRow = t.closest && t.closest('[data-wp]');
+  if (wpRow) showDetail(wpRow.dataset.wp);
 });
+async function showDetail(wpId) {
+  try {
+    const d = await (await fetch('/api/wp/' + wpId)).json();
+    $('detailwrap').style.display = '';
+    $('detail-title').textContent = (d.screenKey || d.wpId) + ' \\u00b7 ' + d.state;
+    $('detail').innerHTML =
+      (d.bestEval ? '<div class="sub">best eval: <span class="s-' + (d.bestEval.passed ? 'passed' : 'blocked') + '">'
+        + (d.bestEval.passed ? 'passed' : 'not passed') + '</span>'
+        + (d.bestEval.visualPct != null ? ' \\u00b7 ' + d.bestEval.visualPct.toFixed(2) + '%' : '') + '</div>' : '')
+      + (d.attempts || []).map((a) => {
+          const cls = a.status === 'passed' ? 'passed' : (a.status === 'failed' || a.status === 'guard_tripped') ? 'blocked' : 'building';
+          return '<div class="row"><span class="grow">attempt ' + a.n + ' <span class="muted">' + h(a.role)
+            + '</span> <span class="s-' + cls + '">' + h(a.status) + '</span></span><span class="muted" style="font-size:12px">'
+            + (a.inputTokens + a.outputTokens) + ' tok' + (a.failureReason ? ' \\u00b7 ' + h(a.failureReason) : '') + '</span></div>';
+        }).join('');
+  } catch (e) {}
+}
 
 function pill(text, cls) { return '<span class="pill ' + (cls || '') + '">' + h(text) + '</span>'; }
 function elapsed(start, end) {
@@ -211,7 +230,7 @@ function renderState(s) {
   const live = s.liveNow || [];
   $('c-live').textContent = live.length;
   $('live').innerHTML = live.map((w) =>
-    '<div class="row"><span class="dot d-' + w.state + '"></span><span class="grow el"><span class="nm">'
+    '<div class="row" data-wp="' + w.wpId + '" style="cursor:pointer"><span class="dot d-' + w.state + '"></span><span class="grow el"><span class="nm">'
     + h(w.screenKey || w.wpId) + '</span> <span class="s-' + w.state + '">' + w.state + '</span>'
     + ' <span class="muted">attempt ' + w.attempt + '</span></span>'
     + (w.lastEvent ? '<span class="muted" style="font-size:12px">' + h(w.lastEvent)
@@ -222,7 +241,7 @@ function renderState(s) {
     .map(([st, n]) => '<span class="s-' + st + '"><span class="dot d-' + st + '"></span>' + n + ' ' + st + '</span>').join('')
     || '<span class="muted">no screens yet</span>';
   $('screens').innerHTML = (s.screens || []).map((x) =>
-    '<div class="row"><span class="grow ellip">' + h(x.screenKey || x.wpId) + '</span>'
+    '<div class="row" data-wp="' + x.wpId + '" style="cursor:pointer"><span class="grow ellip">' + h(x.screenKey || x.wpId) + '</span>'
     + '<span class="s-' + x.state + '">' + x.state + '</span>'
     + (x.diffPercent != null ? '<span class="muted">' + x.diffPercent.toFixed(2) + '%</span>' : '') + '</div>').join('');
   const c = s.cost || {};

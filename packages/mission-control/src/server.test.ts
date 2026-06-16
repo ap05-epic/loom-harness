@@ -156,6 +156,21 @@ describe('Mission Control server', () => {
     expect(inv.digit.skills).toEqual([]); // absent DIGIT home → empty, no crash
   });
 
+  test('serves a work package drill-down at /api/wp/:id (404 for unknown)', async () => {
+    const tasks = new TaskStore(db);
+    const run = tasks.createRun({ project: 'fixture' });
+    const wp = tasks.createWorkPackage({ runId: run.id, title: 'x', screenKey: 'login', spec: {} });
+    tasks.createAttempt({ wpId: wp.id, role: 'builder', model: 'm', pid: 1 });
+    mc = await startMissionControl({ db });
+    const detail = (await (await fetch(`${mc.url}/api/wp/${wp.id}`)).json()) as {
+      screenKey: string;
+      attempts: unknown[];
+    };
+    expect(detail.screenKey).toBe('login');
+    expect(detail.attempts).toHaveLength(1);
+    expect((await fetch(`${mc.url}/api/wp/nope`)).status).toBe(404);
+  });
+
   test('rejects a bad gate decision and unknown ids', async () => {
     const { gateId } = seed();
     mc = await startMissionControl({ db });

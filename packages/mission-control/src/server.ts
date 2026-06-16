@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { applyGateDecision, EventLog, QuestionStore, type SqliteDatabase } from '@loom/core';
-import { dashboardState } from './read-model.js';
+import { dashboardState, wpDetail } from './read-model.js';
 import { inventory, type McpInfo } from './inventory.js';
 import { dashboardHtml } from './ui.js';
 
@@ -73,6 +73,14 @@ async function handle(
         externalMcp: opts.externalMcp,
       }),
     );
+    return;
+  }
+
+  const wpMatch = pathname.match(/^\/api\/wp\/([^/]+)$/);
+  if (method === 'GET' && wpMatch) {
+    const detail = wpDetail(db, wpMatch[1]!);
+    if (!detail) return sendJson(res, 404, { error: 'work package not found' });
+    sendJson(res, 200, detail);
     return;
   }
 

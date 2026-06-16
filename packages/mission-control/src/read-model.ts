@@ -178,6 +178,44 @@ export function dashboardState(
   };
 }
 
+/** One work package's drill-down: its attempt timeline + best eval (the §7b WP detail view). */
+export type WpDetail = {
+  wpId: string;
+  screenKey: string | null;
+  state: string;
+  attempts: Array<{
+    n: number;
+    role: string;
+    status: string;
+    inputTokens: number;
+    outputTokens: number;
+    failureReason: string | null;
+  }>;
+  bestEval: { visualPct: number | null; passed: boolean } | null;
+};
+
+/** Assemble one work package's drill-down (its attempts + best eval), or null if unknown. */
+export function wpDetail(db: SqliteDatabase, wpId: string): WpDetail | null {
+  const tasks = new TaskStore(db);
+  const wp = tasks.getWorkPackage(wpId);
+  if (!wp) return null;
+  const best = tasks.bestEval(wpId);
+  return {
+    wpId,
+    screenKey: wp.screenKey,
+    state: wp.state,
+    attempts: tasks.listAttempts(wpId).map((a) => ({
+      n: a.n,
+      role: a.role,
+      status: a.status,
+      inputTokens: a.inputTokens,
+      outputTokens: a.outputTokens,
+      failureReason: a.failureReason,
+    })),
+    bestEval: best ? { visualPct: best.visualPct, passed: best.passed } : null,
+  };
+}
+
 /** Bucket a free-text attempt failure reason into a Pareto category. */
 function failureCategory(reason: string | null): string {
   const r = (reason ?? '').toLowerCase();
