@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE struts-config PUBLIC
+  "-//Apache Software Foundation//DTD Struts Configuration 1.3//EN"
+  "http://struts.apache.org/dtds/struts-config_1_3.dtd">
+<!--
+  Example Business Analysis - Struts 1.3 configuration.
+  This is the authentic legacy source the harness's cartographer parses to
+  recover the screen -> action -> forward -> JSP graph. (The runnable fixture
+  is LegacyApp.java; this mirrors the same screens in Struts form.)
+-->
+<struts-config>
+
+  <form-beans>
+    <form-bean name="loginForm" type="com.example.legacy.web.form.LoginForm"/>
+    <form-bean name="analysisForm" type="com.example.legacy.web.form.AnalysisForm"/>
+  </form-beans>
+
+  <global-forwards>
+    <forward name="login" path="/login.do"/>
+    <forward name="pipeline" path="/list.do"/>
+  </global-forwards>
+
+  <action-mappings>
+
+    <action path="/login" type="com.example.legacy.web.action.LoginAction"
+            name="loginForm" scope="request" validate="true" input="/jsp/login.jsp">
+      <forward name="success" path="/list.do" redirect="true"/>
+      <forward name="failure" path="/jsp/login.jsp"/>
+    </action>
+
+    <action path="/list" type="com.example.legacy.web.action.DealListAction"
+            scope="request">
+      <forward name="success" path="/jsp/list.jsp"/>
+    </action>
+
+    <action path="/wizard" type="com.example.legacy.web.action.AnalysisWizardAction"
+            name="analysisForm" scope="session" validate="false">
+      <forward name="entity" path="/jsp/wizard-entity.jsp"/>
+      <forward name="parameters" path="/jsp/wizard-parameters.jsp"/>
+      <forward name="review" path="/jsp/wizard-review.jsp"/>
+      <forward name="done" path="/list.do" redirect="true"/>
+    </action>
+
+    <action path="/popup" type="com.example.legacy.web.action.DealDetailAction"
+            scope="request">
+      <forward name="success" path="/jsp/popup.jsp"/>
+    </action>
+
+    <action path="/logout" type="com.example.legacy.web.action.LogoutAction">
+      <forward name="success" path="/login.do" redirect="true"/>
+    </action>
+
+  </action-mappings>
+
+  <message-resources parameter="com.example.legacy.web.ApplicationResources"/>
+
+</struts-config>

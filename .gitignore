@@ -1,0 +1,51 @@
+# dependencies / build
+node_modules/
+dist/
+*.tsbuildinfo
+
+# environment & secrets — NEVER commit project data
+.env
+.env.*
+!.env.example
+
+# pod recon OUTPUT (contains internal hostnames, proxy creds, skill IP) — never commit
+harness_recon*.txt
+harness-recon*.txt
+harness_min*.txt
+harness-min*.txt
+*recon*.txt
+*.recon.txt
+
+# harness project data must live OUTSIDE the repo; belt and braces:
+harness-data/
+profiles/*
+!profiles/fixture/
+!profiles/example/
+
+# test & tool output
+coverage/
+playwright-report/
+test-results/
+*.log
+
+# generated API reference (build on demand with `pnpm docs`)
+docs/api/
+
+# fixture build output
+fixtures/legacy-webapp/target/
+fixtures/legacy-webapp/out/
+
+# hand-authored brand/design working drafts — kept local, not published to the repo
+BRAND.md
+DESIGN.md
+HANDOFF.md
+docs/brand/
+
+# local agent/editor settings
+.claude/
+.vscode/
+.idea/
+
+# OS noise
+.DS_Store
+Thumbs.db

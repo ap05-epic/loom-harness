@@ -1,0 +1,19 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/tokens" },
+    { "path": "packages/tools" },
+    { "path": "packages/mcp" },
+    { "path": "packages/skills" },
+    { "path": "packages/core" },
+    { "path": "packages/test-kit" },
+    { "path": "packages/agents" },
+    { "path": "packages/evaluator" },
+    { "path": "packages/browser" },
+    { "path": "packages/cartographer" },
+    { "path": "packages/surveyor" },
+    { "path": "packages/conductor" },
+    { "path": "packages/mission-control" },
+    { "path": "packages/cli" }
+  ]
+}

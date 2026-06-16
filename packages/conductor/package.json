@@ -1,0 +1,34 @@
+{
+  "name": "@loom/conductor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@loom/agents": "workspace:*",
+    "@loom/browser": "workspace:*",
+    "@loom/cartographer": "workspace:*",
+    "@loom/core": "workspace:*",
+    "@loom/evaluator": "workspace:*",
+    "@loom/skills": "workspace:*",
+    "@loom/tools": "workspace:*",
+    "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "@loom/test-kit": "workspace:*",
+    "@types/pngjs": "^6.0.5",
+    "pngjs": "^7.0.0"
+  }
+}

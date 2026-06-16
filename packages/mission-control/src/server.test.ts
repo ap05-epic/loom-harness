@@ -1,0 +1,117 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  GateStore,
+  MIGRATIONS,
+  openDb,
+  QuestionStore,
+  runMigrations,
+  TaskStore,
+  type SqliteDatabase,
+} from '@loom/core';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { startMissionControl, type MissionControl } from './server.js';
+
+let dir: string;
+let db: SqliteDatabase;
+let mc: MissionControl;
+beforeEach(async () => {
+  dir = mkdtempSync(join(tmpdir(), 'mc-server-'));
+  db = openDb(join(dir, 'loom.db'));
+  runMigrations(db, MIGRATIONS);
+});
+afterEach(async () => {
+  await mc.stop();
+  db.close();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+/** Seed a run with an open ship gate and an open question; returns their ids. */
+function seed(): { runId: string; gateId: string; questionId: string } {
+  const tasks = new TaskStore(db);
+  const run = tasks.createRun({ project: 'fixture' });
+  tasks.setRunStage(run.id, 'build');
+  const wp = tasks.createWorkPackage({
+    runId: run.id,
+    title: 'login',
+    screenKey: 'login',
+    spec: {},
+  });
+  tasks.setWorkPackageState(wp.id, 'passed');
+  const gate = new GateStore(db).open({
+    scopeType: 'wp',
+    scopeId: wp.id,
+    type: 'ship',
+    payload: { screenKey: 'login' },
+  });
+  const q = new QuestionStore(db).ask({ runId: run.id, wpId: wp.id, question: 'Proceed?' });
+  return { runId: run.id, gateId: gate.id, questionId: q.id };
+}
+
+describe('Mission Control server', () => {
+  test('serves the themed HTML dashboard at /', async () => {
+    mc = await startMissionControl({ db });
+    const res = await fetch(`${mc.url}/`);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    const html = await res.text();
+    expect(html).toContain('Mission Control');
+    expect(html).toContain('/api/state'); // the poller is wired
+  });
+
+  test('serves the dashboard state as JSON', async () => {
+    const { runId } = seed();
+    mc = await startMissionControl({ db });
+    const state = (await (await fetch(`${mc.url}/api/state`)).json()) as {
+      run: { id: string } | null;
+      gates: unknown[];
+      questions: unknown[];
+    };
+    expect(state.run?.id).toBe(runId);
+    expect(state.gates).toHaveLength(1);
+    expect(state.questions).toHaveLength(1);
+  });
+
+  test('approves a gate via POST — the only kind of write it performs', async () => {
+    const { gateId } = seed();
+    mc = await startMissionControl({ db });
+    const res = await fetch(`${mc.url}/api/gates/${gateId}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ decision: 'approve' }),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { status: string }).status).toBe('approved');
+    // …and it's no longer open in the inbox.
+    expect(new GateStore(db).list({ status: 'open' })).toHaveLength(0);
+  });
+
+  test('answers a question via POST', async () => {
+    const { questionId } = seed();
+    mc = await startMissionControl({ db });
+    const res = await fetch(`${mc.url}/api/questions/${questionId}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ answer: 'skip it' }),
+    });
+    expect(res.status).toBe(200);
+    expect(new QuestionStore(db).get(questionId)!.answer).toBe('skip it');
+  });
+
+  test('rejects a bad gate decision and unknown ids', async () => {
+    const { gateId } = seed();
+    mc = await startMissionControl({ db });
+    const bad = await fetch(`${mc.url}/api/gates/${gateId}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ decision: 'maybe' }),
+    });
+    expect(bad.status).toBe(400);
+    const missing = await fetch(`${mc.url}/api/gates/nope`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ decision: 'approve' }),
+    });
+    expect(missing.status).toBe(404);
+  });
+});

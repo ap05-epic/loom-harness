@@ -1,0 +1,11 @@
+dist/
+node_modules/
+pnpm-lock.yaml
+fixtures/legacy-webapp/
+vendor/
+docs/api/
+# Hand-authored brand/design artifacts — not Prettier-managed source.
+docs/brand/
+BRAND.md
+DESIGN.md
+HANDOFF.md

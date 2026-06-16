@@ -1,0 +1,25 @@
+# Fixture profile — drives the pipeline against the bundled legacy-webapp fixture.
+# The harness's permanent test bed: `harness run -p profiles/fixture --data-dir <dir outside any clone>`
+# (start the fixture first; see fixtures/legacy-webapp). Secrets come from the
+# environment (LLM_BASE_URL / LLM_API_KEY), never this file.
+project: fixture
+
+llm:
+  driver: openai
+  model: gpt-5.4
+  baseUrlEnv: LLM_BASE_URL
+  apiKeyEnv: LLM_API_KEY
+
+# MAP input: the authentic Struts config the cartographer parses.
+source:
+  strutsConfig: ../../fixtures/legacy-webapp/legacy-src/WEB-INF/struts-config.xml
+
+# CRAWL/EVAL target: the running fixture (LegacyApp.java defaults to :8090).
+app:
+  baseUrl: http://127.0.0.1:8090/
+
+eval:
+  threshold: 2
+  viewport:
+    width: 1280
+    height: 1024

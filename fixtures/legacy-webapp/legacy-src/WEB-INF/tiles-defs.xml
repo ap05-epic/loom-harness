@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE tiles-definitions PUBLIC
+  "-//Apache Software Foundation//DTD Tiles Configuration 1.3//EN"
+  "http://tiles.apache.org/dtds/tiles-config_1_3.dtd">
+<!-- Layout composition the cartographer recovers as the screen->layout graph. -->
+<tiles-definitions>
+
+  <definition name="example.layout.main" path="/jsp/layout.jsp">
+    <put-attribute name="title" value="Example Business Analysis"/>
+    <put-attribute name="header" value="/jsp/fragments/header.jsp"/>
+    <put-attribute name="footer" value="/jsp/fragments/footer.jsp"/>
+    <put-attribute name="body" value=""/>
+  </definition>
+
+  <definition name="example.list" extends="example.layout.main">
+    <put-attribute name="title" value="Deal Pipeline"/>
+    <put-attribute name="body" value="/jsp/list.jsp"/>
+  </definition>
+
+  <definition name="example.wizard.entity" extends="example.layout.main">
+    <put-attribute name="title" value="New Analysis"/>
+    <put-attribute name="body" value="/jsp/wizard-entity.jsp"/>
+  </definition>
+
+  <definition name="example.wizard.parameters" extends="example.layout.main">
+    <put-attribute name="title" value="New Analysis"/>
+    <put-attribute name="body" value="/jsp/wizard-parameters.jsp"/>
+  </definition>
+
+  <definition name="example.wizard.review" extends="example.layout.main">
+    <put-attribute name="title" value="Review"/>
+    <put-attribute name="body" value="/jsp/wizard-review.jsp"/>
+  </definition>
+
+</tiles-definitions>

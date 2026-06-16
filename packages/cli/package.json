@@ -1,0 +1,40 @@
+{
+  "name": "@loom/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "loom": "./dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@loom/agents": "workspace:*",
+    "@loom/browser": "workspace:*",
+    "@loom/cartographer": "workspace:*",
+    "@loom/conductor": "workspace:*",
+    "@loom/core": "workspace:*",
+    "@loom/evaluator": "workspace:*",
+    "@loom/mission-control": "workspace:*",
+    "@loom/skills": "workspace:*",
+    "@loom/surveyor": "workspace:*",
+    "@loom/tokens": "workspace:*",
+    "@inquirer/prompts": "^7.8.0",
+    "commander": "^14.0.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@loom/test-kit": "workspace:*"
+  }
+}

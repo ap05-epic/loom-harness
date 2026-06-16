@@ -1,0 +1,14 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "Modernization Harness API",
+  "entryPoints": [
+    "packages/core/src/index.ts",
+    "packages/agents/src/index.ts",
+    "packages/evaluator/src/index.ts",
+    "packages/test-kit/src/index.ts"
+  ],
+  "out": "docs/api",
+  "readme": "none",
+  "skipErrorChecking": true,
+  "excludeInternal": true
+}

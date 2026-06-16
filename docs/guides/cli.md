@@ -1,0 +1,58 @@
+# The CLI
+
+`harness` is scriptable-first and pleasant interactively. The same command works for a human at a terminal, a CI job, and an SSH session.
+
+## Output modes
+
+- **Human** (default): colored, aligned, with ASCII fallback on dumb terminals.
+- **`--json`**: a single result envelope on **stdout**; all diagnostics/progress go to **stderr** as NDJSON. So `loom <cmd> --json 2>/dev/null` always yields exactly one clean JSON document:
+  - success: `{ "ok": true, "command": "…", "data": …, "warnings": [] }`
+  - failure: `{ "ok": false, "command": "…", "error": { "code", "message", "hint?", "docs?" } }`
+
+Mode is decided by precedence: `--json` → `--no-color`/`NO_COLOR` → `--no-input`/`CI`/non-TTY stdin → non-TTY stdout.
+
+## Global flags
+
+`--profile/-p <dir>` · `--data-dir <path>` · `--json` · `--quiet/-q` · `--verbose/-v` (repeatable) · `--no-color` · `--yes/-y` · `--dry-run` · `--no-input`. Put them after the command: `loom status --json`.
+
+## Exit codes
+
+Documented and stable — see [reference/exit-codes.md](../reference/exit-codes.md). They print in `loom --help`.
+
+## Interactivity
+
+Wizards (`init`, gate approvals) prompt only when interactive. **Every prompt has a matching flag**, so in CI/non-TTY the command takes flags or fails with exit 2 telling you which to supply — it never hangs.
+
+## Commands today
+
+| Command                            | Purpose                                                                                                                                                                                                                                                                              |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `loom init`                        | Scaffold a profile (`loom.config.yaml` + `.env`) outside any repo                                                                                                                                                                                                                    |
+| `loom doctor`                      | Verify the environment (node, sqlite backend, git, pnpm, JDK)                                                                                                                                                                                                                        |
+| `loom status`                      | Version, checkout, node, active SQLite backend                                                                                                                                                                                                                                       |
+| `loom update [--to vX.Y.Z]`        | Update the checkout to a release tag, reinstall, rebuild, migrate                                                                                                                                                                                                                    |
+| `loom profile show\|validate`      | Render / validate the resolved profile                                                                                                                                                                                                                                               |
+| `loom models list\|test`           | List configured models / probe the endpoint                                                                                                                                                                                                                                          |
+| `loom db migrate\|backup`          | Apply migrations / snapshot the database                                                                                                                                                                                                                                             |
+| `loom eval --a <url> --b <url>`    | Visual parity eval — capture both, diff, score, gate (exit 1 on fail); `--out <dir>` writes diff images + `scorecard.json`                                                                                                                                                           |
+| `loom map`                         | Build the enriched CodeAtlas (auto-discovers Tiles/web.xml/JSPs); `--struts`/`--atlas` override the profile                                                                                                                                                                          |
+| `loom atlas repomap\|slice\|find`  | Read the atlas: the PageRank repo-map, one screen's slice, or FTS5 search                                                                                                                                                                                                            |
+| `loom crawl`                       | Crawl the running legacy app into a UI inventory (form-login via the profile; `--max-states`)                                                                                                                                                                                        |
+| `loom atlas summarize`             | LLM docs pass — write a generated summary per screen into the atlas                                                                                                                                                                                                                  |
+| `loom atlas verify-docs`           | Adversarially verify recovered docs with a consensus panel; flags ones the source doesn't support (exit 7 if any flagged) — see [the evaluator](../concepts/the-evaluator.md#consensus-for-the-subjective-calls)                                                                       |
+| `loom run`                         | Run the rebuild pipeline (MAP → CRAWL → BUILD → EVAL → FIX → REFLECT); `--screens`/`--threshold`/`--max-attempts`, `--shift` safeguards (`--budget-tokens`/`--hours`/`--stop-after-failures`), `--reflect` to draft skills/facts on each pass, `--skill-promote-after <n>` to tune skill auto-promotion; reports coverage %; exit 7 if blocked |
+| `loom resume`                      | Resume the latest interrupted run (or `--run <id>`), finishing its unfinished screens                                                                                                                                                                                                |
+| `loom wp list\|show`               | Read-only board — list a run's work packages, or drill into one's attempts + best eval                                                                                                                                                                                               |
+| `loom gates list\|approve\|reject` | The human-decision inbox (plan/deviation/ship/skill); approving a **skill** gate activates the Reflector's drafted skill, rejecting archives it                                                                                                                                      |
+| `loom questions list\|answer`      | The agent-questions inbox — a blocked screen escalates here with its worklog; `answer` records the human reply                                                                                                                                                                       |
+| `loom logs`                        | Tail the append-only event log (`--run`/`--wp` filters)                                                                                                                                                                                                                              |
+| `loom watch`                       | A single-glance dashboard of the active run — stage, screen tally by state, token spend, gates/questions waiting, and a heartbeat-staleness "is it wedged?" flag                                                                                                                       |
+| `loom ui`                          | Launch the local **Mission Control** web dashboard (read-only over `loom.db`; approve/reject gates + answer questions write back); `--port`, `--open` (see [observability](../concepts/observability.md))                                                                              |
+| `loom report`                      | Render a run's modernization report (markdown): per-screen state + parity evidence, coverage, token spend, open inbox                                                                                                                                                                |
+| `loom skills list\|show\|export\|import` | The project's `SKILL.md` library: list it, `show <name>` one in full, `export --target digit --out <dir>` for DIGIT/Copilot interop, or `import --from <dir>` external skills (see [Skills & memory](../concepts/skills-and-memory.md))                                                |
+
+`eval` works against any two deployments — legacy-vs-rebuilt, or local-vs-production for a fidelity check — and needs a browser (`loom doctor` verifies one). `run`/`resume` read their source, app URL, and target from the [profile](authoring-a-profile.md) and write all state to the data dir.
+
+The rest of the pipeline (`plan`/`build`) and the remaining knowledge verbs (`memory`) land with their subsystems.
+
+Run `loom <command> --help` for flags and examples. To add a command, see [extending/adding-a-command.md](extending/adding-a-command.md).
