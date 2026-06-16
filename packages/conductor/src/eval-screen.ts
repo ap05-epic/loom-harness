@@ -1,11 +1,14 @@
 import {
   diffDom,
+  diffForms,
   diffStyles,
   evaluateVisual,
   type DomFinding,
+  type FunctionalFinding,
   type StyleFinding,
 } from '@loom/evaluator';
 import type { DomSnapshot, Viewport } from '@loom/browser';
+import { extractForms } from '@loom/surveyor';
 import { serveDir, type StaticServer } from './serve.js';
 
 type Capture = (input: { url: string; viewport: Viewport }) => Promise<Buffer>;
@@ -16,6 +19,8 @@ export type ScreenEval = {
   diffPercent: number;
   findings: DomFinding[];
   styleFindings: StyleFinding[];
+  /** Form fields/rules the rebuild dropped or changed (the functional gate). */
+  functionalFindings: FunctionalFinding[];
   passed: boolean;
   scorecard: unknown;
 };
@@ -56,12 +61,16 @@ export async function evaluateScreen(args: EvaluateScreenArgs): Promise<ScreenEv
     const domA = await args.domCapture({ url: args.legacyUrl, viewport: args.viewport });
     const structural = diffDom(domA, domB);
     const style = diffStyles(domA, domB);
+    // Functional gate: every legacy form field + validation rule must survive the rebuild.
+    const functional = diffForms(extractForms(domA), extractForms(domB));
     return {
       diffPercent: visual.verdict.worst.diffPercent,
       findings: structural.findings,
       styleFindings: style.findings,
-      passed: visual.verdict.passed && structural.matched && style.matched,
-      scorecard: { visual: visual.verdict, structural, style },
+      functionalFindings: functional,
+      passed:
+        visual.verdict.passed && structural.matched && style.matched && functional.length === 0,
+      scorecard: { visual: visual.verdict, structural, style, functional },
     };
   } finally {
     await server.stop();
