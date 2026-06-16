@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
@@ -71,5 +71,25 @@ describe('loom project', () => {
     const env = JSON.parse(stdout.trim());
     expect(env.data.project).toBe('baa');
     expect(env.data.dataDir).toContain(join('projects', 'baa', 'data'));
+  });
+
+  test('new scaffolds a project (and the workspace) and registers it', async () => {
+    const fresh = mkdtempSync(join(tmpdir(), 'fresh-ws-'));
+    try {
+      const { exitCode } = await run(['project', 'new', 'demo', '--workspace', fresh]);
+      expect(exitCode).toBe(0);
+      expect(existsSync(join(fresh, 'projects', 'demo', 'loom.config.yaml'))).toBe(true);
+      expect(existsSync(join(fresh, 'projects', 'demo', 'data'))).toBe(true);
+      const manifest = readFileSync(join(fresh, 'loom-workspace.yaml'), 'utf8');
+      expect(manifest).toContain('name: demo');
+      expect(manifest).toContain('active: demo'); // first project becomes active
+    } finally {
+      rmSync(fresh, { recursive: true, force: true });
+    }
+  });
+
+  test('new rejects a duplicate project name (USAGE, exit 2)', async () => {
+    const { exitCode } = await run(['project', 'new', 'baa', '--json', '--workspace', ws]);
+    expect(exitCode).toBe(2);
   });
 });
