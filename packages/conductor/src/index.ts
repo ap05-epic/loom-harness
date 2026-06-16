@@ -33,3 +33,11 @@ export {
   type IntegrationRegression,
   type IntegrationEvalArgs,
 } from './integration-eval.js';
+export { llmChooser, buildChoosePrompt, parseChoice } from './llm-chooser.js';
+export {
+  deepMap,
+  type MapTarget,
+  type AreaMap,
+  type DeepMapResult,
+  type DeepMapOptions,
+} from './deep-map.js';
