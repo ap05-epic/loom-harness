@@ -78,8 +78,11 @@ Models are reached via a **GitHub Copilot login by default** (no key or URL) or 
 | Observe      | `watch` · `logs` · `report` · `ui`                                                                              |
 | Work & gates | `wp` · `gates` · `questions`                                                                                    |
 | Knowledge    | `skills` · `memory` · `atlas`                                                                                   |
+| Project      | `project new\|list\|use\|current`                                                                               |
 
 Run `loom <command> --help` for flags and examples; the help footer lists every exit code.
+
+Multiple modernization projects coexist in a **workspace** (`loom-workspace.yaml`) with fully isolated data, atlases, skills, memory, and tools — `loom project use <name>` switches the active one ([ADR 0006](docs/decisions/0006-workspace-project-isolation.md)).
 
 ## Packages
 

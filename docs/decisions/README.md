@@ -9,5 +9,6 @@ Each ADR captures one significant choice: the context, the decision, and the con
 | [0003](0003-deterministic-evaluator.md)     | The evaluator is deterministic and LLM-free                            | Accepted |
 | [0004](0004-self-contained.md)              | Self-contained — no runtime dependency on external agent tooling       | Accepted |
 | [0005](0005-production-as-baseline.md)      | Production is the parity baseline when the local replica is unreliable | Accepted |
+| [0006](0006-workspace-project-isolation.md) | Workspace + per-project isolation (Hermes-style)                       | Accepted |
 
 New ADRs follow the same short format: **Context** (the forces at play) → **Decision** (what we chose) → **Consequences** (what follows, good and bad).
