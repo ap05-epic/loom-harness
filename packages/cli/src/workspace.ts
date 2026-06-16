@@ -88,3 +88,20 @@ export function resolveProjectContext(input: ResolveInput): ProjectResolution {
   // 3. No workspace / no active project ⇒ today's behavior.
   return { profileDir: cwd };
 }
+
+/** Locate + load the workspace (explicit `--workspace`/`LOOM_WORKSPACE`, else walk up from cwd). */
+export function requireWorkspace(input: {
+  flags: { workspace?: string };
+  env: Record<string, string | undefined>;
+  cwd: string;
+}): Workspace {
+  const wsDir = input.flags.workspace ?? input.env.LOOM_WORKSPACE;
+  const wsPath = wsDir ? join(resolve(wsDir), WORKSPACE_FILE) : findWorkspaceUp(input.cwd);
+  if (!wsPath || !existsSync(wsPath)) {
+    throw configError(
+      'no workspace found',
+      'run `loom project new <name>` to create one, or pass --workspace <dir>',
+    );
+  }
+  return loadWorkspace(wsPath);
+}

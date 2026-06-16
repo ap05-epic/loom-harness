@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
 
 /**
@@ -36,6 +36,25 @@ export function loadWorkspace(path: string): Workspace {
     throw new Error(`Invalid ${basename(abs)}: ${issues}`);
   }
   return { ...parsed.data, dir: dirname(abs), path: abs };
+}
+
+/** Write a workspace manifest back to disk (the CLI is its only writer). */
+export function saveWorkspace(ws: Workspace): void {
+  const body = stringifyYaml({
+    version: ws.version,
+    ...(ws.active ? { active: ws.active } : {}),
+    projects: ws.projects,
+  });
+  writeFileSync(ws.path, body, 'utf8');
+}
+
+/** Create an empty workspace manifest in `dir` (returns the loaded workspace). */
+export function createWorkspace(dir: string): Workspace {
+  mkdirSync(resolve(dir), { recursive: true });
+  const path = join(resolve(dir), WORKSPACE_FILE);
+  const ws: Workspace = { version: 1, projects: [], dir: resolve(dir), path };
+  saveWorkspace(ws);
+  return ws;
 }
 
 /** Walk up from `startDir` to find the nearest `loom-workspace.yaml`; `null` if none. */

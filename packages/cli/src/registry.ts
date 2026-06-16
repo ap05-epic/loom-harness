@@ -1,7 +1,7 @@
 import type { ExitName } from './errors.js';
 import type { CliContext } from './context.js';
 
-export type CommandGroup = 'lifecycle' | 'pipeline' | 'observe' | 'work' | 'knowledge';
+export type CommandGroup = 'lifecycle' | 'pipeline' | 'observe' | 'work' | 'knowledge' | 'project';
 
 export type OptionSpec = {
   /** commander flag string, e.g. "--to <tag>" or "-f, --follow". */

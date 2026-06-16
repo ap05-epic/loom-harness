@@ -30,6 +30,8 @@ export {
 } from './config/config.js';
 export {
   loadWorkspace,
+  saveWorkspace,
+  createWorkspace,
   findWorkspaceUp,
   WORKSPACE_FILE,
   type Workspace,

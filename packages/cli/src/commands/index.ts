@@ -32,6 +32,7 @@ import {
   skillsExportCommand,
   skillsImportCommand,
 } from './knowledge/skills.js';
+import { projectListCommand, projectCurrentCommand, projectUseCommand } from './project/project.js';
 
 /** All command specs that ship today, in registration order. */
 export const ALL_COMMANDS = [
@@ -72,6 +73,9 @@ export const ALL_COMMANDS = [
   skillsNewCommand,
   skillsExportCommand,
   skillsImportCommand,
+  projectListCommand,
+  projectCurrentCommand,
+  projectUseCommand,
 ];
 
 export function registerAll(): CommandRegistry {

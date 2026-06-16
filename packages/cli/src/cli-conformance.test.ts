@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { ALL_COMMANDS, registerAll } from './commands/index.js';
 import { buildProgram } from './program.js';
 
-const GROUPS = ['lifecycle', 'pipeline', 'observe', 'work', 'knowledge'];
+const GROUPS = ['lifecycle', 'pipeline', 'observe', 'work', 'knowledge', 'project'];
 
 describe('cli-conformance: every command meets the bar', () => {
   test.each(ALL_COMMANDS.map((c) => [c.name, c] as const))('%s', (_name, command) => {
