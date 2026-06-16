@@ -4,14 +4,47 @@ How to take a fresh, undocumented legacy app from zero to mass-produced rebuilds
 
 > Prereqs: the pod is set up per the [POD-RUNBOOK](POD-RUNBOOK.md) (`loom doctor` all-green, including `browser`, `proxy`, and `data-dir`). All project data lives in `LOOM_DATA_DIR`, **outside** any clone.
 
+## 0. Verify the model backend (do this first)
+
+Prove the backend end-to-end before any autonomous shift relies on it — the one gate worth clearing early:
+
+```bash
+loom models list --data-dir "$LOOM_DATA_DIR"   # which provider+model is active, and is it yours to pick?
+loom models test --data-dir "$LOOM_DATA_DIR"   # a real round-trip to the endpoint
+loom doctor      --data-dir "$LOOM_DATA_DIR"   # node / sqlite backend / git / jdk / browser / proxy + LLM-no-proxy
+```
+
+Two supported paths:
+
+- **GitHub Copilot login** (the default elsewhere) — `llm: { driver: copilot, model: <copilot-model> }`, no key or URL; auth comes from `copilot login`. Run `loom models test` against a _real_ login to reconcile the live `--output-format json` schema before trusting it for a shift.
+- **Direct key (the pod)** — `driver: openai` + `LLM_BASE_URL` (ends in `/openai/v1`) + `LLM_API_KEY`. This is the path verified against the Azure endpoint (HTTP 200), so it's the safe fallback if a Copilot-schema surprise appears.
+
+### `loom doctor` red-line triage
+
+| Red check        | Means                         | Fix                                                                                                                           |
+| ---------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `node-version`   | Node too old                  | use the pod's Node 24 (`node -v`); the harness targets 22+                                                                    |
+| `sqlite`         | no native SQLite              | nothing to do — the adapter auto-falls back to `node:sqlite`; doctor just reports the live backend                            |
+| `pnpm`           | pnpm absent                   | `corepack enable` (or `npm i -g pnpm` from the Nexus mirror)                                                                  |
+| `jdk`            | JDK 17 missing                | only needed to build the fixture; not required to run BAA                                                                     |
+| `browser`        | Playwright can't launch       | browsers are cached on the pod (`chromium-1223`); set `PLAYWRIGHT_BROWSERS_PATH` / `browser.executablePath` if not found      |
+| `proxy`          | git/npm proxy unreachable     | check `HTTP(S)_PROXY`; creds are redacted in output, never logged                                                             |
+| `llm` / endpoint | model call fails              | re-check `LLM_BASE_URL` / `LLM_API_KEY` (or `copilot login`); confirm `NO_PROXY` covers the endpoint so it bypasses the proxy |
+| `data-dir`       | data dir is inside a git tree | move `LOOM_DATA_DIR` outside any clone — project data must never enter a repo                                                 |
+
+Clear every red line before MAP.
+
 ## 1. Profile + recon intake
 
 Copy the template and fill it for the app (real values stay pod-side, never committed):
 
 ```bash
 cp profiles/example/loom.config.example.yaml "$LOOM_DATA_DIR/loom.config.yaml"
-# fill: source.strutsConfig, app.baseUrl (the trusted/prod deployment), crawl.auth (env-var creds)
+# fill: source.strutsConfig, app.baseUrl (the trusted/prod deployment)
+loom profile validate --profile "$LOOM_DATA_DIR"   # typed check before anything runs
 ```
+
+> **SSO apps (e.g. BAA):** if login isn't a same-origin username/password form, leave `crawl.auth` out and set `app.storageStatePath` instead — do a one-time manual SSO login captured to that file, then every crawl reuses the session. The storageState holds a live session, so keep it in the data dir and never commit it; re-capture when it expires.
 
 If a prior analysis (e.g. a DIGIT `baa-analysis` `spec.md`/`status.md`) exists, drop it in the data dir — it's the richest possible input. The Mission Control **DIGIT** panel shows what's already in `~/.copilot` (skills/agents/MCP) to reuse.
 
