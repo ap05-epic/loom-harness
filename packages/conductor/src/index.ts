@@ -41,3 +41,4 @@ export {
   type DeepMapResult,
   type DeepMapOptions,
 } from './deep-map.js';
+export { llmAreaMapper, buildMapPrompt, parseAreaMap } from './area-mapper.js';
