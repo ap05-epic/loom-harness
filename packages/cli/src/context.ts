@@ -3,10 +3,15 @@ import { configError } from './errors.js';
 import { makePalette } from './ui/colors.js';
 import { createSink, type OutputSink } from './ui/sink.js';
 import { resolveOutputMode, type OutputMode } from './ui/tty.js';
+import { resolveProjectContext } from './workspace.js';
 
 export type GlobalFlags = {
   profile?: string;
   dataDir?: string;
+  /** Select a workspace project by name (else the workspace's active project). */
+  project?: string;
+  /** The workspace directory (else discovered by walking up from cwd). */
+  workspace?: string;
   json?: boolean;
   quiet?: boolean;
   verbose?: number;
@@ -82,12 +87,19 @@ export function createContext(options: CreateContextOptions): CliContext {
     },
     requireProfile() {
       if (cachedProfile) return cachedProfile;
-      const dir = options.flags.profile ?? env.LOOM_PROFILE ?? env.HARNESS_PROFILE ?? cwd;
+      // Resolve the active project (workspace-aware; explicit --profile/--data-dir short-circuit).
+      const resolved = resolveProjectContext({
+        flags: {
+          profile: options.flags.profile,
+          dataDir: options.flags.dataDir,
+          project: options.flags.project,
+          workspace: options.flags.workspace,
+        },
+        env,
+        cwd,
+      });
       try {
-        cachedProfile = loadProfile(dir, {
-          env,
-          dataDir: options.flags.dataDir ?? env.LOOM_DATA_DIR ?? env.HARNESS_DATA_DIR,
-        });
+        cachedProfile = loadProfile(resolved.profileDir, { env, dataDir: resolved.dataDir });
       } catch (error) {
         throw configError(
           error instanceof Error ? error.message : String(error),

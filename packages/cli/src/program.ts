@@ -6,6 +6,7 @@ import { describeProvider } from './pipeline-config.js';
 import type { ArgSpec, CommandInput, CommandRegistry, CommandSpec } from './registry.js';
 import { banner } from './ui/banner.js';
 import { identityPanel, type IdentityInfo } from './ui/identity.js';
+import { resolveProjectContext } from './workspace.js';
 
 export type ProgramDeps = {
   version: string;
@@ -22,6 +23,8 @@ function toGlobalFlags(g: Record<string, unknown>): GlobalFlags {
   return {
     profile: typeof g.profile === 'string' ? g.profile : undefined,
     dataDir: typeof g.dataDir === 'string' ? g.dataDir : undefined,
+    project: typeof g.project === 'string' ? g.project : undefined,
+    workspace: typeof g.workspace === 'string' ? g.workspace : undefined,
     json: g.json === true,
     quiet: g.quiet === true,
     verbose: typeof g.verbose === 'number' ? g.verbose : 0,
@@ -65,8 +68,8 @@ function gatherIdentity(deps: ProgramDeps): IdentityInfo {
   const cwd = deps.cwd ?? process.cwd();
   const base: IdentityInfo = { version: deps.version, configured: false, backend: probeBackend() };
   try {
-    const dir = env.LOOM_PROFILE ?? env.HARNESS_PROFILE ?? cwd;
-    const profile = loadProfile(dir, { env, dataDir: env.LOOM_DATA_DIR ?? env.HARNESS_DATA_DIR });
+    const resolved = resolveProjectContext({ flags: {}, env, cwd });
+    const profile = loadProfile(resolved.profileDir, { env, dataDir: resolved.dataDir });
     const provider = describeProvider(profile);
     return {
       ...base,
@@ -103,6 +106,7 @@ function applyGlobalOptions(target: Command): void {
   target
     .option('-p, --profile <dir>', 'profile directory (contains loom.config.yaml)')
     .option('--data-dir <path>', 'data directory (overrides the profile)')
+    .option('--workspace <dir>', 'workspace directory (else discovered from cwd)')
     .option('--json', 'machine-readable JSON output')
     .option('-q, --quiet', 'suppress info diagnostics')
     .option('-v, --verbose', 'verbose output (repeatable)', (_v, prev: number) => prev + 1, 0)
