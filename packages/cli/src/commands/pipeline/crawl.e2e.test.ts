@@ -2,6 +2,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { canLaunchBrowser } from '@loom/browser';
+import { openUiAtlas } from '@loom/surveyor';
 import { canRunJava, LegacyFixture } from '@loom/test-kit';
 import { afterAll, describe, expect, test } from 'vitest';
 import { registerAll } from '../index.js';
@@ -68,8 +69,10 @@ describe('loom crawl (live, against the fixture)', () => {
         ].join('\n'),
       );
 
+      const dataDir = mkdtempSync(join(tmpdir(), 'crawl-data-'));
       const { stdout, exitCode } = await harness(['crawl', '--json'], {
         HARNESS_PROFILE: profileDir,
+        LOOM_DATA_DIR: dataDir,
         APP_USER: 'analyst',
         APP_PASS: 'analyst',
       });
@@ -81,6 +84,15 @@ describe('loom crawl (live, against the fixture)', () => {
       expect(urls.some((u) => u.includes('/list'))).toBe(true);
       expect(urls.some((u) => u.includes('/wizard'))).toBe(true);
       expect(urls.some((u) => u.includes('/logout'))).toBe(false);
+
+      // the discovered states were persisted into the UI atlas (uiatlas.db)
+      expect(env.data.atlasPath).toBeTruthy();
+      const atlas = openUiAtlas(env.data.atlasPath as string);
+      try {
+        expect(atlas.states().length).toBeGreaterThanOrEqual(2);
+      } finally {
+        atlas.close();
+      }
     },
     60_000,
   );

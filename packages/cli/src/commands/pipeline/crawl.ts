@@ -1,5 +1,6 @@
+import { join } from 'node:path';
 import type { Profile } from '@loom/core';
-import { crawlApp, type CrawlAppOptions } from '@loom/surveyor';
+import { crawlApp, openUiAtlas, type CrawlAppOptions } from '@loom/surveyor';
 import { configError } from '../../errors.js';
 import { defineCommand } from '../../registry.js';
 import { renderTable } from '../../ui/table.js';
@@ -9,6 +10,8 @@ type CrawlData = {
   visited: number;
   truncated: boolean;
   states: Array<{ key: string; url: string; links: number }>;
+  /** Where the discovered states were persisted (the UI atlas), if a data dir is set. */
+  atlasPath?: string;
 };
 
 /** Build the surveyor's crawl options from the profile (creds come from env). */
@@ -68,11 +71,25 @@ export const crawlCommand = defineCommand({
     const max = input.options.maxStates !== undefined ? Number(input.options.maxStates) : undefined;
     const options = crawlOptionsFrom(profile, max);
     const result = await crawlApp(options);
+
+    // Persist the discovered states into the UI atlas when a data dir is configured.
+    let atlasPath: string | undefined;
+    if (profile.dataDir) {
+      atlasPath = join(profile.dataDir, 'uiatlas.db');
+      const atlas = openUiAtlas(atlasPath);
+      try {
+        atlas.ingest(result.states);
+      } finally {
+        atlas.close();
+      }
+    }
+
     return {
       startUrl: options.startUrl,
       visited: result.visited,
       truncated: result.truncated,
       states: result.states.map((s) => ({ key: s.key, url: s.url, links: s.links.length })),
+      ...(atlasPath ? { atlasPath } : {}),
     } satisfies CrawlData;
   },
   render(data, ctx) {
@@ -91,5 +108,6 @@ export const crawlCommand = defineCommand({
     ctx.sink.line(
       `${d.states.length} screen(s) from ${d.visited} page(s)${d.truncated ? ' (truncated — raise --max-states)' : ''}`,
     );
+    if (d.atlasPath) ctx.sink.line(`ingested into ${d.atlasPath}`);
   },
 });
