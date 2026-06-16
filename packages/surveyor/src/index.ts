@@ -22,3 +22,4 @@ export {
   type ExploreState,
 } from './explorer.js';
 export { exploreApp, type ExploreAppOptions } from './explore-app.js';
+export { extractForms, type FormSpec, type FieldSpec } from './forms.js';

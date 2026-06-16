@@ -29,3 +29,11 @@ export {
   type StyleDiffOptions,
 } from './style-diff.js';
 export { coverageLedger, type CoverageInput, type CoverageReport } from './coverage.js';
+export {
+  classifyAsset,
+  assetDigest,
+  findCopiedAssets,
+  type AssetKind,
+  type AssetDigest,
+  type CopiedAsset,
+} from './anticheat.js';
