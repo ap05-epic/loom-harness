@@ -181,10 +181,16 @@ const AUTH_PATTERNS =
 
 /** Turn a CLI failure into a clear message — re-auth hint when the session lapsed. */
 export function classifyCopilotError(stderr: string, exitCode: number): string {
+  const trimmed = stderr.trim();
   if (AUTH_PATTERNS.test(stderr)) {
     return 'GitHub Copilot is not authenticated (session missing or expired). Run `copilot login` (or `dc login`) and retry.';
   }
-  return `copilot CLI failed (exit ${exitCode}): ${stderr.trim() || 'no error output'}`;
+  // A failed copilot call that printed nothing is, in practice, almost always a
+  // lapsed login (the pod hit "exit 1: no error output"). Point at re-auth too.
+  if (exitCode !== 0 && trimmed === '') {
+    return `GitHub Copilot CLI exited (code ${exitCode}) with no output — the login session is likely missing or expired. Run \`copilot login\` (or \`dc login\`) and retry.`;
+  }
+  return `copilot CLI failed (exit ${exitCode}): ${trimmed || 'no error output'}`;
 }
 
 /**

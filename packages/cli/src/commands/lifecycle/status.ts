@@ -13,7 +13,8 @@ function gitDescribe(cwd: string): string {
   const res = spawnSync('git', ['describe', '--tags', '--always'], {
     cwd,
     encoding: 'utf8',
-    shell: true,
+    // Windows needs a shell to resolve git; POSIX uses execvp (and avoids DEP0190).
+    shell: process.platform === 'win32',
   });
   return res.status === 0 ? res.stdout.trim() : '(not a git checkout)';
 }

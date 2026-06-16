@@ -56,9 +56,15 @@ export const BUILTIN_CHECKS: DoctorCheck[] = [
   {
     name: 'pnpm',
     run: () => {
-      const pnpm = spawnSync('pnpm', ['--version'], { encoding: 'utf8', shell: true });
+      const pnpm = spawnSync('pnpm', ['--version'], {
+        encoding: 'utf8',
+        shell: process.platform === 'win32',
+      });
       if (pnpm.status === 0) return `pnpm ${pnpm.stdout.trim()}`;
-      const corepack = spawnSync('corepack', ['--version'], { encoding: 'utf8', shell: true });
+      const corepack = spawnSync('corepack', ['--version'], {
+        encoding: 'utf8',
+        shell: process.platform === 'win32',
+      });
       if (corepack.status === 0)
         return `pnpm absent; corepack ${corepack.stdout.trim()} present (run: corepack enable)`;
       throw new Error('neither pnpm nor corepack found');
@@ -68,7 +74,10 @@ export const BUILTIN_CHECKS: DoctorCheck[] = [
   {
     name: 'jdk',
     run: () => {
-      const res = spawnSync('java', ['-version'], { encoding: 'utf8', shell: true });
+      const res = spawnSync('java', ['-version'], {
+        encoding: 'utf8',
+        shell: process.platform === 'win32',
+      });
       // `java -version` prints to stderr
       const out = (res.stderr || res.stdout || '').split('\n')[0]?.trim();
       if (res.status !== 0 || !out) throw new Error('java not runnable');

@@ -90,6 +90,17 @@ describe('classifyCopilotError', () => {
   test('passes other errors through', () => {
     expect(classifyCopilotError('disk full', 2)).toContain('disk full');
   });
+
+  test('treats an empty-stderr non-zero exit as a likely expired session', () => {
+    // The pod hit exactly this: `copilot CLI failed (exit 1): no error output`.
+    // An empty stderr on a failed copilot call almost always means a lapsed login.
+    const msg = classifyCopilotError('', 1);
+    expect(msg.toLowerCase()).toContain('login');
+  });
+
+  test('a clean exit (0) is never flagged as an auth error', () => {
+    expect(classifyCopilotError('', 0).toLowerCase()).not.toContain('login');
+  });
 });
 
 describe('CopilotDriver (injected exec — no key, no network)', () => {

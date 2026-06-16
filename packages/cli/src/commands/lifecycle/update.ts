@@ -23,7 +23,11 @@ function findRepoRoot(start: string): string {
 }
 
 function sh(command: string, args: string[], cwd: string): void {
-  const res = spawnSync(command, args, { cwd, stdio: 'inherit', shell: true });
+  const res = spawnSync(command, args, {
+    cwd,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+  });
   if (res.status !== 0) {
     throw new HarnessError({
       code: 'RUNTIME',
@@ -33,7 +37,11 @@ function sh(command: string, args: string[], cwd: string): void {
 }
 
 function shOut(command: string, args: string[], cwd: string): string {
-  const res = spawnSync(command, args, { cwd, encoding: 'utf8', shell: true });
+  const res = spawnSync(command, args, {
+    cwd,
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+  });
   if (res.status !== 0) {
     throw new HarnessError({ code: 'RUNTIME', message: res.stderr || `${command} failed` });
   }
