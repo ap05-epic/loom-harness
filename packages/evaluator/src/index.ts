@@ -52,3 +52,4 @@ export {
   type A11yViolation,
   type A11yFinding,
 } from './a11y.js';
+export { gradeScreen, type ScreenLayers, type Scorecard } from './grade.js';
