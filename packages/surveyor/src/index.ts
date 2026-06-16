@@ -9,3 +9,15 @@ export {
   type VisitFn,
 } from './crawl.js';
 export { crawlApp, type CrawlAppOptions, type FormLogin } from './crawl-app.js';
+export {
+  explore,
+  clickableCandidates,
+  heuristicChooser,
+  type Candidate,
+  type Chooser,
+  type ChooserContext,
+  type ExploreDriver,
+  type ExploreOptions,
+  type ExploreResult,
+  type ExploreState,
+} from './explorer.js';
