@@ -5,7 +5,7 @@
   <circle cx="24" cy="22" r="6" fill="#FF5F57"/>
   <circle cx="44" cy="22" r="6" fill="#FEBC2E"/>
   <circle cx="64" cy="22" r="6" fill="#28C840"/>
-  <text x="92" y="27" font-size="13" fill="#9AA0AE">loom — devpod</text>
+  <text x="92" y="27" font-size="13" fill="#9AA0AE">loom — workspace</text>
 
   <g font-size="16" xml:space="preserve">
     <text x="22" y="82"  fill="#F6E4C4"> ██╗      ██████╗  ██████╗ ███╗   ███╗</text>
@@ -21,7 +21,7 @@
   <g font-size="14" xml:space="preserve">
     <text x="24" y="262"><tspan fill="#6B7280">version  </tspan><tspan fill="#E8BB6E">1.0.0</tspan></text>
     <text x="24" y="284"><tspan fill="#6B7280">model    </tspan><tspan fill="#E8BB6E">gpt-5.4</tspan><tspan fill="#6B7280">  (openai · Azure key)</tspan></text>
-    <text x="24" y="306"><tspan fill="#6B7280">project  </tspan><tspan fill="#C9CDD6">baa</tspan><tspan fill="#6B7280">  ~/loom-data/baa</tspan></text>
+    <text x="24" y="306"><tspan fill="#6B7280">project  </tspan><tspan fill="#C9CDD6">demo</tspan><tspan fill="#6B7280">  ~/loom-data/demo</tspan></text>
     <text x="24" y="328"><tspan fill="#6B7280">backend  </tspan><tspan fill="#9AA0AE">node:sqlite</tspan></text>
   </g>
   <text x="24" y="360" font-size="13" fill="#6B7280" xml:space="preserve">▸ loom run --shift     loom ui     loom --help</text>

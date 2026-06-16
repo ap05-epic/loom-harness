@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="docs/loom-mark.svg" width="92" height="92" alt="Loom Harness — three keys in the harness, crossed by a single weft thread" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/loom-mark-dark.svg" />
+    <img src="docs/loom-mark.svg" width="92" height="92" alt="Loom Harness — three keys in the harness, crossed by a single weft thread" />
+  </picture>
 </p>
 
 <h1 align="center">Loom Harness</h1>
