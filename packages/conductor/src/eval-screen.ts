@@ -1,8 +1,11 @@
 import {
+  diffA11y,
   diffDom,
   diffForms,
   diffStyles,
   evaluateVisual,
+  type A11yFinding,
+  type A11yViolation,
   type DomFinding,
   type FunctionalFinding,
   type StyleFinding,
@@ -13,6 +16,7 @@ import { serveDir, type StaticServer } from './serve.js';
 
 type Capture = (input: { url: string; viewport: Viewport }) => Promise<Buffer>;
 type DomCapture = (input: { url: string; viewport: Viewport }) => Promise<DomSnapshot>;
+type A11yCapture = (input: { url: string; viewport: Viewport }) => Promise<A11yViolation[]>;
 
 /** The verdict of evaluating one rebuilt screen against its legacy baseline (no DB side effects). */
 export type ScreenEval = {
@@ -21,6 +25,8 @@ export type ScreenEval = {
   styleFindings: StyleFinding[];
   /** Form fields/rules the rebuild dropped or changed (the functional gate). */
   functionalFindings: FunctionalFinding[];
+  /** Accessibility regressions A→B (empty when the a11y seam isn't supplied). */
+  a11yFindings: A11yFinding[];
   passed: boolean;
   scorecard: unknown;
 };
@@ -40,6 +46,8 @@ export type EvaluateScreenArgs = {
   threshold: number;
   /** Static-server seam (default `serveDir`); injected in tests. */
   serve?: (dir: string) => Promise<StaticServer>;
+  /** Optional accessibility seam (axe). When supplied, A-vs-B a11y is a gate. */
+  a11yCapture?: A11yCapture;
 };
 
 /**
@@ -63,14 +71,26 @@ export async function evaluateScreen(args: EvaluateScreenArgs): Promise<ScreenEv
     const style = diffStyles(domA, domB);
     // Functional gate: every legacy form field + validation rule must survive the rebuild.
     const functional = diffForms(extractForms(domA), extractForms(domB));
+    // Accessibility gate (optional): the rebuild must not be less accessible than the legacy screen.
+    let a11yFindings: A11yFinding[] = [];
+    if (args.a11yCapture) {
+      const a11yB = await args.a11yCapture({ url: server.url, viewport: args.viewport });
+      const a11yA = await args.a11yCapture({ url: args.legacyUrl, viewport: args.viewport });
+      a11yFindings = diffA11y(a11yA, a11yB);
+    }
     return {
       diffPercent: visual.verdict.worst.diffPercent,
       findings: structural.findings,
       styleFindings: style.findings,
       functionalFindings: functional,
+      a11yFindings,
       passed:
-        visual.verdict.passed && structural.matched && style.matched && functional.length === 0,
-      scorecard: { visual: visual.verdict, structural, style, functional },
+        visual.verdict.passed &&
+        structural.matched &&
+        style.matched &&
+        functional.length === 0 &&
+        a11yFindings.length === 0,
+      scorecard: { visual: visual.verdict, structural, style, functional, a11y: a11yFindings },
     };
   } finally {
     await server.stop();

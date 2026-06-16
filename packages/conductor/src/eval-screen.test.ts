@@ -71,4 +71,20 @@ describe('evaluateScreen functional gate', () => {
     expect(result.passed).toBe(true);
     expect(result.functionalFindings).toEqual([]);
   });
+
+  test('the optional a11y seam gates a rebuild that is less accessible', async () => {
+    const result = await evaluateScreen({
+      ...baseArgs,
+      domCapture: async () => loginForm('20'), // identical DOMs ⇒ other gates clear
+      a11yCapture: async ({ url }) =>
+        url.includes('a/')
+          ? [{ id: 'color-contrast', count: 1 }] // legacy
+          : [
+              { id: 'color-contrast', count: 3 }, // worse
+              { id: 'label', count: 1 }, // new violation
+            ],
+    });
+    expect(result.passed).toBe(false);
+    expect(result.a11yFindings.map((f) => f.id)).toContain('label');
+  });
 });
