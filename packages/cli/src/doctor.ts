@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { detectCopilot } from '@loom/agents';
+import { canLaunchBrowser } from '@loom/browser';
 import { openDb } from '@loom/core';
 
 export type DoctorCheck = {
@@ -73,6 +74,16 @@ export const BUILTIN_CHECKS: DoctorCheck[] = [
       return out;
     },
     hint: 'JDK 17 is needed for the fixture app and Java scanners.',
+  },
+  {
+    // The surveyor (crawl) and evaluator both drive Playwright Chromium, so doctor verifies it
+    // actually launches here (the pod has it cached). A slow check (~1-3s) — it really launches.
+    name: 'browser',
+    run: async () => {
+      if (await canLaunchBrowser()) return 'Playwright Chromium launchable';
+      throw new Error('Chromium failed to launch');
+    },
+    hint: 'crawl + eval need Playwright Chromium — install with `npx playwright install chromium`, or set browser.executablePath / PLAYWRIGHT_BROWSERS_PATH (already cached on the pod).',
   },
   {
     // Informational: never fails (the openai-key path is the alternative), but

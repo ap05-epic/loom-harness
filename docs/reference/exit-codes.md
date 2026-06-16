@@ -1,6 +1,6 @@
 # Exit codes
 
-Every `harness` command returns one of these. They are a **stable contract** — cron jobs and CI scripts branch on them (e.g. treat 4/5 as "page a human," 8 as "retry later"). The same table prints in `loom --help`.
+Every `loom` command returns one of these. They are a **stable contract** (frozen at v1.0.0) — cron jobs and CI scripts branch on them (e.g. treat 4/5 as "page a human," 8 as "retry later"). The same table prints in `loom --help`, and the `--json` envelope shape is part of the same frozen contract.
 
 | Code | Name             | Meaning                                                             |
 | ---- | ---------------- | ------------------------------------------------------------------- |

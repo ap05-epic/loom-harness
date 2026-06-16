@@ -55,6 +55,17 @@ loom update [--to vX.Y.Z]
 
 This fetches tags, checks out the target, reinstalls with the frozen lockfile, rebuilds, backs up `loom.db`, and runs forward-only migrations. **Your state lives in the data directory, so updates never touch it.**
 
+## Offline rehearsal
+
+Before trusting an autonomous shift, dry-run the whole loop on the pod with no public-internet egress (only the mirror + the LLM endpoint):
+
+```bash
+bash scripts/offline-rehearsal.sh                 # install → build → tests → doctor → fixture pipeline
+FROM_TAG=v1.0.0 TO_TAG=v1.0.1 bash scripts/offline-rehearsal.sh   # also rehearse the update loop
+```
+
+It fails loudly on the first broken step, and writes its scratch data to a temp dir outside the clone.
+
 ## Safety notes
 
 - Project data (screenshots, HARs, the database) stays in the data dir, outside any repo, and is never committed.
