@@ -2,7 +2,13 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { dataDirCheck, gitTreeContaining, runChecks, type DoctorCheck } from './doctor.js';
+import {
+  dataDirCheck,
+  gitTreeContaining,
+  proxyStatus,
+  runChecks,
+  type DoctorCheck,
+} from './doctor.js';
 
 describe('runChecks', () => {
   test('built-in environment checks pass on a working dev machine', async () => {
@@ -45,5 +51,31 @@ describe('data-dir-outside-git check', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'datadir-'));
     expect(String(dataDirCheck(tmp)!.run())).toContain('outside');
     expect(dataDirCheck(undefined)).toBeNull();
+  });
+});
+
+describe('proxyStatus', () => {
+  test('reports direct egress when no proxy is set', () => {
+    expect(proxyStatus({})).toMatch(/no proxy/i);
+  });
+
+  test('flags the LLM host bypassing the proxy via NO_PROXY (and redacts creds)', () => {
+    const s = proxyStatus({
+      HTTPS_PROXY: 'http://user:secret@inet-proxy.example:8080',
+      NO_PROXY: '.openai.azure.com,localhost',
+      LLM_BASE_URL: 'https://cog.openai.azure.com/openai/v1',
+    });
+    expect(s).toContain('inet-proxy.example:8080');
+    expect(s).not.toContain('secret'); // credentials never echoed
+    expect(s).toMatch(/bypasses the proxy/);
+  });
+
+  test('warns when the LLM host is NOT covered by NO_PROXY', () => {
+    const s = proxyStatus({
+      HTTPS_PROXY: 'http://proxy.example:8080',
+      NO_PROXY: 'localhost',
+      LLM_BASE_URL: 'https://api.example.com/v1',
+    });
+    expect(s).toMatch(/NOT in NO_PROXY/);
   });
 });

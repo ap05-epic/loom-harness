@@ -101,7 +101,50 @@ export const BUILTIN_CHECKS: DoctorCheck[] = [
     },
     hint: 'Most developers auth via Copilot login (driver: copilot, no key). A direct BYOK key (openai driver) is the alternative.',
   },
+  {
+    // Informational: reports the outbound-proxy posture + whether the LLM endpoint bypasses it.
+    name: 'proxy',
+    run: () => proxyStatus(process.env),
+    hint: 'On the pod, git/npm/Playwright egress through HTTP(S)_PROXY; the LLM endpoint must be in NO_PROXY so model calls bypass it.',
+  },
 ];
+
+/**
+ * Summarize the outbound-proxy posture for the pod: is an HTTP(S) proxy configured, and does the
+ * LLM endpoint bypass it (it must be in `NO_PROXY`, or model calls get proxied/blocked). Pure +
+ * env-injected so it's testable; never echoes the proxy URL's credentials.
+ */
+export function proxyStatus(env: Record<string, string | undefined>): string {
+  const proxy = env.HTTPS_PROXY ?? env.https_proxy ?? env.HTTP_PROXY ?? env.http_proxy;
+  if (!proxy) return 'no proxy configured (direct egress)';
+  let safe = 'configured';
+  try {
+    safe = new URL(proxy).host; // host:port only — never the user:pass userinfo
+  } catch {
+    /* don't echo a raw, possibly credential-bearing value */
+  }
+  const noProxy = (env.NO_PROXY ?? env.no_proxy ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const llm = env.LLM_BASE_URL;
+  let note = '';
+  if (llm) {
+    try {
+      const host = new URL(llm).hostname;
+      const covered = noProxy.some((p) => {
+        const suffix = p.startsWith('.') ? p : `.${p}`;
+        return host === p || host === p.replace(/^\./, '') || host.endsWith(suffix);
+      });
+      note = covered
+        ? `; LLM host ${host} bypasses the proxy (NO_PROXY)`
+        : `; LLM host ${host} is NOT in NO_PROXY — model calls would be proxied`;
+    } catch {
+      /* ignore an unparseable LLM_BASE_URL */
+    }
+  }
+  return `proxy ${safe}${note}`;
+}
 
 /** The git work-tree root containing `dir`, or null when `dir` isn't inside a git repo. */
 export function gitTreeContaining(dir: string): string | null {
