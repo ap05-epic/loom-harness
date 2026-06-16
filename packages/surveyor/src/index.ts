@@ -21,3 +21,4 @@ export {
   type ExploreResult,
   type ExploreState,
 } from './explorer.js';
+export { exploreApp, type ExploreAppOptions } from './explore-app.js';

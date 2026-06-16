@@ -49,6 +49,59 @@ function extractDomSnapshot(styleProps: string[] | null): DomSnapshot {
   return extract(document.body);
 }
 
+/** Tag and list the page's JS-interactive controls (the AI-explorer's candidates). Runs in-page. */
+function enumerateInteractive(): Array<{ ref: string; label: string; kind: string }> {
+  const ROLES = new Set([
+    'button',
+    'menuitem',
+    'menuitemcheckbox',
+    'menuitemradio',
+    'tab',
+    'option',
+    'switch',
+    'link',
+    'treeitem',
+  ]);
+  const NATIVE = new Set(['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA']);
+  const interactive = (el: Element): boolean => {
+    const tag = el.tagName;
+    const role = el.getAttribute('role');
+    const href = el.getAttribute('href');
+    if (tag === 'BUTTON' || tag === 'SUMMARY') return true;
+    if (tag === 'A' && (!href || /^javascript:/i.test(href))) return true;
+    if (
+      tag === 'INPUT' &&
+      ['submit', 'button', 'image'].includes((el.getAttribute('type') ?? '').toLowerCase())
+    )
+      return true;
+    if (role && ROLES.has(role)) return true;
+    if (el.getAttribute('onclick')) return true;
+    const ti = el.getAttribute('tabindex');
+    if (ti !== null && ti !== '-1' && !NATIVE.has(tag)) return true;
+    return false;
+  };
+  const out: Array<{ ref: string; label: string; kind: string }> = [];
+  let i = 0;
+  for (const el of Array.from(document.body.querySelectorAll('*'))) {
+    if (!interactive(el)) continue;
+    el.setAttribute('data-loom-cand', String(i));
+    const label = (
+      el.textContent ??
+      el.getAttribute('aria-label') ??
+      el.getAttribute('title') ??
+      el.getAttribute('value') ??
+      el.getAttribute('alt') ??
+      ''
+    )
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 120);
+    out.push({ ref: String(i), label, kind: el.getAttribute('role') ?? el.tagName.toLowerCase() });
+    i++;
+  }
+  return out;
+}
+
 export type CaptureOptions = {
   url: string;
   viewport?: Viewport;
@@ -175,6 +228,18 @@ export class CrawlSession {
 
   async waitForSelector(selector: string): Promise<void> {
     await this.active().waitForSelector(selector);
+  }
+
+  /** Tag and return the page's interactive controls — the AI-explorer's candidate list. */
+  async enumerateCandidates(): Promise<Array<{ ref: string; label: string; kind: string }>> {
+    return this.active().evaluate(enumerateInteractive);
+  }
+
+  /** Click a control previously returned by `enumerateCandidates`, by its ref. */
+  async clickCandidate(ref: string): Promise<void> {
+    const page = this.active();
+    await page.click(`[data-loom-cand="${ref}"]`);
+    await page.waitForLoadState('networkidle').catch(() => undefined);
   }
 
   /** Persist cookies/localStorage so a later run can skip the login. */

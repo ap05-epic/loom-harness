@@ -23,6 +23,7 @@
     "@loom/core": "workspace:*",
     "@loom/evaluator": "workspace:*",
     "@loom/skills": "workspace:*",
+    "@loom/surveyor": "workspace:*",
     "@loom/tools": "workspace:*",
     "zod": "^3.25.67"
   },
