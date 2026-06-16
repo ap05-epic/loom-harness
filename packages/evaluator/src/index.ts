@@ -37,3 +37,11 @@ export {
   type AssetDigest,
   type CopiedAsset,
 } from './anticheat.js';
+export {
+  diffForms,
+  formsMatch,
+  type FieldShape,
+  type FormShape,
+  type FunctionalCode,
+  type FunctionalFinding,
+} from './functional.js';
