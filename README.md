@@ -38,9 +38,9 @@ MAP ─▶ CRAWL ─▶ PLAN ─▶ ( BUILD ─▶ EVAL ─▶ FIX )* ─▶ REF
 ```
 
 - **MAP** — custom Struts / Tiles / JSP / web.xml scanners build a CodeAtlas (graph + FTS + PageRank repo-map), then an LLM pass writes the documentation the app never had.
-- **CRAWL** — a Playwright surveyor walks the running app (the trusted/production baseline), capturing screenshots, DOM, computed styles, forms, and nav edges.
+- **CRAWL** — a Playwright surveyor walks the running app (the trusted/production baseline), capturing screenshots, DOM, computed styles, forms, and nav edges; an **AI-explorer** reaches the screens behind menus/tabs/buttons that link-following can't (e.g. a `qpmenu` shell), persisting everything into a UI atlas.
 - **PLAN** — a planner emits dependency-ordered work packages (shared layout/components first); a human approves the plan gate.
-- **BUILD → EVAL → FIX** — the agent loop writes the rebuild inside a protected `b-repo`, then a **deterministic, LLM-free evaluator** judges it across layers (visual diff · structural DOM · computed-style · coverage) so the builder can never argue with the judge.
+- **BUILD → EVAL → FIX** — the agent loop writes the rebuild inside a protected `b-repo`, then a **deterministic, LLM-free evaluator** judges it across **seven layers** (visual · structural DOM · computed-style · functional/validation · accessibility · anti-cheat, plus the coverage ledger) so the builder can never argue with the judge.
 - **REFLECT → ship** — passed screens distill into reusable SKILL.md skills (screen #50 is faster than screen #5); a human approves the ship gate; integration evals re-run cumulatively so a shared-component change can't silently regress a passed screen.
 
 Runs unattended in **shift mode** with hard safeguards (per-attempt + per-shift budgets, stop-the-line on regression, protected paths, a kill switch), and stays fully observable through **Mission Control** (live workers, pipeline, cost, eval analytics, the gate/question inbox) and OpenTelemetry spans.
