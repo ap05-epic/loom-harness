@@ -5,11 +5,15 @@ import { updateCommand } from './lifecycle/update.js';
 import { dbBackupCommand, dbMigrateCommand } from './lifecycle/db.js';
 import { profileShowCommand, profileValidateCommand } from './lifecycle/profile.js';
 import { modelsListCommand, modelsTestCommand } from './lifecycle/models.js';
+import { askCommand } from './lifecycle/ask.js';
+import { chatCommand } from './lifecycle/chat.js';
+import { nextCommand } from './lifecycle/next.js';
 import { initCommand } from './lifecycle/init.js';
 import { evalCommand } from './pipeline/eval.js';
 import { mapCommand } from './pipeline/map.js';
 import { crawlCommand } from './pipeline/crawl.js';
 import { runCommand, resumeCommand } from './pipeline/run.js';
+import { stopCommand } from './pipeline/stop.js';
 import { wpListCommand, wpShowCommand } from './work/wp.js';
 import { gatesListCommand, gatesApproveCommand, gatesRejectCommand } from './work/gates.js';
 import { questionsListCommand, questionsAnswerCommand } from './work/questions.js';
@@ -51,11 +55,15 @@ export const ALL_COMMANDS = [
   profileValidateCommand,
   modelsListCommand,
   modelsTestCommand,
+  askCommand,
+  chatCommand,
+  nextCommand,
   mapCommand,
   crawlCommand,
   evalCommand,
   runCommand,
   resumeCommand,
+  stopCommand,
   wpListCommand,
   wpShowCommand,
   gatesListCommand,

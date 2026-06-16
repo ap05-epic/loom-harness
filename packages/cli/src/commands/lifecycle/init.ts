@@ -99,8 +99,14 @@ export const initCommand = defineCommand({
     }
     let autoDetected = false;
     if (!driver) {
-      const copilot = await detectCopilot({ probeAuth: false });
-      driver = copilot.installed ? 'copilot' : 'openai';
+      // Prefer the direct key path when a key is already in the environment (the
+      // reliable BYOK route on the pod); else a Copilot login if its CLI is present.
+      if (ctx.env.LLM_API_KEY) {
+        driver = 'openai';
+      } else {
+        const copilot = await detectCopilot({ probeAuth: false });
+        driver = copilot.installed ? 'copilot' : 'openai';
+      }
       autoDetected = true;
     }
 

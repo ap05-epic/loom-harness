@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { MIGRATIONS, openDb, runMigrations, TaskStore, type SqliteDatabase } from '@loom/core';
 import {
@@ -18,6 +18,7 @@ import {
   type ResolvedPipeline,
 } from '../../pipeline-config.js';
 import { renderTable } from '../../ui/table.js';
+import { stopFlagFor } from './stop.js';
 import type { CliContext } from '../../context.js';
 
 type RunData = {
@@ -233,6 +234,8 @@ export const runCommand = defineCommand({
     const cfg = resolvePipelineConfig(profile, overrides(input.options));
     const gateway = gatewayFromProfile(profile);
     const db = openHarnessDb(cfg);
+    const stopFlag = stopFlagFor({ db: cfg.dbPath })!;
+    rmSync(stopFlag, { force: true }); // clear any stale stop request before starting
     try {
       const result = await runPipeline({
         ...pipelineArgs(
@@ -248,6 +251,7 @@ export const runCommand = defineCommand({
             ? Number(input.options.skillPromoteAfter)
             : undefined,
         ),
+        shouldStop: () => existsSync(stopFlag),
         // Optional, env-gated: stream spans to an OTLP collector / ping a webhook if configured.
         otlpEndpoint: ctx.env.OTEL_EXPORTER_OTLP_ENDPOINT,
         webhookUrl: ctx.env.LOOM_WEBHOOK_URL ?? ctx.env.HARNESS_WEBHOOK_URL,
@@ -275,6 +279,8 @@ export const resumeCommand = defineCommand({
     const cfg = resolvePipelineConfig(profile, overrides(input.options));
     const gateway = gatewayFromProfile(profile);
     const db = openHarnessDb(cfg);
+    const stopFlag = stopFlagFor({ db: cfg.dbPath })!;
+    rmSync(stopFlag, { force: true }); // clear any stale stop request before resuming
     try {
       const store = new TaskStore(db);
       const runId =
@@ -295,6 +301,7 @@ export const resumeCommand = defineCommand({
           undefined,
         ),
         runId,
+        shouldStop: () => existsSync(stopFlag),
       });
       if (result.failed > 0) ctx.requestExit(EXIT.BLOCKED);
       return toRunData(result);

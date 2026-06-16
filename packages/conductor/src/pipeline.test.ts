@@ -148,6 +148,33 @@ test('runPipeline maps, builds, evaluates and passes the login screen', async ()
   expect(best?.visualPct).toBe(0);
 });
 
+test('halts gracefully when a stop is requested (loom stop), leaving the run resumable', async () => {
+  const db = harnessDb();
+  const { gateway } = await mockGateway();
+  const same = solidPng([240, 240, 240]);
+
+  const result = await runPipeline({
+    db,
+    gateway,
+    model: 'mock',
+    project: 'fixture',
+    strutsConfigPath: STRUTS_CONFIG,
+    atlasPath: join(tmp(), 'codeatlas.db'),
+    legacyBaseUrl: 'http://legacy.test/',
+    bRepoRoot: tmp(),
+    screens: ['login'],
+    build: passingBuild,
+    capture: fakeCapture(same, same),
+    domCapture: fakeDomCapture(matchingDom, matchingDom),
+    shouldStop: () => true, // a stop was requested before any screen built
+  });
+
+  expect(result.stopReason).toBe('stop_requested');
+  expect(result.passed).toBe(0);
+  const run = new TaskStore(db).getRun(result.runId);
+  expect(run?.status).toBe('stopped');
+});
+
 test('builds independent screens concurrently when maxParallel > 1', async () => {
   const db = harnessDb();
   const { gateway } = await mockGateway();

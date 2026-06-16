@@ -93,10 +93,38 @@ describe('OpenAiDriver', () => {
     expect(server.requests[0]?.body.max_completion_tokens).toBe(1234);
   });
 
-  test('throws a useful error carrying status and server message', async () => {
+  test('throws a useful, classified error after retrying a transient 429', async () => {
+    server.enqueueError(429, 'rate limited, slow down');
     server.enqueueError(429, 'rate limited, slow down');
     await expect(
-      driver().complete({ model: 'm', messages: [{ role: 'user', content: 'x' }] }),
+      new OpenAiDriver({ baseUrl, apiKey: 'k', retryDelayMs: 0 }).complete({
+        model: 'm',
+        messages: [{ role: 'user', content: 'x' }],
+      }),
     ).rejects.toThrow(/429.*rate limited/s);
+  });
+
+  test('retries once on a transient 429, then succeeds', async () => {
+    server.enqueueError(429, 'slow down');
+    server.enqueueText('recovered');
+    const res = await new OpenAiDriver({ baseUrl, apiKey: 'k', retryDelayMs: 0 }).complete({
+      model: 'm',
+      messages: [{ role: 'user', content: 'x' }],
+    });
+    expect(res.content).toBe('recovered');
+  });
+
+  test('a 401 yields an actionable auth message (check LLM_API_KEY), no retry', async () => {
+    server.enqueueError(401, 'invalid key');
+    await expect(
+      driver().complete({ model: 'm', messages: [{ role: 'user', content: 'x' }] }),
+    ).rejects.toThrow(/401[\s\S]*LLM_API_KEY/);
+  });
+
+  test('a 404 points at the model id / the …/openai/v1 base URL, no retry', async () => {
+    server.enqueueError(404, 'no such deployment');
+    await expect(
+      driver().complete({ model: 'm', messages: [{ role: 'user', content: 'x' }] }),
+    ).rejects.toThrow(/404[\s\S]*openai\/v1/);
   });
 });

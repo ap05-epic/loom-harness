@@ -1,3 +1,6 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { registerAll } from './commands/index.js';
 import { buildProgram } from './program.js';
@@ -60,12 +63,35 @@ describe('program wiring (full path: parse → context → command → sink → 
     expect(JSON.parse(stdout.trim()).error.code).toBe('CONFIG');
   });
 
+  test('ask with a prompt but no profile → CONFIG error, exit 3 (no network)', async () => {
+    const { stdout, exitCode } = await run(['ask', 'hello', '--json']);
+    expect(exitCode).toBe(3);
+    expect(JSON.parse(stdout.trim()).error.code).toBe('CONFIG');
+  });
+
+  test('next without a profile → recommends `loom init`, exit 0', async () => {
+    const { stdout, exitCode } = await run(['next', '--json']);
+    expect(exitCode).toBe(0);
+    const env = JSON.parse(stdout.trim());
+    expect(env).toMatchObject({ ok: true, command: 'next' });
+    expect(env.data.command).toMatch(/loom init/);
+  });
+
   test('--json diagnostics never pollute stdout (update --check streams info to stderr)', async () => {
     // update --check resolves a tag without mutating; in this repo tags exist after v0.1.0,
     // but even if it errors, the contract holds: stdout carries only the single envelope.
     const { stdout } = await run(['status', '--json']);
     const lines = stdout.trim().split('\n').filter(Boolean);
     for (const l of lines) expect(() => JSON.parse(l)).not.toThrow();
+  });
+
+  test('init auto-detect prefers the openai key path when LLM_API_KEY is set', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'loom-init-pref-'));
+    const { stdout, exitCode } = await run(['init', '--dir', dir, '--no-input', '--json'], {
+      LLM_API_KEY: 'present',
+    });
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(stdout.trim()).data.driver).toBe('openai');
   });
 
   test('bare `loom` prints the startup identity panel (logo + version), exit 0', async () => {

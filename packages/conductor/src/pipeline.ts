@@ -107,6 +107,8 @@ export type RunPipelineOptions = {
   build?: BuildStrategy;
   screenUrl?: (screen: Screen, legacyBaseUrl: string) => string;
   buildGuards?: Partial<GuardConfig>;
+  /** Cooperative cancel — `loom stop` flips this; the run halts at the next safe checkpoint. */
+  shouldStop?: () => boolean;
   now?: () => number;
 };
 
@@ -122,7 +124,7 @@ export type ShiftLimits = {
   maxTokensPerWp?: number;
 };
 
-export type StopReason = 'budget_tokens' | 'wall_clock' | 'stop_the_line';
+export type StopReason = 'budget_tokens' | 'wall_clock' | 'stop_the_line' | 'stop_requested';
 
 export type ScreenOutcome = {
   screenKey: string;
@@ -332,6 +334,8 @@ export async function runPipeline(options: RunPipelineOptions): Promise<RunPipel
     const buildQueue = targets.filter((s) => shouldProcess(byScreen.get(s.key)!.state));
     let cursor = 0;
     const shiftTripped = (): StopReason | null => {
+      // Cooperative stop (`loom stop`) — honored even when no shift limits are set.
+      if (options.shouldStop?.()) return 'stop_requested';
       const shift = options.shift;
       if (!shift) return null;
       if (shift.maxWallClockMs !== undefined && clock() - shiftStart > shift.maxWallClockMs) {
