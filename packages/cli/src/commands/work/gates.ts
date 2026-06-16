@@ -1,11 +1,4 @@
-import {
-  GateStore,
-  openDb,
-  SkillStore,
-  TaskStore,
-  type GateStatus,
-  type GateType,
-} from '@loom/core';
+import { applyGateDecision, GateStore, openDb, type GateStatus, type GateType } from '@loom/core';
 import { notFoundError } from '../../errors.js';
 import { requireExistingDb } from '../../db-path.js';
 import { defineCommand } from '../../registry.js';
@@ -94,29 +87,9 @@ function decideGate(
 ): DecisionResult {
   const db = openDb(requireExistingDb(ctx, dbOpt));
   try {
-    const gates = new GateStore(db);
-    const gate = gates.get(id);
-    if (!gate || gate.status !== 'open') {
-      throw notFoundError('open gate', id, 'see `loom gates list`');
-    }
-    gates.decide(id, decision, note);
-    let activated = false;
-    let archived = false;
-    let shipped = false;
-    if (gate.type === 'skill') {
-      const skills = new SkillStore(db);
-      if (decision === 'approved') {
-        skills.setStatus(gate.scopeId, 'active');
-        activated = true;
-      } else {
-        skills.setStatus(gate.scopeId, 'archived');
-        archived = true;
-      }
-    } else if (gate.type === 'ship' && decision === 'approved') {
-      new TaskStore(db).setWorkPackageState(gate.scopeId, 'shipped');
-      shipped = true;
-    }
-    return { id, type: gate.type, status: decision, activated, archived, shipped };
+    const result = applyGateDecision(db, id, decision, note);
+    if (!result) throw notFoundError('open gate', id, 'see `loom gates list`');
+    return result;
   } finally {
     db.close();
   }

@@ -7,6 +7,7 @@ import {
   openDb,
   QuestionStore,
   runMigrations,
+  SkillStore,
   TaskStore,
   type SqliteDatabase,
 } from '@loom/core';
@@ -96,6 +97,33 @@ describe('Mission Control server', () => {
     });
     expect(res.status).toBe(200);
     expect(new QuestionStore(db).get(questionId)!.answer).toBe('skip it');
+  });
+
+  test('approving a skill gate via the API activates the drafted skill (human-in-the-loop)', async () => {
+    const skills = new SkillStore(db);
+    const skill = skills.addSkill({
+      name: 'wizard-flow',
+      description: 'multi-step wizard',
+      triggers: ['wizard'],
+      body: '...',
+      tier: 'generated',
+      project: 'fixture',
+    }); // draft
+    const gate = new GateStore(db).open({
+      scopeType: 'skill',
+      scopeId: skill.id,
+      type: 'skill',
+      payload: { name: 'wizard-flow' },
+    });
+    mc = await startMissionControl({ db });
+    const res = await fetch(`${mc.url}/api/gates/${gate.id}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ decision: 'approve' }),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { activated: boolean }).activated).toBe(true);
+    expect(skills.get(skill.id)!.status).toBe('active'); // the draft is now recallable
   });
 
   test('rejects a bad gate decision and unknown ids', async () => {

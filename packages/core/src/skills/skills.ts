@@ -136,6 +136,28 @@ export class SkillStore {
     return r ? toSkill(r) : null;
   }
 
+  /**
+   * List skills for an inventory view — all of them by default (name order), optionally narrowed
+   * by `status` and/or `project` (which includes the global/bundled tier, `project IS NULL`).
+   */
+  list(opts: { project?: string; status?: SkillStatus } = {}): Skill[] {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (opts.project !== undefined) {
+      clauses.push('(project IS NULL OR project = ?)');
+      params.push(opts.project);
+    }
+    if (opts.status) {
+      clauses.push('status = ?');
+      params.push(opts.status);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    const rows = this.db
+      .prepare(`SELECT * FROM skills_index ${where} ORDER BY name ASC, id ASC`)
+      .all(...params) as SkillRow[];
+    return rows.map(toSkill);
+  }
+
   setStatus(id: string, status: SkillStatus): void {
     this.db
       .prepare(

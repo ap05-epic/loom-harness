@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { EventLog, GateStore, QuestionStore, type SqliteDatabase } from '@loom/core';
+import { applyGateDecision, EventLog, QuestionStore, type SqliteDatabase } from '@loom/core';
 import { dashboardState } from './read-model.js';
 import { dashboardHtml } from './ui.js';
 
@@ -67,13 +67,16 @@ async function handle(
     const decision =
       body.decision === 'approve' ? 'approved' : body.decision === 'reject' ? 'rejected' : null;
     if (!decision) return sendJson(res, 400, { error: 'decision must be "approve" or "reject"' });
-    const gates = new GateStore(db);
-    if (!gates.get(gateMatch[1]!)) return sendJson(res, 404, { error: 'gate not found' });
-    sendJson(
-      res,
-      200,
-      gates.decide(gateMatch[1]!, decision, typeof body.note === 'string' ? body.note : undefined),
+    // Route through the shared decision so a UI approval applies the same side effect as the CLI:
+    // a skill gate activates/archives its drafted skill; a ship gate ships the work package.
+    const result = applyGateDecision(
+      db,
+      gateMatch[1]!,
+      decision,
+      typeof body.note === 'string' ? body.note : undefined,
     );
+    if (!result) return sendJson(res, 404, { error: 'open gate not found' });
+    sendJson(res, 200, result);
     return;
   }
 

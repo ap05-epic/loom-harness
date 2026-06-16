@@ -108,6 +108,38 @@ describe('SkillStore', () => {
     expect(store.recall('demo', { terms: ['popup'] }).map((x) => x.name)).toEqual(['popup-modal']);
   });
 
+  test('list returns all skills (name order), filterable by status and project (+ global)', () => {
+    store.addSkill({
+      name: 'alpha',
+      description: '',
+      triggers: [],
+      body: '',
+      tier: 'bundled',
+      status: 'active',
+    }); // global active
+    store.addSkill({
+      name: 'beta',
+      description: '',
+      triggers: [],
+      body: '',
+      tier: 'generated',
+      project: 'demo',
+    }); // demo draft
+    store.addSkill({
+      name: 'gamma',
+      description: '',
+      triggers: [],
+      body: '',
+      tier: 'project',
+      project: 'other',
+      status: 'active',
+    }); // other active
+
+    expect(store.list().map((s) => s.name)).toEqual(['alpha', 'beta', 'gamma']);
+    expect(store.list({ status: 'active' }).map((s) => s.name)).toEqual(['alpha', 'gamma']);
+    expect(store.list({ project: 'demo' }).map((s) => s.name)).toEqual(['alpha', 'beta']); // global + demo
+  });
+
   test('recordUse tracks usage and successes (is the self-improvement loop compounding?)', () => {
     const s = store.addSkill({
       name: 'x',
