@@ -8,12 +8,32 @@
   <text x="92" y="27" font-size="13" fill="#9AA0AE">loom — workspace</text>
 
   <g font-size="16" xml:space="preserve">
-    <text x="22" y="82"  fill="#F6E4C4"> ██╗      ██████╗  ██████╗ ███╗   ███╗</text>
-    <text x="22" y="102" fill="#EFCF98"> ██║     ██╔═══██╗██╔═══██╗████╗ ████║</text>
-    <text x="22" y="122" fill="#E8BB6E"> ██║     ██║   ██║██║   ██║██╔████╔██║</text>
-    <text x="22" y="142" fill="#E2A74A"> ██║     ██║   ██║██║   ██║██║╚██╔╝██║</text>
-    <text x="22" y="162" fill="#D6942E"> ███████╗╚██████╔╝╚██████╔╝██║ ╚═╝ ██║</text>
-    <text x="22" y="182" fill="#B5781F"> ╚══════╝ ╚═════╝  ╚═════╝ ╚═╝     ╚═╝</text>
+    <g shape-rendering="crispEdges" role="img" aria-label="LOOM">
+      <rect x="31.6" y="66" width="28.8" height="19" fill="#F6E4C4"/>
+      <rect x="118" y="66" width="67.2" height="19" fill="#F6E4C4"/>
+      <rect x="204.4" y="66" width="67.2" height="19" fill="#F6E4C4"/>
+      <rect x="281.2" y="66" width="38.4" height="19" fill="#F6E4C4"/>
+      <rect x="348.4" y="66" width="38.4" height="19" fill="#F6E4C4"/>
+      <rect x="31.6" y="85" width="28.8" height="19" fill="#EFCF98"/>
+      <rect x="108.4" y="85" width="220.8" height="19" fill="#EFCF98"/>
+      <rect x="338.8" y="85" width="48" height="19" fill="#EFCF98"/>
+      <rect x="31.6" y="104" width="28.8" height="19" fill="#E8BB6E"/>
+      <rect x="108.4" y="104" width="28.8" height="19" fill="#E8BB6E"/>
+      <rect x="166" y="104" width="57.6" height="19" fill="#E8BB6E"/>
+      <rect x="252.4" y="104" width="134.4" height="19" fill="#E8BB6E"/>
+      <rect x="31.6" y="123" width="28.8" height="19" fill="#E2A74A"/>
+      <rect x="108.4" y="123" width="28.8" height="19" fill="#E2A74A"/>
+      <rect x="166" y="123" width="57.6" height="19" fill="#E2A74A"/>
+      <rect x="252.4" y="123" width="134.4" height="19" fill="#E2A74A"/>
+      <rect x="31.6" y="142" width="278.4" height="19" fill="#D6942E"/>
+      <rect x="319.6" y="142" width="28.8" height="19" fill="#D6942E"/>
+      <rect x="358" y="142" width="28.8" height="19" fill="#D6942E"/>
+      <rect x="31.6" y="161" width="76.8" height="19" fill="#B5781F"/>
+      <rect x="118" y="161" width="67.2" height="19" fill="#B5781F"/>
+      <rect x="204.4" y="161" width="67.2" height="19" fill="#B5781F"/>
+      <rect x="281.2" y="161" width="28.8" height="19" fill="#B5781F"/>
+      <rect x="358" y="161" width="28.8" height="19" fill="#B5781F"/>
+    </g>
     <text x="22" y="202" fill="#E8BB6E"> ╰─┼─┼─┼── H A R N E S S ──┼─┼─┼─╯</text>
   </g>
   <text x="23" y="224" font-size="13" fill="#6B7280" font-style="italic">legacy UI, rebuilt faithfully</text>
