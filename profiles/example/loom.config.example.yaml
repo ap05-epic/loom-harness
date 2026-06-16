@@ -30,6 +30,10 @@ source:
 # rate-limited, PII-masked; a local replica can be missing env hooks). See ADR 0005.
 app:
   baseUrl: https://REPLACE-ME/ # the trusted legacy app root
+  # SSO-gated app (no same-origin username/password form)? Drop the crawl.auth block below and
+  # instead bootstrap a logged-in browser state ONCE, reused on every crawl. Keep it in the data
+  # dir — it holds a live session and must never be committed:
+  # storageStatePath: ./app.storageState.json
 
 # ── CRAWL: how the surveyor walks the app ────────────────────────────────────
 crawl:
