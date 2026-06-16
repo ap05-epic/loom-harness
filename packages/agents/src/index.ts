@@ -57,6 +57,7 @@ export {
   type PanelResult,
   type JudgePanelInput,
 } from './roles/judge-panel.js';
+export { summarizeRun, buildRunSummaryPrompt, type RunSummaryInput } from './roles/run-summary.js';
 export {
   ContextPacker,
   computeBudgets,
