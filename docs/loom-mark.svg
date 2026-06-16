@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none" role="img" aria-label="Loom Harness mark">
+  <title>Loom Harness</title>
+  <style>
+    .struct { stroke: #1E2230; }
+    .weft   { stroke: #E2A74A; }
+    @media (prefers-color-scheme: dark) { .struct { stroke: #E8EAEF; } }
+  </style>
+  <!-- the harness: a rounded frame -->
+  <rect class="struct" x="6" y="6" width="52" height="52" rx="14" stroke-width="2.5"/>
+  <!-- three keys the frame holds — the legacy systems it unlocks -->
+  <g class="struct" stroke-width="2.4" stroke-linecap="round">
+    <circle cx="22" cy="20" r="3.6"/><line x1="22" y1="23.6" x2="22" y2="48"/><line x1="22" y1="42" x2="26" y2="42"/><line x1="22" y1="46" x2="25" y2="46"/>
+    <circle cx="32" cy="20" r="3.6"/><line x1="32" y1="23.6" x2="32" y2="48"/><line x1="32" y1="42" x2="36" y2="42"/><line x1="32" y1="46" x2="35" y2="46"/>
+    <circle cx="42" cy="20" r="3.6"/><line x1="42" y1="23.6" x2="42" y2="48"/><line x1="42" y1="42" x2="46" y2="42"/><line x1="42" y1="46" x2="45" y2="46"/>
+  </g>
+  <!-- weft: the modern rebuild, threading through -->
+  <line class="weft" x1="14" y1="32" x2="50" y2="32" stroke-width="3" stroke-linecap="round"/>
+</svg>

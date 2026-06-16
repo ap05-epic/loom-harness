@@ -54,7 +54,7 @@ body {
   padding: 18px 14px; display: flex; flex-direction: column; gap: 2px;
 }
 .brand { display: flex; align-items: center; gap: 11px; padding: 6px 8px 16px; }
-.brand .keys { filter: drop-shadow(0 1px 5px color-mix(in srgb, var(--brand) 40%, transparent)); }
+.brand .keys { border-radius: 12px; filter: drop-shadow(0 2px 7px rgba(20,22,31,.22)); }
 .brand .bname { display: block; font-size: 16px; font-weight: 800; letter-spacing: .16em; line-height: 1; }
 .brand .btag { display: block; font-size: 10.5px; color: var(--muted); letter-spacing: .07em; margin-top: 5px; text-transform: uppercase; }
 .navgroup { font-size: 10px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); font-weight: 700; padding: 14px 10px 6px; opacity: .85; }
@@ -109,14 +109,14 @@ body {
 .toggle:hover { transform: translateY(-1px); border-color: var(--brand); color: var(--brand); }
 
 main {
-  display: grid; gap: 16px; padding: 20px 24px 48px;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  display: grid; gap: 18px; padding: 22px 26px 52px;
+  grid-template-columns: repeat(auto-fill, minmax(346px, 1fr));
   align-items: start;
 }
 main section[id] { scroll-margin-top: 76px; }
 section {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-  box-shadow: var(--shadow); padding: 16px 18px; min-width: 0;
+  box-shadow: var(--shadow); padding: 18px 20px; min-width: 0;
 }
 section.wide { grid-column: 1 / -1; }
 @media (max-width: 880px) {
@@ -199,12 +199,14 @@ a:hover { text-decoration: underline; }
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
-      <svg class="keys" width="28" height="28" viewBox="0 0 26 26" fill="none" aria-hidden="true">
-        <g stroke="var(--brand)" stroke-width="1.8" fill="none" stroke-linecap="round">
-          <circle cx="6.5" cy="7" r="3.2"/><path d="M6.5 10.2 V20 M6.5 16 h3 M6.5 18.5 h2.4"/>
-          <circle cx="13" cy="6" r="3.2"/><path d="M13 9.2 V21 M13 15 h3 M13 17.5 h2.4"/>
-          <circle cx="19.5" cy="7" r="3.2"/><path d="M19.5 10.2 V20 M19.5 16 h3 M19.5 18.5 h2.4"/>
+      <svg class="keys" width="34" height="34" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+        <rect x="3" y="3" width="58" height="58" rx="16" fill="#14161F" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>
+        <g stroke="var(--brand)" stroke-width="2.6" stroke-linecap="round" fill="none">
+          <circle cx="22" cy="21" r="3.4"/><line x1="22" y1="24.4" x2="22" y2="47"/><line x1="22" y1="41" x2="25.6" y2="41"/><line x1="22" y1="45" x2="25" y2="45"/>
+          <circle cx="32" cy="21" r="3.4"/><line x1="32" y1="24.4" x2="32" y2="47"/><line x1="32" y1="41" x2="35.6" y2="41"/><line x1="32" y1="45" x2="35" y2="45"/>
+          <circle cx="42" cy="21" r="3.4"/><line x1="42" y1="24.4" x2="42" y2="47"/><line x1="42" y1="41" x2="45.6" y2="41"/><line x1="42" y1="45" x2="45" y2="45"/>
         </g>
+        <line x1="15" y1="32.5" x2="49" y2="32.5" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round"/>
       </svg>
       <span><span class="bname">LOOM</span><span class="btag">Mission Control</span></span>
     </div>
