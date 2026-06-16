@@ -57,7 +57,11 @@ describe('Mission Control server', () => {
     expect(res.headers.get('content-type')).toContain('text/html');
     const html = await res.text();
     expect(html).toContain('Mission Control');
-    expect(html).toContain('/api/state'); // the poller is wired
+    expect(html).toContain('/api/state'); // the state poller is wired
+    expect(html).toContain('/api/inventory'); // the inventory poller is wired
+    expect(html).toContain('Skills'); // the new inventory panels
+    expect(html).toContain('DIGIT library');
+    expect(html).toContain('data-theme'); // light/dark theming
   });
 
   test('serves the dashboard state as JSON', async () => {

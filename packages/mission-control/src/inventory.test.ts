@@ -22,7 +22,7 @@ afterEach(() => {
 function seedDigitHome(): string {
   const home = mkdtempSync(join(tmpdir(), 'digit-'));
   writeSkillFile(join(home, 'skills'), {
-    name: 'baa-grid',
+    name: 'shared-grid',
     description: 'a colleague skill',
     triggers: ['grid'],
     body: '...',
@@ -71,7 +71,7 @@ describe('inventory', () => {
     // external MCP (consumed)
     expect(inv.mcpExternal.map((m) => m.name)).toEqual(['supabase']);
     // DIGIT home scan
-    expect(inv.digit.skills.map((s) => s.name)).toContain('baa-grid');
+    expect(inv.digit.skills.map((s) => s.name)).toContain('shared-grid');
     expect(inv.digit.agents.map((a) => a.name)).toEqual(['analyst']);
     expect(inv.digit.mcp.map((m) => m.name).sort()).toEqual(['figma', 'playwright']);
 
