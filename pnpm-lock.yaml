@@ -143,6 +143,9 @@ importers:
       '@loom/skills':
         specifier: workspace:*
         version: link:../skills
+      '@loom/surveyor':
+        specifier: workspace:*
+        version: link:../surveyor
       '@loom/tools':
         specifier: workspace:*
         version: link:../tools
