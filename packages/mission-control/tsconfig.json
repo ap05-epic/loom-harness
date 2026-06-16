@@ -7,5 +7,5 @@
   },
   "include": ["src/**/*"],
   "exclude": ["src/**/*.test.ts"],
-  "references": [{ "path": "../core" }, { "path": "../tokens" }]
+  "references": [{ "path": "../core" }, { "path": "../skills" }, { "path": "../tokens" }]
 }

@@ -1,8 +1,19 @@
 import { spawn } from 'node:child_process';
-import { openDb } from '@loom/core';
-import { startMissionControl } from '@loom/mission-control';
+import { isAbsolute, join } from 'node:path';
+import { openDb, type Profile } from '@loom/core';
+import { startMissionControl, type McpInfo } from '@loom/mission-control';
 import { requireExistingDb } from '../../db-path.js';
 import { defineCommand } from '../../registry.js';
+import type { CliContext } from '../../context.js';
+
+/** Resolve the profile if one is configured; Mission Control runs fine without it. */
+function optionalProfile(ctx: CliContext): Profile | undefined {
+  try {
+    return ctx.requireProfile();
+  } catch {
+    return undefined;
+  }
+}
 
 /** Best-effort open of a URL in the OS default browser. */
 function openBrowser(url: string): void {
@@ -34,7 +45,23 @@ export const uiCommand = defineCommand({
   async run(ctx, input) {
     const db = openDb(requireExistingDb(ctx, input.options.db));
     const port = input.options.port !== undefined ? Number(input.options.port) : undefined;
-    const mc = await startMissionControl({ db, port });
+    // A profile enriches the inventory (skills dir + external MCP) but isn't required to watch.
+    const profile = optionalProfile(ctx);
+    const skillsDir =
+      profile?.skills?.dir &&
+      (isAbsolute(profile.skills.dir) ? profile.skills.dir : join(profile.dir, profile.skills.dir));
+    const externalMcp: McpInfo[] | undefined = profile?.mcp?.servers.map((s) => ({
+      name: s.name,
+      description: [s.command, ...(s.args ?? [])].join(' '),
+    }));
+    const mc = await startMissionControl({
+      db,
+      port,
+      project: profile?.project,
+      skillsDir: skillsDir || undefined,
+      externalMcp,
+      digitHome: ctx.env.DIGIT_HOME ?? ctx.env.COPILOT_HOME,
+    });
     ctx.sink.line(`Mission Control → ${mc.url}  (Ctrl-C to stop)`);
     if (input.options.open) openBrowser(mc.url);
     // Serve until interrupted, then shut down cleanly.

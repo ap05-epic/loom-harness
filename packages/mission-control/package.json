@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@loom/core": "workspace:*",
+    "@loom/skills": "workspace:*",
     "@loom/tokens": "workspace:*"
   }
 }

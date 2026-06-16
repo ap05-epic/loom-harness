@@ -126,6 +126,32 @@ describe('Mission Control server', () => {
     expect(skills.get(skill.id)!.status).toBe('active'); // the draft is now recallable
   });
 
+  test('serves the tools/skills/MCP/DIGIT inventory as JSON', async () => {
+    new SkillStore(db).addSkill({
+      name: 'tiles-layout',
+      description: 't',
+      triggers: [],
+      body: '',
+      tier: 'bundled',
+      status: 'active',
+    });
+    mc = await startMissionControl({
+      db,
+      externalMcp: [{ name: 'supabase', description: 'db' }],
+      digitHome: join(tmpdir(), 'no-digit-here'),
+    });
+    const inv = (await (await fetch(`${mc.url}/api/inventory`)).json()) as {
+      tools: Array<{ name: string }>;
+      skills: Array<{ name: string }>;
+      mcpExternal: Array<{ name: string }>;
+      digit: { skills: unknown[] };
+    };
+    expect(inv.tools.map((t) => t.name)).toContain('write_file');
+    expect(inv.skills.map((s) => s.name)).toContain('tiles-layout');
+    expect(inv.mcpExternal.map((m) => m.name)).toEqual(['supabase']);
+    expect(inv.digit.skills).toEqual([]); // absent DIGIT home → empty, no crash
+  });
+
   test('rejects a bad gate decision and unknown ids', async () => {
     const { gateId } = seed();
     mc = await startMissionControl({ db });

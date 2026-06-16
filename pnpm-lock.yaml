@@ -206,6 +206,9 @@ importers:
       '@loom/core':
         specifier: workspace:*
         version: link:../core
+      '@loom/skills':
+        specifier: workspace:*
+        version: link:../skills
       '@loom/tokens':
         specifier: workspace:*
         version: link:../tokens

@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { applyGateDecision, EventLog, QuestionStore, type SqliteDatabase } from '@loom/core';
 import { dashboardState } from './read-model.js';
+import { inventory, type McpInfo } from './inventory.js';
 import { dashboardHtml } from './ui.js';
 
 /** A running Mission Control server; `stop()` releases the port. */
@@ -12,6 +13,14 @@ export type MissionControlOptions = {
   db: SqliteDatabase;
   /** Bind port (default 0 = ephemeral). */
   port?: number;
+  /** Project scope for the inventory's skills. */
+  project?: string;
+  /** The project's SKILL.md library dir — surfaced in the inventory. */
+  skillsDir?: string;
+  /** The DIGIT/Copilot home to scan for the inventory (default `~/.copilot`). */
+  digitHome?: string;
+  /** External MCP servers from the profile, shown in the inventory. */
+  externalMcp?: McpInfo[];
 };
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -33,10 +42,11 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
 }
 
 async function handle(
-  db: SqliteDatabase,
+  opts: MissionControlOptions,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
+  const db = opts.db;
   const url = new URL(req.url ?? '/', 'http://localhost');
   const { pathname } = url;
   const method = req.method ?? 'GET';
@@ -49,6 +59,20 @@ async function handle(
 
   if (method === 'GET' && pathname === '/api/state') {
     sendJson(res, 200, dashboardState(db, url.searchParams.get('run') ?? undefined));
+    return;
+  }
+
+  if (method === 'GET' && pathname === '/api/inventory') {
+    sendJson(
+      res,
+      200,
+      inventory(db, {
+        project: opts.project,
+        skillsDir: opts.skillsDir,
+        digitHome: opts.digitHome,
+        externalMcp: opts.externalMcp,
+      }),
+    );
     return;
   }
 
@@ -102,7 +126,7 @@ async function handle(
  */
 export function startMissionControl(opts: MissionControlOptions): Promise<MissionControl> {
   const server: Server = createServer((req, res) => {
-    void handle(opts.db, req, res).catch(() => {
+    void handle(opts, req, res).catch(() => {
       if (!res.headersSent) sendJson(res, 500, { error: 'internal error' });
     });
   });
