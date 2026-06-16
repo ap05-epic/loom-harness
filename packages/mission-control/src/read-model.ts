@@ -15,6 +15,8 @@ export type DashboardState = {
     status: string;
     stage: string | null;
     harnessVersion: string | null;
+    startedAt: string;
+    finishedAt: string | null;
   } | null;
   screens: Array<{
     wpId: string;
@@ -156,6 +158,8 @@ export function dashboardState(
       status: run.status,
       stage: run.stage,
       harnessVersion: run.harnessVersion,
+      startedAt: run.startedAt,
+      finishedAt: run.finishedAt,
     },
     screens,
     counts,

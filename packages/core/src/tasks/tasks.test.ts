@@ -25,10 +25,14 @@ describe('TaskStore — runs & work packages', () => {
   test('creates a run and advances its stage', () => {
     const run = store.createRun({ project: 'fixture', harnessVersion: '0.1.0' });
     expect(run.status).toBe('running');
+    expect(run.startedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/); // ISO timestamp, finishedAt null until done
+    expect(run.finishedAt).toBeNull();
     store.setRunStage(run.id, 'map');
     expect(store.getRun(run.id)!.stage).toBe('map');
     store.finishRun(run.id, 'completed');
-    expect(store.getRun(run.id)!.status).toBe('completed');
+    const done = store.getRun(run.id)!;
+    expect(done.status).toBe('completed');
+    expect(done.finishedAt).not.toBeNull();
   });
 
   test('creates work packages and transitions their state', () => {

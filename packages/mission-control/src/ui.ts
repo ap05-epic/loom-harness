@@ -196,10 +196,17 @@ document.addEventListener('click', (ev) => {
 });
 
 function pill(text, cls) { return '<span class="pill ' + (cls || '') + '">' + h(text) + '</span>'; }
+function elapsed(start, end) {
+  const a = Date.parse(start), b = end ? Date.parse(end) : Date.now();
+  if (isNaN(a)) return '';
+  const s = Math.max(0, Math.round((b - a) / 1000)), m = Math.floor(s / 60), hh = Math.floor(m / 60);
+  return hh ? hh + 'h ' + (m % 60) + 'm' : m ? m + 'm' : s + 's';
+}
 
 function renderState(s) {
   $('run').textContent = s.run
     ? '\\u2014 ' + s.run.project + ' \\u00b7 run ' + s.run.id + ' [' + (s.run.stage || s.run.status) + ']'
+      + (s.run.startedAt ? ' \\u00b7 ' + elapsed(s.run.startedAt, s.run.finishedAt) : '')
     : '\\u2014 no active run';
   const live = s.liveNow || [];
   $('c-live').textContent = live.length;

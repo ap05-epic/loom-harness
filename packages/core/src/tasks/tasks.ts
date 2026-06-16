@@ -8,6 +8,8 @@ export type Run = {
   stage: string | null;
   status: RunStatus;
   harnessVersion: string | null;
+  startedAt: string;
+  finishedAt: string | null;
 };
 
 export type WpState =
@@ -71,6 +73,8 @@ type RunRow = {
   stage: string | null;
   status: RunStatus;
   harness_version: string | null;
+  started_at: string;
+  finished_at: string | null;
 };
 type WpRow = {
   id: string;
@@ -109,6 +113,8 @@ const toRun = (r: RunRow): Run => ({
   stage: r.stage,
   status: r.status,
   harnessVersion: r.harness_version,
+  startedAt: r.started_at,
+  finishedAt: r.finished_at,
 });
 const toWp = (r: WpRow): WorkPackage => ({
   id: r.id,
