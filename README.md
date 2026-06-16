@@ -14,7 +14,7 @@ A reusable, open-source agentic system that **maps undocumented legacy codebases
 ## Quickstart
 
 ```bash
-git clone https://github.com/ap05-epic/modernization-harness && cd modernization-harness
+git clone https://github.com/ap05-epic/loom-harness && cd loom-harness
 corepack enable
 pnpm install
 pnpm build

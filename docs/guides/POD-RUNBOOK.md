@@ -6,7 +6,7 @@ For a restricted Linux environment (no Docker, internal npm mirror, an authentic
 
 ```bash
 # 1. clone the release
-git clone https://github.com/ap05-epic/modernization-harness && cd modernization-harness
+git clone https://github.com/ap05-epic/loom-harness && cd loom-harness
 git checkout <latest-tag>
 
 # 2. bootstrap pnpm (absent on the pod) and install
