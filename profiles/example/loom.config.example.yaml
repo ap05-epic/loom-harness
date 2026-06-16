@@ -1,0 +1,67 @@
+# Real-world profile TEMPLATE (documented). The committed home for templates is
+# profiles/example/ — copy this into your project's gitignored profile dir and fill it:
+#
+#   cp profiles/example/loom.config.example.yaml <data-dir>/loom.config.yaml
+#   loom run --profile <data-dir> --data-dir <data-dir> --shift
+#
+# Real project profiles (e.g. profiles/baa) live OUTSIDE any clone — they point at internal
+# systems — and are gitignored. Secrets ALWAYS come from the environment, never this file.
+project: baa # your project key
+
+# ── Model ────────────────────────────────────────────────────────────────────
+# Default path is a GitHub Copilot login (no key/URL — `copilot login`):
+#   llm: { driver: copilot, model: <your-copilot-model> }
+# Where a direct key exists (e.g. the pod), the openai driver is the verified path:
+llm:
+  driver: openai
+  model: gpt-5.4
+  baseUrlEnv: LLM_BASE_URL # e.g. https://<your-endpoint>/openai/v1  (set in the env)
+  apiKeyEnv: LLM_API_KEY # api-key header auth (set in the env)
+
+# ── MAP: the legacy source the cartographer parses ───────────────────────────
+source:
+  # Path to the app's struts-config.xml (relative to this file, or absolute).
+  strutsConfig: ./REPLACE-ME/WEB-INF/struts-config.xml
+  # Optional: extra module roots to index (your EAR / shared config modules).
+  # modules: [./app, ./app-ear, ./shared-config]
+
+# ── CRAWL/EVAL target: the running legacy app (the trusted "A" baseline) ──────
+# Use the most reliable deployment as the baseline (often PRODUCTION — read-only,
+# rate-limited, PII-masked; a local replica can be missing env hooks). See ADR 0005.
+app:
+  baseUrl: https://REPLACE-ME/ # the trusted legacy app root
+
+# ── CRAWL: how the surveyor walks the app ────────────────────────────────────
+crawl:
+  startPath: / # menu-driven shells often need a specific entry path + the AI-explorer
+  exclude: ['/logout'] # never walk destructive links
+  maxStates: 200
+  auth:
+    loginPath: /login
+    usernameSelector: 'input[name=username]'
+    passwordSelector: 'input[name=password]'
+    submitSelector: 'button[type=submit]'
+    usernameEnv: APP_USER # credentials via env vars, never this file
+    passwordEnv: APP_PASS
+
+# ── EVAL: the parity bar ─────────────────────────────────────────────────────
+eval:
+  threshold: 1 # pixel-faithful (users must not notice); raise per-screen only via a deviation gate
+  viewport:
+    width: 1280
+    height: 1024
+
+# ── Self-improvement: where drafted/approved SKILL.md files live ─────────────
+skills:
+  dir: ./skills
+
+# ── Target stack to follow in the build (guidance) ───────────────────────────
+# React + Redux (createSlice / async thunks / selectors) + *.module.less + a shared
+# component library + *Config.tsx grids + new Spring Boot REST endpoints. Ground every
+# visible state in a runtime screenshot + the JSP/CSS/JS source — never infer UI from
+# backend payloads.
+
+# ── Optional: external MCP servers to attach (shown in Mission Control) ───────
+# mcp:
+#   servers:
+#     - { name: playwright, command: npx, args: ['@playwright/mcp'] }
