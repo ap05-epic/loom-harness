@@ -21,6 +21,7 @@ Start here. The docs are organized by intent:
 - [The CLI](guides/cli.md) — the `--json` contract, exit codes, command reference
 - [Authoring a profile](guides/authoring-a-profile.md)
 - [Pod runbook](guides/POD-RUNBOOK.md) — deploying into a locked-down environment
+- [Onboarding a real app (BAA playbook)](guides/baa-onboarding.md) — recon → MAP → CRAWL → PLAN → pilot → mass production
 
 ## Extend it
 
