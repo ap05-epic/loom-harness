@@ -28,6 +28,8 @@ export type DashboardState = {
   gates: Array<{ id: string; type: string; scopeId: string; payload: unknown }>;
   questions: Array<{ id: string; wpId: string | null; question: string; context: unknown }>;
   cost: { inputTokens: number; outputTokens: number; totalDurationMs: number; spans: number };
+  /** Token spend broken down by model — the cost view's "where did it go". */
+  costByModel: Array<{ model: string; tokens: number; attempts: number }>;
   recent: Array<{ id: number; ts: string; type: string; wpId: string | null }>;
 };
 
@@ -54,6 +56,7 @@ export function dashboardState(
       gates: [],
       questions: [],
       cost: { inputTokens: 0, outputTokens: 0, totalDurationMs: 0, spans: 0 },
+      costByModel: [],
       recent: [],
     };
   }
@@ -80,6 +83,10 @@ export function dashboardState(
     .map((q) => ({ id: q.id, wpId: q.wpId, question: q.question, context: q.context }));
 
   const agg = new SpanStore(db).aggregate(run.id);
+  const rollup = tasks.usageRollup(run.id);
+  const costByModel = rollup.byModel
+    .map((m) => ({ model: m.model, tokens: m.inputTokens + m.outputTokens, attempts: m.attempts }))
+    .sort((a, b) => b.tokens - a.tokens);
   const recent = new EventLog(db)
     .tailFrom(0, 5000, { runId: run.id })
     .slice(-(opts.recentLimit ?? 20))
@@ -103,6 +110,7 @@ export function dashboardState(
       totalDurationMs: agg.totalDurationMs,
       spans: agg.spans,
     },
+    costByModel,
     recent,
   };
 }

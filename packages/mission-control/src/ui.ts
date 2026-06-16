@@ -210,7 +210,10 @@ function renderState(s) {
   const c = s.cost || {};
   $('cost').innerHTML = '<b>' + ((c.inputTokens || 0) + (c.outputTokens || 0)).toLocaleString() + '</b> tokens'
     + '<div class="sub">' + (c.inputTokens || 0) + ' in / ' + (c.outputTokens || 0) + ' out \\u00b7 ' + (c.spans || 0) + ' spans \\u00b7 '
-    + Math.round((c.totalDurationMs || 0) / 1000) + 's</div>';
+    + Math.round((c.totalDurationMs || 0) / 1000) + 's</div>'
+    + (s.costByModel || []).map((m) =>
+        '<div class="row" style="font-size:12px"><span class="grow el">' + h(m.model)
+        + '</span><span class="muted">' + m.tokens.toLocaleString() + ' \\u00b7 ' + m.attempts + ' att</span></div>').join('');
   const gates = (s.gates || []).map((g) =>
     '<div class="gate"><div class="row" style="border:0;padding:0">' + pill(g.type, 'gate' === g.type ? 'thread' : 'thread')
     + '<span class="grow ellip muted">' + h(JSON.stringify(g.payload)) + '</span></div>'

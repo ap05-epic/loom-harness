@@ -39,6 +39,8 @@ function seed(): string {
     spec: {},
   });
   tasks.setWorkPackageState(passed.id, 'passed');
+  const att = tasks.createAttempt({ wpId: passed.id, role: 'builder', model: 'gpt-5.4', pid: 1 });
+  tasks.finishAttempt(att.id, { status: 'passed', inputTokens: 800, outputTokens: 200 });
   const building = tasks.createWorkPackage({
     runId: run.id,
     title: 'list',
@@ -80,6 +82,8 @@ describe('dashboardState', () => {
     expect(state.questions).toHaveLength(1);
     expect(state.cost.inputTokens).toBe(40);
     expect(state.cost.outputTokens).toBe(12);
+    // cost-by-model comes from the attempt rollup (gpt-5.4: 800+200 tokens)
+    expect(state.costByModel).toEqual([{ model: 'gpt-5.4', tokens: 1000, attempts: 1 }]);
     expect(state.recent.map((e) => e.type)).toContain('wp.passed');
   });
 
