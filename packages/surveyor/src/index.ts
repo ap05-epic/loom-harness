@@ -23,3 +23,10 @@ export {
 } from './explorer.js';
 export { exploreApp, type ExploreAppOptions } from './explore-app.js';
 export { extractForms, type FormSpec, type FieldSpec } from './forms.js';
+export {
+  openUiAtlas,
+  UiAtlasStore,
+  UI_ATLAS_MIGRATIONS,
+  type UaState,
+  type NavEdge,
+} from './ui-atlas.js';
