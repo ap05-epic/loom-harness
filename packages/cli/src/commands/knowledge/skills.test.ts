@@ -130,6 +130,40 @@ describe('loom skills export/import (DIGIT round-trip)', () => {
     expect(d.body).toContain('Do the thing.');
   });
 
+  test('new authors a SKILL.md into the project library', async () => {
+    const src = mkdtempSync(join(tmpdir(), 'skills-new-'));
+    const env = { HARNESS_PROFILE: profileDir(src) };
+    const res = await run(
+      [
+        'skills',
+        'new',
+        '--name',
+        'tiles-to-layout',
+        '--description',
+        'Tiles layout to a React layout component',
+        '--triggers',
+        'tiles, layout',
+        '--body',
+        'Identify the Tiles def, then...',
+        '--json',
+      ],
+      env,
+    );
+    expect(res.exitCode).toBe(0);
+    expect(JSON.parse(res.stdout.trim()).data.name).toBe('tiles-to-layout');
+    // it's on disk and loads back with its triggers
+    const loaded = loadSkillDir(src).find((s) => s.name === 'tiles-to-layout');
+    expect(loaded?.triggers).toEqual(['tiles', 'layout']);
+    expect(loaded?.body).toContain('Identify the Tiles def');
+  });
+
+  test('new without --name is a usage error (exit 2)', async () => {
+    const env = { HARNESS_PROFILE: profileDir(mkdtempSync(join(tmpdir(), 'skills-new-empty-'))) };
+    const res = await run(['skills', 'new', '--json'], env);
+    expect(res.exitCode).toBe(2);
+    expect(JSON.parse(res.stdout.trim()).error.code).toBe('USAGE');
+  });
+
   test('show on an unknown skill is NOT_FOUND (exit 9)', async () => {
     const env = { HARNESS_PROFILE: profileDir(mkdtempSync(join(tmpdir(), 'skills-show-empty-'))) };
     const res = await run(['skills', 'show', 'nope', '--json'], env);

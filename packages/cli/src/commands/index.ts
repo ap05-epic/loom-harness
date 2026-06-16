@@ -28,6 +28,7 @@ import { mcpListCommand } from './knowledge/mcp.js';
 import {
   skillsListCommand,
   skillsShowCommand,
+  skillsNewCommand,
   skillsExportCommand,
   skillsImportCommand,
 } from './knowledge/skills.js';
@@ -68,6 +69,7 @@ export const ALL_COMMANDS = [
   mcpListCommand,
   skillsListCommand,
   skillsShowCommand,
+  skillsNewCommand,
   skillsExportCommand,
   skillsImportCommand,
 ];

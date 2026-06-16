@@ -1,5 +1,5 @@
 import { isAbsolute, join } from 'node:path';
-import { copySkillDir, loadSkillDir } from '@loom/skills';
+import { copySkillDir, loadSkillDir, writeSkillFile } from '@loom/skills';
 import type { Profile } from '@loom/core';
 import { configError, notFoundError, usageError } from '../../errors.js';
 import { defineCommand } from '../../registry.js';
@@ -79,6 +79,53 @@ export const skillsShowCommand = defineCommand({
     if (d.triggers.length) ctx.sink.line(`triggers: ${d.triggers.join(', ')}`);
     ctx.sink.line('');
     ctx.sink.line(d.body);
+  },
+});
+
+export const skillsNewCommand = defineCommand({
+  name: 'skills new',
+  group: 'knowledge',
+  describe: 'Author a new SKILL.md in the project library (human-written, active immediately)',
+  exitCodes: ['CONFIG', 'USAGE'],
+  options: [
+    { flags: '--name <name>', describe: 'skill name, kebab-case (required)' },
+    { flags: '--description <text>', describe: 'one-line description (drives recall ranking)' },
+    { flags: '--triggers <list>', describe: 'comma-separated trigger terms' },
+    { flags: '--body <text>', describe: 'the procedure body' },
+    { flags: '--dir <dir>', describe: 'skills dir (default: the profile’s skills.dir)' },
+  ],
+  examples: [
+    'loom skills new --name tiles-to-layout --description "Tiles layout → React" --triggers tiles,layout',
+  ],
+  run(ctx, input) {
+    const profile = ctx.requireProfile();
+    const name = input.options.name as string | undefined;
+    if (!name) throw usageError('no --name', 'pass --name <kebab-case-name>');
+    const dir = (input.options.dir as string | undefined) ?? projectSkillsDir(profile);
+    if (!dir) {
+      throw configError(
+        'no skills directory',
+        'add a `skills.dir:` to loom.config.yaml, or pass --dir <dir>',
+      );
+    }
+    const triggers =
+      typeof input.options.triggers === 'string'
+        ? input.options.triggers
+            .split(',')
+            .map((t) => t.trim())
+            .filter(Boolean)
+        : [];
+    const path = writeSkillFile(dir, {
+      name,
+      description: (input.options.description as string | undefined) ?? '',
+      triggers,
+      body: (input.options.body as string | undefined) ?? '',
+    });
+    return { name, path };
+  },
+  render(data, ctx) {
+    const d = data as { name: string; path: string };
+    ctx.sink.line(`wrote skill "${d.name}" → ${d.path}`);
   },
 });
 
