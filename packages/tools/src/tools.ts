@@ -34,6 +34,20 @@ export function defineTool<I>(spec: {
   return spec;
 }
 
+/** Namespace a tool name by project so two projects' tools can never collide by name. */
+export function namespacedToolName(project: string, name: string): string {
+  return `${project}__${name}`;
+}
+
+/**
+ * Project-scope a set of tools: every name is prefixed with the project, and the originals are left
+ * untouched. Applied where external/MCP tools enter a run, so a tool name is unique per project (the
+ * built-in `write_file` is per-attempt and confined by protected-paths, so it stays un-prefixed).
+ */
+export function scopeTools(project: string, tools: Tool[]): Tool[] {
+  return tools.map((t) => ({ ...t, name: namespacedToolName(project, t.name) }));
+}
+
 /**
  * A registry of tools. `run` looks the tool up by name, validates input against
  * its schema, fires the lifecycle hooks around the call (PreToolUse — which can
