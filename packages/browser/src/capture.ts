@@ -260,6 +260,34 @@ export class CrawlSession {
     });
   }
 
+  /**
+   * Capture the main document and every child frame as separate normalized DOMs, each with a
+   * `framePath` (the frame's name or URL path). Frameset/iframe apps (e.g. a legacy Tiles frameset)
+   * hide whole screens inside frames that a single document capture misses.
+   */
+  async captureFrames(
+    styleProps?: string[],
+  ): Promise<Array<{ framePath: string; dom: DomSnapshot }>> {
+    const page = this.active();
+    const out: Array<{ framePath: string; dom: DomSnapshot }> = [];
+    for (const frame of page.frames()) {
+      const dom = await frame.evaluate(extractDomSnapshot, styleProps ?? null);
+      const framePath =
+        frame === page.mainFrame()
+          ? ''
+          : frame.name() ||
+            (() => {
+              try {
+                return new URL(frame.url()).pathname;
+              } catch {
+                return frame.url();
+              }
+            })();
+      out.push({ framePath, dom });
+    }
+    return out;
+  }
+
   /** Persist cookies/localStorage so a later run can skip the login. */
   async saveStorageState(path: string): Promise<void> {
     await this.context?.storageState({ path });
