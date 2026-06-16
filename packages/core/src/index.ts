@@ -29,6 +29,12 @@ export {
   type LoadProfileOptions,
 } from './config/config.js';
 export {
+  loadWorkspace,
+  findWorkspaceUp,
+  WORKSPACE_FILE,
+  type Workspace,
+} from './config/workspace.js';
+export {
   TaskStore,
   type Run,
   type RunStatus,
