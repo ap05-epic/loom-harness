@@ -26,19 +26,19 @@ MAP ─▶ CRAWL ─▶ PLAN ─▶ ┌─ per work package ──────�
 
 ## Subsystems (monorepo packages)
 
-| Package           | Responsibility                                                                                                                   | Status               |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `core`            | Domain types; SQLite with a `node:sqlite` fallback; migrations; append-only event log; profile/config loader                     | ✅                   |
-| `agents`          | The `LlmGateway` (Model B — direct calls), drivers, the guarded `AgentRunner`, model profiles, the model-adaptive context packer | ✅                   |
-| `evaluator`       | The deterministic, LLM-free judge: visual diff, DOM/style/coverage layers, scorecard; + a consensus panel for subjective calls   | ✅                   |
-| `browser`         | Thin Playwright wrapper (screenshot + DOM capture) — kept separate so the evaluator stays pure                                   | ✅                   |
-| `cli`             | The `loom` command — a thin presentation layer with a strict `--json` contract and documented exit codes                        | ✅                   |
-| `test-kit`        | A scriptable mock LLM server and test helpers                                                                                    | ✅                   |
-| `cartographer`    | Source scanners → Code Atlas + MCP queries + recovered docs (and panel verification)                                            | ✅                   |
-| `surveyor`        | Playwright crawler/recorder → UI Atlas                                                                                           | ✅                   |
-| `conductor`       | The durable outer loop: WP queue, worker pool, guards, gates, crash-resume, shift mode, spans                                    | ✅                   |
-| `mission-control` | Local web UI for supervision (read-only over `loom.db`; gate/question decisions write back)                                      | ✅                   |
-| `skills`          | Skill runtime + library; progressive disclosure + DIGIT export/import                                                            | ✅                   |
+| Package           | Responsibility                                                                                                                   | Status |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| `core`            | Domain types; SQLite with a `node:sqlite` fallback; migrations; append-only event log; profile/config loader                     | ✅     |
+| `agents`          | The `LlmGateway` (Model B — direct calls), drivers, the guarded `AgentRunner`, model profiles, the model-adaptive context packer | ✅     |
+| `evaluator`       | The deterministic, LLM-free judge: visual diff, DOM/style/coverage layers, scorecard; + a consensus panel for subjective calls   | ✅     |
+| `browser`         | Thin Playwright wrapper (screenshot + DOM capture) — kept separate so the evaluator stays pure                                   | ✅     |
+| `cli`             | The `loom` command — a thin presentation layer with a strict `--json` contract and documented exit codes                         | ✅     |
+| `test-kit`        | A scriptable mock LLM server and test helpers                                                                                    | ✅     |
+| `cartographer`    | Source scanners → Code Atlas + MCP queries + recovered docs (and panel verification)                                             | ✅     |
+| `surveyor`        | Playwright crawler/recorder → UI Atlas                                                                                           | ✅     |
+| `conductor`       | The durable outer loop: WP queue, worker pool, guards, gates, crash-resume, shift mode, spans                                    | ✅     |
+| `mission-control` | Local web UI for supervision (read-only over `loom.db`; gate/question decisions write back)                                      | ✅     |
+| `skills`          | Skill runtime + library; progressive disclosure + DIGIT export/import                                                            | ✅     |
 
 ## Key design choices (and where they're explained)
 

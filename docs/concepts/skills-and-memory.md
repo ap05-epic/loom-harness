@@ -29,11 +29,11 @@ as rows in `skills_index` so they can carry usage statistics.
 
 Where a skill comes from determines its scope:
 
-| Tier        | Scope                              | Origin                                          |
-| ----------- | ---------------------------------- | ----------------------------------------------- |
-| `bundled`   | **global** — every project (`project` is null) | ships with the harness                |
-| `project`   | one project's conventions          | authored in the profile directory               |
-| `generated` | starts project-scoped              | **drafted by the Reflector** after a passed WP  |
+| Tier        | Scope                                          | Origin                                         |
+| ----------- | ---------------------------------------------- | ---------------------------------------------- |
+| `bundled`   | **global** — every project (`project` is null) | ships with the harness                         |
+| `project`   | one project's conventions                      | authored in the profile directory              |
+| `generated` | starts project-scoped                          | **drafted by the Reflector** after a passed WP |
 
 `project`-tier skills never become global — their conventions are project-specific and must
 not leak across clients. Only `generated` skills can graduate (see _Auto-promotion_).

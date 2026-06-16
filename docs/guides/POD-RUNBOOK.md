@@ -4,6 +4,17 @@ For a restricted Linux environment (no Docker, internal npm mirror, an authentic
 
 ## First install
 
+The one-shot script does everything below and verifies it (idempotent — safe to re-run):
+
+```bash
+git clone https://github.com/ap05-epic/loom-harness && cd loom-harness
+git checkout <latest-tag>
+bash scripts/setup-pod.sh --data-dir ~/loom-data/<project>
+#   add --base-url https://<host>/openai/v1 --api-key <key>  to skip the prompts
+```
+
+Or step by step:
+
 ```bash
 # 1. clone the release
 git clone https://github.com/ap05-epic/loom-harness && cd loom-harness
@@ -15,7 +26,7 @@ pnpm install --frozen-lockfile  # ~/.npmrc → internal mirror; proxy already se
 
 # 3. build + provide the command
 pnpm build
-pnpm link --global ./packages/cli
+pnpm link --global ./packages/cli   # if this fails (no global bin dir), call: node packages/cli/dist/bin.js …
 loom --version
 ```
 
@@ -45,6 +56,18 @@ loom models test
 
 Paste the `doctor` output back if anything is red.
 
+## Doctor's green — now what?
+
+```bash
+loom next                                                     # the next command for your state
+loom map    --data-dir ~/loom-data/<project>                  # scan the legacy source → CodeAtlas
+loom crawl  --data-dir ~/loom-data/<project> --max-states 20  # capture the baseline (read-only)
+loom run    --data-dir ~/loom-data/<project> --shift          # rebuild unattended (loom stop / loom resume)
+loom ui     --data-dir ~/loom-data/<project>                  # Mission Control: progress + gate approvals
+```
+
+Sanity-check the model any time with `loom ask "say pong"` or `loom models test`. See [how you interact with Loom](../concepts/interaction-model.md) for the full picture.
+
 ## Update loop
 
 Each release ships as a tag. To move forward:
@@ -65,6 +88,13 @@ FROM_TAG=v1.0.0 TO_TAG=v1.0.1 bash scripts/offline-rehearsal.sh   # also rehears
 ```
 
 It fails loudly on the first broken step, and writes its scratch data to a temp dir outside the clone.
+
+## Troubleshooting
+
+- **`pnpm link --global` fails (`ERR_PNPM_NO_GLOBAL_BIN_DIR`).** The pod has no global bin dir. `setup-pod.sh` writes a `~/.local/bin/loom` wrapper; or just invoke `node packages/cli/dist/bin.js …`.
+- **`loom models test` fails for Copilot (`exit 1`, no output).** The Copilot session lapsed — run `copilot login` (or `dc login`). If Copilot is unreliable here, prefer the direct key path: set `LLM_BASE_URL` (…/openai/v1) + `LLM_API_KEY` and `loom init --driver openai` (the recommended default).
+- **Azure endpoint 401 / 404.** 401 → check `LLM_API_KEY`; 404 → the model id or base URL is wrong (it must include `…/openai/v1`). `loom models test` prints the classified reason. Transient 429/5xx are retried once automatically.
+- **better-sqlite3 native build fails** (missing `make`/compiler, GLIBC). Expected and harmless — the adapter falls back to `node:sqlite`; `loom doctor` shows the live backend.
 
 ## Safety notes
 

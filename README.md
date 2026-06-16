@@ -56,13 +56,24 @@ Runs unattended in **shift mode** with hard safeguards (per-attempt + per-shift 
 
 ```bash
 git clone https://github.com/ap05-epic/loom-harness && cd loom-harness
-corepack enable && pnpm install && pnpm build
-pnpm link --global ./packages/cli         # provides the `loom` command
 
+# One-shot (recommended, esp. on a pod): installs, builds, puts `loom` on PATH,
+# creates a profile outside the clone, and verifies it. Idempotent — re-runnable.
+bash scripts/setup-pod.sh            # --base-url … --api-key … to skip the prompts
+```
+
+…or by hand:
+
+```bash
+corepack enable && pnpm install && pnpm build
+pnpm link --global ./packages/cli         # or just call: node packages/cli/dist/bin.js …
+                                          # (some pods have no global bin dir — setup-pod.sh adds a ~/.local/bin/loom wrapper)
 loom doctor                               # verify the environment
 loom init --data-dir ~/loom-data/demo     # create a profile (outside any repo)
-# edit ~/loom-data/demo/.env  → a Copilot login, or LLM_BASE_URL (…/openai/v1) + LLM_API_KEY
+# edit ~/loom-data/demo/.env  → LLM_BASE_URL (…/openai/v1) + LLM_API_KEY, or a Copilot login
 loom models test --profile ~/loom-data/demo   # probe the model backend
+loom next        --data-dir ~/loom-data/demo  # what to do next
+loom ask         --profile  ~/loom-data/demo "say pong"   # talk to the model
 ```
 
 Models are reached via a **GitHub Copilot login by default** (no key or URL) or a direct OpenAI/Azure key — your choice, surfaced by `loom models list`. Deploying inside a locked-down environment? See the [Pod runbook](docs/guides/POD-RUNBOOK.md) and the [onboarding playbook](docs/guides/baa-onboarding.md).
@@ -71,16 +82,16 @@ Models are reached via a **GitHub Copilot login by default** (no key or URL) or 
 
 `loom` is scriptable-first: **every command supports `--json`** (one result envelope on stdout, diagnostics on stderr) and returns a **documented exit code**. Interactive wizards degrade cleanly to flags, so nothing ever hangs in CI or over SSH. Bare `loom` prints a compact dashboard; the one-line mark `│┼│ loom` rides the status line.
 
-| Group        | Commands                                                                                                        |
-| ------------ | --------------------------------------------------------------------------------------------------------------- |
-| Lifecycle    | `init` · `doctor` · `update` · `status` · `profile show\|validate` · `models list\|test` · `db migrate\|backup` |
-| Pipeline     | `map` · `crawl` · `plan` · `build` · `eval` · `run [--shift]` · `resume` · `stop`                               |
-| Observe      | `watch` · `logs` · `report` · `ui`                                                                              |
-| Work & gates | `wp` · `gates` · `questions`                                                                                    |
-| Knowledge    | `skills` · `memory` · `atlas`                                                                                   |
-| Project      | `project new\|list\|use\|current`                                                                               |
+| Group        | Commands                                                                                                                                  |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Lifecycle    | `init` · `doctor` · `status` · `next` · `ask` · `chat` · `update` · `profile show\|validate` · `models list\|test` · `db migrate\|backup` |
+| Pipeline     | `map` · `crawl` · `eval` · `run [--shift]` · `resume` · `stop`                                                                            |
+| Observe      | `watch` · `logs` · `report` · `ui`                                                                                                        |
+| Work & gates | `wp` · `gates` · `questions`                                                                                                              |
+| Knowledge    | `skills` · `atlas`                                                                                                                        |
+| Project      | `project new\|list\|use\|current`                                                                                                         |
 
-Run `loom <command> --help` for flags and examples; the help footer lists every exit code.
+Run `loom <command> --help` for flags and examples; the help footer lists every exit code. New here: **`loom ask "…"`** / **`loom chat`** talk to the configured model directly, and **`loom next`** tells you the next command from your project's state. _Planned, not yet shipped: `plan`, `build`, `memory`._
 
 Multiple modernization projects coexist in a **workspace** (`loom-workspace.yaml`) with fully isolated data, atlases, skills, memory, and tools — `loom project use <name>` switches the active one ([ADR 0006](docs/decisions/0006-workspace-project-isolation.md)).
 
