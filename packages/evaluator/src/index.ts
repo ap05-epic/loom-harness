@@ -45,3 +45,10 @@ export {
   type FunctionalCode,
   type FunctionalFinding,
 } from './functional.js';
+export {
+  diffA11y,
+  a11yRegressed,
+  type A11yImpact,
+  type A11yViolation,
+  type A11yFinding,
+} from './a11y.js';
