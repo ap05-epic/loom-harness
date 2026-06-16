@@ -155,6 +155,7 @@ a { color: var(--info); }
   <button class="toggle" id="theme" title="Toggle light / dark">&#9789;</button>
 </header>
 <main>
+  <section class="wide"><h2>Live now <span class="count" id="c-live">0</span></h2><div id="live"></div></section>
   <section class="wide"><h2>Pipeline <span class="count" id="c-screens">0</span></h2>
     <div id="tally" class="tally"></div><div id="screens"></div></section>
   <section><h2>Cost</h2><div id="cost" class="cost"></div></section>
@@ -199,6 +200,15 @@ function renderState(s) {
   $('run').textContent = s.run
     ? '\\u2014 ' + s.run.project + ' \\u00b7 run ' + s.run.id + ' [' + (s.run.stage || s.run.status) + ']'
     : '\\u2014 no active run';
+  const live = s.liveNow || [];
+  $('c-live').textContent = live.length;
+  $('live').innerHTML = live.map((w) =>
+    '<div class="row"><span class="dot d-' + w.state + '"></span><span class="grow el"><span class="nm">'
+    + h(w.screenKey || w.wpId) + '</span> <span class="s-' + w.state + '">' + w.state + '</span>'
+    + ' <span class="muted">attempt ' + w.attempt + '</span></span>'
+    + (w.lastEvent ? '<span class="muted" style="font-size:12px">' + h(w.lastEvent)
+        + (w.lastEventTs ? ' \\u00b7 ' + h(w.lastEventTs.slice(11, 19)) : '') + '</span>' : '') + '</div>').join('')
+    || '<span class="muted">idle \\u2014 no workers building right now</span>';
   $('c-screens').textContent = (s.screens || []).length;
   $('tally').innerHTML = Object.entries(s.counts || {})
     .map(([st, n]) => '<span class="s-' + st + '"><span class="dot d-' + st + '"></span>' + n + ' ' + st + '</span>').join('')

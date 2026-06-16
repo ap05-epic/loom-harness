@@ -25,6 +25,15 @@ export type DashboardState = {
   }>;
   /** Screen count by state — drives the pipeline tally. */
   counts: Record<string, number>;
+  /** Workers currently active (building/evaluating/fixing) — the "Live Now" view. */
+  liveNow: Array<{
+    wpId: string;
+    screenKey: string | null;
+    state: string;
+    attempt: number;
+    lastEvent: string | null;
+    lastEventTs: string | null;
+  }>;
   gates: Array<{ id: string; type: string; scopeId: string; payload: unknown }>;
   questions: Array<{ id: string; wpId: string | null; question: string; context: unknown }>;
   cost: { inputTokens: number; outputTokens: number; totalDurationMs: number; spans: number };
@@ -53,6 +62,7 @@ export function dashboardState(
       run: null,
       screens: [],
       counts: {},
+      liveNow: [],
       gates: [],
       questions: [],
       cost: { inputTokens: 0, outputTokens: 0, totalDurationMs: 0, spans: 0 },
@@ -87,8 +97,26 @@ export function dashboardState(
   const costByModel = rollup.byModel
     .map((m) => ({ model: m.model, tokens: m.inputTokens + m.outputTokens, attempts: m.attempts }))
     .sort((a, b) => b.tokens - a.tokens);
-  const recent = new EventLog(db)
-    .tailFrom(0, 5000, { runId: run.id })
+
+  // One event tail powers both the recent feed and each active worker's last activity.
+  const events = new EventLog(db).tailFrom(0, 5000, { runId: run.id });
+  const lastEventByWp = new Map<string, { type: string; ts: string }>();
+  for (const e of events) if (e.wpId) lastEventByWp.set(e.wpId, { type: e.type, ts: e.ts }); // ASC → last wins
+  const ACTIVE = new Set(['building', 'evaluating', 'fixing']);
+  const liveNow = wps
+    .filter((w) => ACTIVE.has(w.state))
+    .map((w) => {
+      const le = lastEventByWp.get(w.id);
+      return {
+        wpId: w.id,
+        screenKey: w.screenKey,
+        state: w.state,
+        attempt: tasks.listAttempts(w.id).length,
+        lastEvent: le?.type ?? null,
+        lastEventTs: le?.ts ?? null,
+      };
+    });
+  const recent = events
     .slice(-(opts.recentLimit ?? 20))
     .map((e) => ({ id: e.id, ts: e.ts, type: e.type, wpId: e.wpId }));
 
@@ -102,6 +130,7 @@ export function dashboardState(
     },
     screens,
     counts,
+    liveNow,
     gates,
     questions,
     cost: {

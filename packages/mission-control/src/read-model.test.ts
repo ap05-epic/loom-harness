@@ -48,6 +48,13 @@ function seed(): string {
     spec: {},
   });
   tasks.setWorkPackageState(building.id, 'building');
+  tasks.createAttempt({ wpId: building.id, role: 'builder', model: 'gpt-5.4', pid: 2 });
+  new EventLog(db).append({
+    type: 'attempt.started',
+    runId: run.id,
+    wpId: building.id,
+    payload: {},
+  });
   new GateStore(db).open({
     scopeType: 'wp',
     scopeId: passed.id,
@@ -77,13 +84,21 @@ describe('dashboardState', () => {
     expect(state.screens).toHaveLength(2);
     expect(state.counts.passed).toBe(1);
     expect(state.counts.building).toBe(1);
+    // Live Now: only the active (building) worker, with its attempt # + last activity
+    expect(state.liveNow).toHaveLength(1);
+    expect(state.liveNow[0]).toMatchObject({
+      screenKey: 'list',
+      state: 'building',
+      attempt: 1,
+      lastEvent: 'attempt.started',
+    });
     expect(state.gates).toHaveLength(1);
     expect(state.gates[0]!.type).toBe('ship');
     expect(state.questions).toHaveLength(1);
     expect(state.cost.inputTokens).toBe(40);
     expect(state.cost.outputTokens).toBe(12);
-    // cost-by-model comes from the attempt rollup (gpt-5.4: 800+200 tokens)
-    expect(state.costByModel).toEqual([{ model: 'gpt-5.4', tokens: 1000, attempts: 1 }]);
+    // cost-by-model comes from the attempt rollup (gpt-5.4: 800+200 tokens over 2 attempts)
+    expect(state.costByModel).toEqual([{ model: 'gpt-5.4', tokens: 1000, attempts: 2 }]);
     expect(state.recent.map((e) => e.type)).toContain('wp.passed');
   });
 
