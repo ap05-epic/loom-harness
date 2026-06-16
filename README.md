@@ -7,6 +7,10 @@
 <p align="center"><strong>legacy UI, rebuilt faithfully</strong></p>
 
 <p align="center">
+  <img src="docs/loom-cli.svg" width="660" alt="The loom startup identity — the brass LOOM wordmark over the active model, project, and SQLite backend" />
+</p>
+
+<p align="center">
   Loom Harness maps undocumented legacy apps, rebuilds their screens in modern code,<br/>
   and proves each rebuild is <em>identical</em> to the original.
 </p>
@@ -17,14 +21,6 @@
   <img src="https://img.shields.io/badge/built%20with-TypeScript-9A7CF0" alt="TypeScript" />
   <img src="https://img.shields.io/badge/tests-TDD-E2A74A" alt="TDD throughout" />
 </p>
-
-```
-  │ │ │
-╭─┬─┬─┬─╮   LOOM HARNESS
-├─┼─┼─┼─┤   legacy UI, rebuilt faithfully
-╰─┴─┴─┴─╯
-  │ │ │
-```
 
 A reusable, open-source agentic system that **maps undocumented legacy codebases, crawls their running UIs, and rebuilds them in modern stacks** with pixel- and function-faithful parity — verified by an automated, deterministic A/B evaluation. The first target is a Struts 1.x / JSP / Tiles application → React 19 + TypeScript; the harness itself is project-agnostic (everything app-specific lives in a swappable _profile_).
 

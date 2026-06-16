@@ -1,8 +1,11 @@
 import { Command } from 'commander';
+import { loadProfile, openDb } from '@loom/core';
 import { createContext, type GlobalFlags } from './context.js';
 import { EXIT, mapError } from './errors.js';
+import { describeProvider } from './pipeline-config.js';
 import type { ArgSpec, CommandInput, CommandRegistry, CommandSpec } from './registry.js';
 import { banner } from './ui/banner.js';
+import { identityPanel, type IdentityInfo } from './ui/identity.js';
 
 export type ProgramDeps = {
   version: string;
@@ -42,6 +45,53 @@ function exitCodeHelp(): string {
     .map(([name, code]) => `    ${String(code).padStart(3)}  ${name}`)
     .join('\n');
   return `\nExit codes:\n${rows}\n`;
+}
+
+/** Probe which SQLite backend would load, without touching a project DB. */
+function probeBackend(): string | undefined {
+  try {
+    const db = openDb(':memory:');
+    const backend = db.backend;
+    db.close();
+    return backend;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Assemble the startup identity from the resolved profile (degrades gracefully when none). */
+function gatherIdentity(deps: ProgramDeps): IdentityInfo {
+  const env = deps.env ?? process.env;
+  const cwd = deps.cwd ?? process.cwd();
+  const base: IdentityInfo = { version: deps.version, configured: false, backend: probeBackend() };
+  try {
+    const dir = env.LOOM_PROFILE ?? env.HARNESS_PROFILE ?? cwd;
+    const profile = loadProfile(dir, { env, dataDir: env.LOOM_DATA_DIR ?? env.HARNESS_DATA_DIR });
+    const provider = describeProvider(profile);
+    return {
+      ...base,
+      configured: true,
+      project: profile.project,
+      model: provider.model,
+      driver: provider.driver,
+      providerAuth: provider.auth,
+      modelSelectable: provider.modelSelectable,
+      dataDir: profile.dataDir,
+      profileDir: profile.dir,
+    };
+  } catch {
+    return base;
+  }
+}
+
+/** Render the bare-`loom` identity panel, gating color/unicode on the terminal. */
+function printIdentity(deps: ProgramDeps): void {
+  const write = deps.write ?? ((s: string) => void process.stdout.write(s));
+  const env = deps.env ?? process.env;
+  const stdoutTTY = deps.stdoutTTY ?? Boolean(process.stdout.isTTY);
+  const color = stdoutTTY && !('NO_COLOR' in env) && env.TERM !== 'dumb';
+  const truecolor = color && /truecolor|24bit/i.test(env.COLORTERM ?? '');
+  write(`${identityPanel(gatherIdentity(deps), { color, unicode: color, truecolor })}\n`);
 }
 
 /**
@@ -121,6 +171,9 @@ export function buildProgram(registry: CommandRegistry, deps: ProgramDeps): Comm
     .showSuggestionAfterError(true)
     .addHelpText('before', `${banner()}\n`)
     .addHelpText('after', exitCodeHelp());
+
+  // Bare `loom` (no subcommand) prints the Hermes-style startup identity panel.
+  program.action(() => printIdentity(deps));
 
   const parents = new Map<string, Command>();
   for (const spec of registry.all()) {

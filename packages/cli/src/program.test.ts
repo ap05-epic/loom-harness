@@ -67,4 +67,12 @@ describe('program wiring (full path: parse → context → command → sink → 
     const lines = stdout.trim().split('\n').filter(Boolean);
     for (const l of lines) expect(() => JSON.parse(l)).not.toThrow();
   });
+
+  test('bare `loom` prints the startup identity panel (logo + version), exit 0', async () => {
+    const { stdout, exitCode } = await run([]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('LOOM HARNESS'); // the ASCII lockup (non-TTY ⇒ no block art)
+    expect(stdout).toContain('9.9.9'); // the version passed to the program
+    expect(stdout).toMatch(/loom init/); // unconfigured ⇒ points at init
+  });
 });
