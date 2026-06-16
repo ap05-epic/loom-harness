@@ -1,3 +1,4 @@
+import axe from 'axe-core';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 
 export type Viewport = { width: number; height: number };
@@ -240,6 +241,23 @@ export class CrawlSession {
     const page = this.active();
     await page.click(`[data-loom-cand="${ref}"]`);
     await page.waitForLoadState('networkidle').catch(() => undefined);
+  }
+
+  /** Run axe-core in the page and return its violations — the a11y layer's input. */
+  async captureA11y(): Promise<Array<{ id: string; impact?: string; count: number }>> {
+    const page = this.active();
+    await page.addScriptTag({ content: axe.source });
+    return page.evaluate(async () => {
+      const w = window as unknown as {
+        axe: {
+          run: (
+            ctx: Document,
+          ) => Promise<{ violations: Array<{ id: string; impact?: string; nodes: unknown[] }> }>;
+        };
+      };
+      const result = await w.axe.run(document);
+      return result.violations.map((v) => ({ id: v.id, impact: v.impact, count: v.nodes.length }));
+    });
   }
 
   /** Persist cookies/localStorage so a later run can skip the login. */
