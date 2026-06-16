@@ -187,4 +187,27 @@ describe('Mission Control server', () => {
     });
     expect(missing.status).toBe(404);
   });
+
+  test('lists the workspace projects and scopes the board by ?project=', async () => {
+    const tasks = new TaskStore(db);
+    const baa = tasks.createRun({ project: 'baa' });
+    tasks.setRunStage(baa.id, 'build');
+    const claims = tasks.createRun({ project: 'claims' });
+    tasks.setRunStage(claims.id, 'crawl');
+    mc = await startMissionControl({ db });
+
+    const projects = (await (await fetch(`${mc.url}/api/projects`)).json()) as {
+      projects: string[];
+    };
+    expect(projects.projects).toEqual(['baa', 'claims']);
+
+    const baaState = (await (await fetch(`${mc.url}/api/state?project=baa`)).json()) as {
+      run: { project: string } | null;
+    };
+    expect(baaState.run?.project).toBe('baa');
+    const claimsState = (await (await fetch(`${mc.url}/api/state?project=claims`)).json()) as {
+      run: { project: string } | null;
+    };
+    expect(claimsState.run?.project).toBe('claims');
+  });
 });

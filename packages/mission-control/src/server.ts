@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { applyGateDecision, EventLog, QuestionStore, type SqliteDatabase } from '@loom/core';
-import { dashboardState, wpDetail } from './read-model.js';
+import { dashboardState, listProjects, wpDetail } from './read-model.js';
 import { inventory, type McpInfo } from './inventory.js';
 import { dashboardHtml } from './ui.js';
 
@@ -57,8 +57,21 @@ async function handle(
     return;
   }
 
+  if (method === 'GET' && pathname === '/api/projects') {
+    sendJson(res, 200, {
+      active: opts.project ?? null,
+      projects: listProjects(db, opts.project ? [opts.project] : []),
+    });
+    return;
+  }
+
   if (method === 'GET' && pathname === '/api/state') {
-    sendJson(res, 200, dashboardState(db, url.searchParams.get('run') ?? undefined));
+    const project = url.searchParams.get('project') ?? opts.project;
+    sendJson(
+      res,
+      200,
+      dashboardState(db, url.searchParams.get('run') ?? undefined, project ? { project } : {}),
+    );
     return;
   }
 
@@ -67,7 +80,7 @@ async function handle(
       res,
       200,
       inventory(db, {
-        project: opts.project,
+        project: url.searchParams.get('project') ?? opts.project,
         skillsDir: opts.skillsDir,
         digitHome: opts.digitHome,
         externalMcp: opts.externalMcp,

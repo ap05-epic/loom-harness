@@ -1,4 +1,10 @@
-export { dashboardState, wpDetail, type DashboardState, type WpDetail } from './read-model.js';
+export {
+  dashboardState,
+  listProjects,
+  wpDetail,
+  type DashboardState,
+  type WpDetail,
+} from './read-model.js';
 export {
   inventory,
   HARNESS_TOOLS,

@@ -7,6 +7,12 @@ import {
   type SqliteDatabase,
 } from '@loom/core';
 
+/** Distinct project names that have runs (∪ optional extra names, e.g. from the workspace manifest). */
+export function listProjects(db: SqliteDatabase, extra: string[] = []): string[] {
+  const fromRuns = new TaskStore(db).projects();
+  return [...new Set([...fromRuns, ...extra])].sort();
+}
+
 /** The full read-only state one Mission Control poll needs — assembled from the stores. */
 export type DashboardState = {
   run: {
@@ -60,12 +66,13 @@ export type DashboardState = {
 export function dashboardState(
   db: SqliteDatabase,
   runId?: string,
-  opts: { recentLimit?: number } = {},
+  opts: { recentLimit?: number; project?: string } = {},
 ): DashboardState {
   const tasks = new TaskStore(db);
   const run = runId
     ? tasks.getRun(runId)
-    : (tasks.latestRun({ status: 'running' }) ?? tasks.latestRun());
+    : (tasks.latestRun({ status: 'running', project: opts.project }) ??
+      tasks.latestRun(opts.project ? { project: opts.project } : undefined));
   if (!run) {
     return {
       run: null,

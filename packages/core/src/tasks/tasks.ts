@@ -167,15 +167,31 @@ export class TaskStore {
     this.db.prepare('UPDATE runs SET stage = ? WHERE id = ?').run(stage, id);
   }
   /** The most recently created run, optionally filtered by status (for `loom resume`). */
-  latestRun(filter?: { status?: RunStatus }): Run | null {
-    const r = (
-      filter?.status
-        ? this.db
-            .prepare('SELECT * FROM runs WHERE status = ? ORDER BY rowid DESC LIMIT 1')
-            .get(filter.status)
-        : this.db.prepare('SELECT * FROM runs ORDER BY rowid DESC LIMIT 1').get()
-    ) as RunRow | undefined;
+  latestRun(filter?: { status?: RunStatus; project?: string }): Run | null {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (filter?.status) {
+      clauses.push('status = ?');
+      params.push(filter.status);
+    }
+    if (filter?.project) {
+      clauses.push('project = ?');
+      params.push(filter.project);
+    }
+    const where = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
+    const r = this.db
+      .prepare(`SELECT * FROM runs${where} ORDER BY rowid DESC LIMIT 1`)
+      .get(...params) as RunRow | undefined;
     return r ? toRun(r) : null;
+  }
+
+  /** Distinct project names that have runs — powers the Mission Control project switcher. */
+  projects(): string[] {
+    return (
+      this.db.prepare('SELECT DISTINCT project FROM runs ORDER BY project').all() as Array<{
+        project: string;
+      }>
+    ).map((r) => r.project);
   }
   finishRun(id: string, status: RunStatus): void {
     this.db
