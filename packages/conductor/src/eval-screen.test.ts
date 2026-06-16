@@ -1,4 +1,8 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { DomSnapshot, Viewport } from '@loom/browser';
+import { assetDigest } from '@loom/evaluator';
 import { PNG } from 'pngjs';
 import { describe, expect, test } from 'vitest';
 import { evaluateScreen } from './eval-screen.js';
@@ -86,5 +90,24 @@ describe('evaluateScreen functional gate', () => {
     });
     expect(result.passed).toBe(false);
     expect(result.a11yFindings.map((f) => f.id)).toContain('label');
+  });
+
+  test('the optional anti-cheat gate fails a rebuild that copies a legacy asset verbatim', async () => {
+    const bRepoDir = mkdtempSync(join(tmpdir(), 'brepo-'));
+    try {
+      writeFileSync(join(bRepoDir, 'app.css'), 'LEGACY-CSS'); // lifted wholesale, not reimplemented
+      const result = await evaluateScreen({
+        ...baseArgs,
+        bRepoDir, // scanned for real (fakeServe ignores the dir)
+        domCapture: async () => loginForm('20'), // other gates clear
+        legacyAssets: [assetDigest('legacy/app.css', 'LEGACY-CSS')],
+      });
+      expect(result.passed).toBe(false);
+      expect(result.copiedAssets.map((c) => c.rebuildPath.replace(/\\/g, '/'))).toContain(
+        'app.css',
+      );
+    } finally {
+      rmSync(bRepoDir, { recursive: true, force: true });
+    }
   });
 });

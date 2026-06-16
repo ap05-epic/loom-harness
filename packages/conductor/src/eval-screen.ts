@@ -4,14 +4,18 @@ import {
   diffForms,
   diffStyles,
   evaluateVisual,
+  findCopiedAssets,
   type A11yFinding,
   type A11yViolation,
+  type AssetDigest,
+  type CopiedAsset,
   type DomFinding,
   type FunctionalFinding,
   type StyleFinding,
 } from '@loom/evaluator';
 import type { DomSnapshot, Viewport } from '@loom/browser';
 import { extractForms } from '@loom/surveyor';
+import { scanAssets } from './assets.js';
 import { serveDir, type StaticServer } from './serve.js';
 
 type Capture = (input: { url: string; viewport: Viewport }) => Promise<Buffer>;
@@ -27,6 +31,8 @@ export type ScreenEval = {
   functionalFindings: FunctionalFinding[];
   /** Accessibility regressions A→B (empty when the a11y seam isn't supplied). */
   a11yFindings: A11yFinding[];
+  /** Rebuild assets copied verbatim from legacy (empty when no legacy digests are supplied). */
+  copiedAssets: CopiedAsset[];
   passed: boolean;
   scorecard: unknown;
 };
@@ -48,6 +54,8 @@ export type EvaluateScreenArgs = {
   serve?: (dir: string) => Promise<StaticServer>;
   /** Optional accessibility seam (axe). When supplied, A-vs-B a11y is a gate. */
   a11yCapture?: A11yCapture;
+  /** Legacy source asset digests. When supplied, copied-asset detection is a gate (anti-cheat). */
+  legacyAssets?: AssetDigest[];
 };
 
 /**
@@ -78,19 +86,32 @@ export async function evaluateScreen(args: EvaluateScreenArgs): Promise<ScreenEv
       const a11yA = await args.a11yCapture({ url: args.legacyUrl, viewport: args.viewport });
       a11yFindings = diffA11y(a11yA, a11yB);
     }
+    // Anti-cheat gate (optional): no rebuild file may be byte-identical to a legacy source asset.
+    const copiedAssets = args.legacyAssets
+      ? findCopiedAssets(args.legacyAssets, scanAssets(args.bRepoDir))
+      : [];
     return {
       diffPercent: visual.verdict.worst.diffPercent,
       findings: structural.findings,
       styleFindings: style.findings,
       functionalFindings: functional,
       a11yFindings,
+      copiedAssets,
       passed:
         visual.verdict.passed &&
         structural.matched &&
         style.matched &&
         functional.length === 0 &&
-        a11yFindings.length === 0,
-      scorecard: { visual: visual.verdict, structural, style, functional, a11y: a11yFindings },
+        a11yFindings.length === 0 &&
+        copiedAssets.length === 0,
+      scorecard: {
+        visual: visual.verdict,
+        structural,
+        style,
+        functional,
+        a11y: a11yFindings,
+        copiedAssets,
+      },
     };
   } finally {
     await server.stop();
