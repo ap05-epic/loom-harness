@@ -1,5 +1,8 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { runChecks, type DoctorCheck } from './doctor.js';
+import { dataDirCheck, gitTreeContaining, runChecks, type DoctorCheck } from './doctor.js';
 
 describe('runChecks', () => {
   test('built-in environment checks pass on a working dev machine', async () => {
@@ -25,5 +28,22 @@ describe('runChecks', () => {
     expect(results[0]?.detail).toMatch(/boom/);
     expect(results[0]?.hint).toMatch(/turning it off/);
     expect(results[1]?.ok).toBe(true);
+  });
+});
+
+describe('data-dir-outside-git check', () => {
+  test('gitTreeContaining detects inside vs outside a git repo', () => {
+    expect(gitTreeContaining(process.cwd())).not.toBeNull(); // the test runs inside the repo
+    expect(gitTreeContaining(mkdtempSync(join(tmpdir(), 'nogit-')))).toBeNull();
+  });
+
+  test('dataDirCheck fails when the data dir is inside a git clone', () => {
+    expect(() => dataDirCheck(process.cwd())!.run()).toThrow(/git clone/i);
+  });
+
+  test('dataDirCheck passes for a dir outside git, and skips when unset', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'datadir-'));
+    expect(String(dataDirCheck(tmp)!.run())).toContain('outside');
+    expect(dataDirCheck(undefined)).toBeNull();
   });
 });

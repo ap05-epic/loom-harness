@@ -1,4 +1,4 @@
-import { BUILTIN_CHECKS, runChecks, type DoctorResult } from '../../doctor.js';
+import { BUILTIN_CHECKS, dataDirCheck, runChecks, type DoctorResult } from '../../doctor.js';
 import { defineCommand } from '../../registry.js';
 import { EXIT } from '../../errors.js';
 
@@ -9,9 +9,15 @@ export const doctorCommand = defineCommand({
   group: 'lifecycle',
   describe: 'Check this environment can run the harness',
   exitCodes: ['RUNTIME'],
-  examples: ['loom doctor', 'loom doctor --json'],
+  examples: ['loom doctor', 'loom doctor --data-dir <dir> --json'],
   async run(ctx) {
-    const checks = await runChecks(BUILTIN_CHECKS);
+    // When a data dir is known, also verify it lives outside any git clone.
+    const dataDir =
+      (ctx.flags.dataDir as string | undefined) ??
+      ctx.env.LOOM_DATA_DIR ??
+      ctx.env.HARNESS_DATA_DIR;
+    const extra = dataDirCheck(dataDir);
+    const checks = await runChecks(extra ? [...BUILTIN_CHECKS, extra] : BUILTIN_CHECKS);
     const passed = checks.filter((c) => c.ok).length;
     if (passed < checks.length) ctx.requestExit(EXIT.RUNTIME);
     return { checks, passed, total: checks.length } satisfies DoctorData;

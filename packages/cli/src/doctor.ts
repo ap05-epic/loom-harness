@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { detectCopilot } from '@loom/agents';
 import { canLaunchBrowser } from '@loom/browser';
 import { openDb } from '@loom/core';
@@ -101,6 +102,35 @@ export const BUILTIN_CHECKS: DoctorCheck[] = [
     hint: 'Most developers auth via Copilot login (driver: copilot, no key). A direct BYOK key (openai driver) is the alternative.',
   },
 ];
+
+/** The git work-tree root containing `dir`, or null when `dir` isn't inside a git repo. */
+export function gitTreeContaining(dir: string): string | null {
+  if (!existsSync(dir)) return null;
+  // No shell: an array argv passes the path (which may contain spaces) intact.
+  const res = spawnSync('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8' });
+  return res.status === 0 && res.stdout.trim() ? res.stdout.trim() : null;
+}
+
+/**
+ * A context-aware check: the data dir must live OUTSIDE any git clone, so bank data (screenshots,
+ * HARs, the database) can never be accidentally committed (risk register #10). Returns null when
+ * no data dir is resolved yet (nothing to check).
+ */
+export function dataDirCheck(dataDir: string | undefined): DoctorCheck | null {
+  if (!dataDir) return null;
+  return {
+    name: 'data-dir',
+    run: () => {
+      const tree = gitTreeContaining(dataDir);
+      if (tree)
+        throw new Error(
+          `data dir is inside a git clone (${tree}) — project data could be committed`,
+        );
+      return `${dataDir} is outside any git clone`;
+    },
+    hint: 'Point --data-dir / LOOM_DATA_DIR at a path OUTSIDE any git repository — project data must never enter the repo.',
+  };
+}
 
 /** Run checks sequentially; failures never abort the remaining checks. */
 export async function runChecks(checks: DoctorCheck[] = BUILTIN_CHECKS): Promise<DoctorResult[]> {
