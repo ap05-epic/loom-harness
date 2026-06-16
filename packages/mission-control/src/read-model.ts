@@ -39,6 +39,13 @@ export type DashboardState = {
   cost: { inputTokens: number; outputTokens: number; totalDurationMs: number; spans: number };
   /** Token spend broken down by model — the cost view's "where did it go". */
   costByModel: Array<{ model: string; tokens: number; attempts: number }>;
+  /** Eval analytics: pass rate + the failure-reason Pareto (which layer fails most). */
+  evalAnalytics: {
+    evaluated: number;
+    passed: number;
+    passRate: number;
+    failureReasons: Array<{ reason: string; count: number }>;
+  };
   recent: Array<{ id: number; ts: string; type: string; wpId: string | null }>;
 };
 
@@ -67,23 +74,45 @@ export function dashboardState(
       questions: [],
       cost: { inputTokens: 0, outputTokens: 0, totalDurationMs: 0, spans: 0 },
       costByModel: [],
+      evalAnalytics: { evaluated: 0, passed: 0, passRate: 0, failureReasons: [] },
       recent: [],
     };
   }
 
   const wps = tasks.listWorkPackages(run.id);
-  const screens = wps.map((w) => {
-    const best = tasks.bestEval(w.id);
-    return {
-      wpId: w.id,
-      screenKey: w.screenKey,
-      state: w.state,
-      diffPercent: best?.visualPct ?? null,
-      attempts: tasks.listAttempts(w.id).length,
-    };
-  });
+  // Read each WP's attempts + best eval once; reuse for screens, Live Now, and eval analytics.
+  const attemptsByWp = new Map(wps.map((w) => [w.id, tasks.listAttempts(w.id)]));
+  const bestByWp = new Map(wps.map((w) => [w.id, tasks.bestEval(w.id)]));
+  const screens = wps.map((w) => ({
+    wpId: w.id,
+    screenKey: w.screenKey,
+    state: w.state,
+    diffPercent: bestByWp.get(w.id)?.visualPct ?? null,
+    attempts: attemptsByWp.get(w.id)!.length,
+  }));
   const counts: Record<string, number> = {};
   for (const s of screens) counts[s.state] = (counts[s.state] ?? 0) + 1;
+
+  // Eval analytics: pass rate over evaluated screens + a Pareto of why attempts fail.
+  const evaluated = wps.filter((w) => bestByWp.get(w.id)).length;
+  const passed = wps.filter((w) => bestByWp.get(w.id)?.passed).length;
+  const reasonCounts = new Map<string, number>();
+  for (const w of wps) {
+    for (const a of attemptsByWp.get(w.id)!) {
+      if (a.status === 'failed' || a.status === 'guard_tripped') {
+        const cat = failureCategory(a.failureReason);
+        reasonCounts.set(cat, (reasonCounts.get(cat) ?? 0) + 1);
+      }
+    }
+  }
+  const evalAnalytics = {
+    evaluated,
+    passed,
+    passRate: evaluated ? passed / evaluated : 0,
+    failureReasons: [...reasonCounts.entries()]
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((a, b) => b.count - a.count),
+  };
 
   const gates = new GateStore(db)
     .list({ status: 'open' })
@@ -111,7 +140,7 @@ export function dashboardState(
         wpId: w.id,
         screenKey: w.screenKey,
         state: w.state,
-        attempt: tasks.listAttempts(w.id).length,
+        attempt: attemptsByWp.get(w.id)!.length,
         lastEvent: le?.type ?? null,
         lastEventTs: le?.ts ?? null,
       };
@@ -140,6 +169,19 @@ export function dashboardState(
       spans: agg.spans,
     },
     costByModel,
+    evalAnalytics,
     recent,
   };
+}
+
+/** Bucket a free-text attempt failure reason into a Pareto category. */
+function failureCategory(reason: string | null): string {
+  const r = (reason ?? '').toLowerCase();
+  if (!r) return 'unknown';
+  if (r.includes('visual')) return 'visual diff';
+  if (r.includes('structural')) return 'structural';
+  if (r.includes('style')) return 'computed-style';
+  if (r.includes('guard')) return 'guard tripped';
+  if (r.includes('budget') || r.includes('token')) return 'budget';
+  return 'other';
 }

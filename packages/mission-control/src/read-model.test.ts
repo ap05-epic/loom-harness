@@ -41,6 +41,13 @@ function seed(): string {
   tasks.setWorkPackageState(passed.id, 'passed');
   const att = tasks.createAttempt({ wpId: passed.id, role: 'builder', model: 'gpt-5.4', pid: 1 });
   tasks.finishAttempt(att.id, { status: 'passed', inputTokens: 800, outputTokens: 200 });
+  tasks.recordEval({
+    wpId: passed.id,
+    attemptId: att.id,
+    scorecard: {},
+    visualPct: 0.4,
+    passed: true,
+  });
   const building = tasks.createWorkPackage({
     runId: run.id,
     title: 'list',
@@ -48,7 +55,13 @@ function seed(): string {
     spec: {},
   });
   tasks.setWorkPackageState(building.id, 'building');
-  tasks.createAttempt({ wpId: building.id, role: 'builder', model: 'gpt-5.4', pid: 2 });
+  const batt = tasks.createAttempt({
+    wpId: building.id,
+    role: 'builder',
+    model: 'gpt-5.4',
+    pid: 2,
+  });
+  tasks.finishAttempt(batt.id, { status: 'failed', failureReason: 'visual diff 3.10%' });
   new EventLog(db).append({
     type: 'attempt.started',
     runId: run.id,
@@ -99,6 +112,11 @@ describe('dashboardState', () => {
     expect(state.cost.outputTokens).toBe(12);
     // cost-by-model comes from the attempt rollup (gpt-5.4: 800+200 tokens over 2 attempts)
     expect(state.costByModel).toEqual([{ model: 'gpt-5.4', tokens: 1000, attempts: 2 }]);
+    // eval analytics: 1 evaluated screen passed; the failed attempt categorizes as "visual diff"
+    expect(state.evalAnalytics.evaluated).toBe(1);
+    expect(state.evalAnalytics.passed).toBe(1);
+    expect(state.evalAnalytics.passRate).toBe(1);
+    expect(state.evalAnalytics.failureReasons).toEqual([{ reason: 'visual diff', count: 1 }]);
     expect(state.recent.map((e) => e.type)).toContain('wp.passed');
   });
 

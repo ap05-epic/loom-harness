@@ -159,6 +159,7 @@ a { color: var(--info); }
   <section class="wide"><h2>Pipeline <span class="count" id="c-screens">0</span></h2>
     <div id="tally" class="tally"></div><div id="screens"></div></section>
   <section><h2>Cost</h2><div id="cost" class="cost"></div></section>
+  <section><h2>Eval analytics</h2><div id="evals"></div></section>
   <section class="wide"><h2>Inbox &mdash; gates &amp; questions <span class="count" id="c-inbox">0</span></h2>
     <div id="inbox"></div></section>
   <section><h2>Recent</h2><div id="feed" class="feed"></div></section>
@@ -224,6 +225,14 @@ function renderState(s) {
     + (s.costByModel || []).map((m) =>
         '<div class="row" style="font-size:12px"><span class="grow el">' + h(m.model)
         + '</span><span class="muted">' + m.tokens.toLocaleString() + ' \\u00b7 ' + m.attempts + ' att</span></div>').join('');
+  const ev = s.evalAnalytics || { evaluated: 0, passed: 0, passRate: 0, failureReasons: [] };
+  $('evals').innerHTML = '<div class="cost"><b>' + Math.round((ev.passRate || 0) * 100) + '%</b>'
+    + '<span class="sub"> pass rate \\u00b7 ' + ev.passed + '/' + ev.evaluated + ' screens</span></div>'
+    + (ev.failureReasons && ev.failureReasons.length
+        ? '<div class="cat">why attempts fail</div>' + ev.failureReasons.map((f) =>
+            '<div class="row" style="font-size:12px"><span class="grow el fail">' + h(f.reason)
+            + '</span><span class="muted">' + f.count + '</span></div>').join('')
+        : '<div class="muted" style="margin-top:6px">no failed attempts</div>');
   const gates = (s.gates || []).map((g) =>
     '<div class="gate"><div class="row" style="border:0;padding:0">' + pill(g.type, 'gate' === g.type ? 'thread' : 'thread')
     + '<span class="grow ellip muted">' + h(JSON.stringify(g.payload)) + '</span></div>'
