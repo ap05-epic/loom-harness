@@ -397,6 +397,7 @@ export async function runPipeline(options: RunPipelineOptions): Promise<RunPipel
           maxTokensPerWp: options.shift?.maxTokensPerWp,
           buildGuards: options.buildGuards,
           now: options.now,
+          notify,
         });
         cumulativeTokens += outcome.tokensUsed;
         consecutiveFailures = outcome.passed ? 0 : consecutiveFailures + 1;
@@ -551,6 +552,8 @@ type ProcessArgs = {
   maxTokensPerWp?: number;
   buildGuards?: Partial<GuardConfig>;
   now?: () => number;
+  /** Push a Teams/Slack ping to the human (best-effort; a no-op without a webhook URL). */
+  notify: (kind: string, text: string) => Promise<void>;
 };
 
 /** The result of one screen's BUILD→EVAL→FIX loop — for the shift accounting. */
@@ -753,6 +756,11 @@ async function processWorkPackage(args: ProcessArgs): Promise<WpOutcome> {
         type: 'ship',
         payload: { screenKey: screen.key, diffPercent },
       });
+      // Push the ship gate to the human, so they're pinged even when not watching the dashboard.
+      await args.notify(
+        'gate_opened',
+        `Loom: "${screen.key}" passed parity (visual diff ${diffPercent.toFixed(2)}%) — approve its ship gate.`,
+      );
       // REFLECT — best-effort: distil reusable skills + facts. A reflection failure must
       // never un-pass a shipped screen, so it's wrapped and only logged.
       if (args.reflectOnPass) {
@@ -840,6 +848,12 @@ async function processWorkPackage(args: ProcessArgs): Promise<WpOutcome> {
         .map((w) => w.body),
     },
   });
+  // Push the blocked screen's question to the human (best-effort) so it's not missed off-dashboard.
+  await args.notify(
+    'question_filed',
+    `Loom needs you: "${screen.key}" is blocked after ${args.maxAttempts} attempt(s) ` +
+      `(best diff ${lastDiff === null ? 'n/a' : `${lastDiff.toFixed(2)}%`}). How should it proceed?`,
+  );
   recordSkillOutcome(false);
   return { tokensUsed, passed: false };
 }

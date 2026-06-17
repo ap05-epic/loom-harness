@@ -702,6 +702,49 @@ test('pings the webhook on a stop-the-line shift stop (env-gated, best-effort)',
   }
 });
 
+test('pings the webhook when a screen blocks (a question for the human is filed)', async () => {
+  const db = harnessDb();
+  const { gateway, mock } = await mockGateway();
+  mock.enqueueText('Done.', { repeat: true });
+
+  const received: Array<{ kind?: string; text?: string }> = [];
+  const srv = createServer((req, res) => {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      received.push(JSON.parse(body || '{}'));
+      res.writeHead(200);
+      res.end('ok');
+    });
+  });
+  await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r));
+  const webhookUrl = `http://127.0.0.1:${(srv.address() as AddressInfo).port}/hook`;
+
+  try {
+    const result = await runPipeline({
+      db,
+      gateway,
+      model: 'mock',
+      project: 'fixture',
+      strutsConfigPath: STRUTS_CONFIG,
+      atlasPath: join(tmp(), 'codeatlas.db'),
+      legacyBaseUrl: 'http://legacy.test/',
+      bRepoRoot: tmp(),
+      screens: ['login'],
+      maxAttempts: 1,
+      capture: fakeCapture(solidPng([0, 0, 0]), solidPng([255, 255, 255])), // never matches → blocks
+      domCapture: fakeDomCapture(matchingDom, matchingDom),
+      webhookUrl,
+    });
+    expect(result.screens[0].state).toBe('blocked');
+    // the blocked screen files a question AND pushes it to the human (Teams/Slack)
+    expect(received.some((p) => p.kind === 'question_filed')).toBe(true);
+    expect(received.find((p) => p.kind === 'question_filed')!.text).toMatch(/login/);
+  } finally {
+    await new Promise<void>((r) => srv.close(() => r()));
+  }
+});
+
 test('shift token budget stops the run before the next screen', async () => {
   const db = harnessDb();
   const { gateway, mock } = await mockGateway();
