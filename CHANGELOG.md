@@ -6,6 +6,12 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.6 — 2026-06-17
+
+`loom explore` now fails clearly when your saved session has expired, instead of trying to log into the SSO provider.
+
+- **Stale-session guard.** When the app redirects to a sign-in provider (`login.microsoftonline.com`, an `oauth2-proxy`, Okta, etc.) — which is what an expired `app.cookiesPath` session looks like — `exploreApp` now stops with _"saved session expired — refresh your cookies (app.cookiesPath) and run again"_ rather than letting the model type app credentials into the Microsoft login and crash.
+
 ## v1.3.5 — 2026-06-17
 
 `loom explore` can now ride an SSO session you already maintain — and stays working when it expires by just refreshing one file.

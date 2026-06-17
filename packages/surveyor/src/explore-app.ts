@@ -9,6 +9,27 @@ import {
   type ExploreStep,
 } from './explorer.js';
 
+/** Known SSO / identity-provider hosts — a redirect here means our saved session has expired. */
+const SSO_HOSTS =
+  /login\.microsoftonline\.com|login\.live\.com|login\.windows\.net|\.okta\.com|accounts\.google\.com|auth0\.com|oauth2-proxy/i;
+
+/** True if the URL is on a sign-in provider — lets a stale-cookie redirect be caught and explained. */
+export function isAuthProvider(url: string): boolean {
+  try {
+    return SSO_HOSTS.test(new URL(url).host);
+  } catch {
+    return false;
+  }
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 export type ExploreAppOptions = {
   startUrl: string;
   /** Picks the next control to click (an LLM-backed chooser in production); default heuristic. */
@@ -84,6 +105,17 @@ export async function exploreApp(options: ExploreAppOptions): Promise<ExploreRes
         return snapshot();
       },
     };
+
+    // Stale-session guard: if loading the app bounces us to an SSO provider, the saved cookies have
+    // expired — stop cleanly instead of letting the model try to log into Microsoft with app creds.
+    await session.navigate(options.startUrl);
+    const landed = session.currentUrl();
+    if (isAuthProvider(landed)) {
+      throw new Error(
+        `saved session expired — the app redirected to a sign-in provider (${hostOf(landed)}). ` +
+          'Refresh your cookies (app.cookiesPath) and run again.',
+      );
+    }
 
     return await explore({
       driver,

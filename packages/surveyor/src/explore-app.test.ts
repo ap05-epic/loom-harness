@@ -1,7 +1,20 @@
 import { canLaunchBrowser, type DomSnapshot } from '@loom/browser';
 import { describe, expect, test } from 'vitest';
-import { exploreApp } from './explore-app.js';
+import { exploreApp, isAuthProvider } from './explore-app.js';
 import type { Chooser } from './explorer.js';
+
+describe('isAuthProvider', () => {
+  test('flags a sign-in redirect, not the app itself', () => {
+    expect(isAuthProvider('https://login.microsoftonline.com/abc/oauth2/v2.0/authorize')).toBe(
+      true,
+    );
+    expect(isAuthProvider('https://oauth2-proxy.devpod-wa01.example.net/oauth2/start')).toBe(true);
+    expect(
+      isAuthProvider('https://green-hedgehog.devpod-wa01.example.net/proxy/8080/BAA/jsp/login.jsp'),
+    ).toBe(false);
+    expect(isAuthProvider('not a url')).toBe(false);
+  });
+});
 
 // The live explorer needs a launchable browser; self-skips where none is available.
 const liveOk = await canLaunchBrowser();
