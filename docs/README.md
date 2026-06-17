@@ -9,6 +9,7 @@ Start here. The docs are organized by intent:
 - [Concepts](concepts/) — the "why and how" behind each idea:
   - [How you interact with Loom](concepts/interaction-model.md) — command-driven + human-in-the-loop; the agentic `chat`; where the model fits
   - [The agentic chat & permissions](concepts/agentic-chat.md) — the chat loop, the toolset, and the `ask → auto → allow-all` permission modes
+  - [Closed-loop fleet](concepts/closed-loop-fleet.md) — the architecture in one frame: a parallel agent fleet + feedback loops, with the loop closed by an _independent_ judge (not self-evaluation)
   - [Profiles](concepts/profiles.md) — how a project is described to the harness
   - [LLM gateway & drivers](concepts/llm-gateway-and-drivers.md) — Model B, the provider abstraction
   - [Context packing](concepts/context-packing.md) — model-adaptive budgeting (128K–1M)

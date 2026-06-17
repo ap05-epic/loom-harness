@@ -41,6 +41,8 @@
 
 **Where the LLM fits:** the model is _one swappable component_ behind the `LlmGateway` seam. It builds screens, fixes them, writes recovered docs, and drives the chat — but it never decides whether a rebuild passed. Loom is currently **OpenAI/Azure-only** (the only active driver path; see [§6](#6-the-agent-layer)).
 
+**The shape of it:** parallel agents (a fleet) steered by feedback loops, with the loop closed by an _independent_ judge rather than self-evaluation — Loom is a [closed-loop fleet](concepts/closed-loop-fleet.md).
+
 ---
 
 ## 2. The one screen, end to end
@@ -354,9 +356,10 @@ The full command reference (46 commands across `lifecycle / pipeline / observe /
 
 `loom chat` is the conversational way to drive the harness — _talk to it, it acts, it asks, you answer inline_. It is **the existing `AgentRunner` plus a harness-driving toolset and the permission gate**, not a new agent.
 
-- **`chat-tools.ts`** — nine tools bound into the session `{ db, gateway, profile, version }`, each a `ToolDef` + a `risk` tag:
-  - **read (run free):** `status`, `list_gates`, `list_questions`
+- **`chat-tools.ts`** — eleven tools bound into the session `{ db, gateway, profile, version }`, each a `ToolDef` + a `risk` tag:
+  - **read (run free):** `status`, `list_gates`, `list_questions`, `show_profile`
   - **inbox (gated, `expensive`):** `approve_gate`, `reject_gate`, `answer_question`
+  - **setup (gated, `expensive`):** `configure_project` — writes/patches `loom.config.yaml` from fields the agent gathered _in conversation_ (then reloads the session so the next `map`/`run` sees it), so you can describe your app and it sets the project up. Never writes secrets (those stay in `.env`).
   - **pipeline (gated, `expensive`):** `map`, `run`, `resume` (these resolve the pipeline config _lazily_ via `resolveCfg`, so on a minimal profile they return a friendly "Can't run yet — your profile needs `source.strutsConfig` + `app.baseUrl`" instead of crashing the chat)
 - **`chat-agent.ts`** — `agenticChatTurn(gateway, opts)` wraps each tool's `execute` in `checkPermission`, runs the `AgentRunner` (guards: 16 iterations, 400K tokens, 30-min wall-clock), and fires an `onTool` callback around each execute so the view can show live `✓/✗` lines.
 - **`chat.ts` + `ui/chat-view.ts`** — the REPL: banner, braille spinner, markdown-rendered replies, styled approval prompts (`• allow run (expensive)? [y/N · a=always · !=all]`), and slash commands `/allow-all`, `/ask`, `/auto`, `/deny`, `/allow <tool>`. Flags: `--permission-mode`, `--allow-all` (alias `--yolo`).
@@ -374,7 +377,7 @@ Every action emits a structured **event** (`events` table) with a correlation ch
 - **`loom watch`** — a hand-rolled, SSH-friendly terminal dashboard tailing the event log (Live Now, budget burn, gates/questions waiting, a stale-heartbeat "is it wedged?" flag).
 - **`loom logs`** — tail the raw event stream (`--run`/`--wp` filters).
 - **`loom report`** — a markdown run report (per-screen state + parity evidence, coverage, spend, open inbox).
-- **Mission Control** (`loom ui`, `@loom/mission-control`) — a local web dashboard, **read-only over `loom.db`** except that it can write **gate decisions and question answers** back. `read-model.ts` builds the dashboard state (current run, screen tally, token spend, coverage, open inbox); `inventory.ts` lists tools/MCPs/skills; `server.ts` serves `GET /api/state|projects|inventory` + the write-back routes; the project `<select>` switches scope via `?project=`. The CLI remains the sole writer of the active-project pointer (single-writer-safe).
+- **Mission Control** (`loom ui`, `@loom/mission-control`) — a local web dashboard, **read-only over `loom.db`** except that it can write **gate decisions and question answers** back. `read-model.ts` builds the dashboard state — a **kanban Board** (screens grouped by state), a **live fleet** of worker cards (screen · phase · elapsed · tokens), the screen tally, token spend, coverage, and the open inbox; `inventory.ts` lists tools/MCPs/skills; `server.ts` serves `GET /api/state|projects|inventory` + the write-back routes; the project `<select>` switches scope via `?project=`. The CLI remains the sole writer of the active-project pointer (single-writer-safe).
 - **Webhook** (`LOOM_WEBHOOK_URL`) — Teams/Slack-compatible JSON POSTs for stop-the-line and shift-done.
 
 Because events are append-only and artifacts are content-addressed, **any past attempt is fully reconstructable** — "what happened at 3am" is a query, not a mystery. Detail: [observability.md](concepts/observability.md).
@@ -430,7 +433,7 @@ Be honest about these — they're the questions a sharp reviewer will ask.
 - **Fix feedback covers visual + structural + style, not functional.** `fixFeedback` lists pixel/DOM/style diffs; a functional-only failure currently retries without naming the dropped field in the prompt. (The gate still _blocks_ it — it just isn't surfaced in the retry hint yet.)
 - **The default pipeline doesn't supply the a11y/anti-cheat seams.** They're tested and callable, but `processWorkPackage` calls `evaluateScreen` without `a11yCapture`/`legacyAssets`, so those two gates are off unless wired by a caller.
 - **The judge panel isn't auto-wired into the pipeline.** `judgePanel` powers `loom atlas verify-docs` today; it isn't yet consulted mid-run for ambiguous parity.
-- **Mission Control is a server + read-model, with a skeleton SPA.** The API and read model are complete and tested; the rich front-end is intentionally minimal.
+- **Mission Control is a deliberately framework-free single-page dashboard.** It renders a live kanban board, a worker fleet view, cost, eval analytics, and the gate/question inbox via 2-second polling (no SSE, no build step — pod-friendly). Intentionally not a heavy SPA.
 - **The Copilot driver is dead code on purpose.** Kept for reference; never constructed at runtime.
 - **No live model run has happened here.** Everything is verified against the **mock LLM** (`@loom/test-kit`) and the fixture; the real Azure endpoint round-trip is proven separately (HTTP 200) but the full pipeline against a live model is the pod-side frontier.
 - **tree-sitter Java action-class parsing is minimal.** The fixture has no Java action source, so deep Java parsing is deferred; the XML/JSP/Tiles scanners are the recovered-knowledge core.

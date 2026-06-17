@@ -143,7 +143,7 @@ pnpm format      # prettier check
 
 ## Status
 
-**v1.0.0** — the `--json` envelope and the exit-code table are frozen as stable (see the [CHANGELOG](CHANGELOG.md)). The foundations, the full MAP → CRAWL → PLAN → BUILD → EVAL → FIX pipeline, the deterministic evaluator, skills/memory recall, shift-mode safeguards, the typed-tool + hook substrate, MCP, parallel workers, the agentic `loom chat`, and Mission Control are all in place and tested (700+ tests, CI green on Linux + Windows). The live frontier is onboarding the first real application end-to-end on a pod.
+**v1.2.0** — the `--json` envelope and the exit-code table are frozen as stable (see the [CHANGELOG](CHANGELOG.md)). The foundations, the full MAP → CRAWL → PLAN → BUILD → EVAL → FIX pipeline, the deterministic evaluator, skills/memory recall, shift-mode safeguards, the typed-tool + hook substrate, MCP, parallel workers, the agentic `loom chat` (now with conversational project setup), and Mission Control (a live kanban board + worker fleet view + the gate/question inbox) are all in place and tested (770+ tests, CI green on Linux + Windows). The live frontier is onboarding the first real application end-to-end on a pod.
 
 New to the codebase? Read the [internals deep-dive](docs/internals.md) — the whole system, end to end, in one document.
 

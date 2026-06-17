@@ -6,6 +6,18 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.2.0 — 2026-06-17
+
+The "easy mode" cockpit — Loom becomes more autonomous, conversational, and observable, built on data the engine already records. Highlights since v1.1.0:
+
+- **Mission Control: a kanban board + live fleet view (R7.1).** The dashboard now renders a **Board** (screens grouped Queued / In progress / Needs you / Done / Failed) and turns Live Now into a **fleet of worker cards** — each running sub-agent with its screen · phase · elapsed · tokens. Built over the existing read model: the `Attempt` type now surfaces `startedAt`/`finishedAt`, and `dashboardState().liveNow` carries each worker's start time + cumulative spend. No schema change.
+- **Conversational project setup (R7.2).** New `saveProfile()` (serialize a profile to `loom.config.yaml` via the `yaml` package, secrets excluded) plus two chat tools — `show_profile` (what's set, what's missing) and `configure_project` (write/patch the profile from values gathered _in conversation_, then reload the session). The chat system prompt now interviews you for the legacy source path + app URL and sets the project up, so you can describe your app and go straight to `map` → `run`. The interview is the chat itself — no separate wizard.
+- **Proactive human-in-the-loop (R7.3).** When a screen blocks (a question is filed) or a ship gate opens, `runPipeline` fires the existing `notifyWebhook` (`question_filed` / `gate_opened`) so a configured `LOOM_WEBHOOK_URL` pings you on Teams/Slack even when you're not watching the dashboard — best-effort, env-gated.
+- **Pod-setup fix (R7.0).** `scripts/setup-pod.sh` is now OpenAI-only: dropped the Copilot provider path that crashed `loom init` under `set -e` (Loom rejects `--driver copilot`). It prompts only for the base URL + key.
+- **Docs.** A new [closed-loop fleet](docs/concepts/closed-loop-fleet.md) concept page frames Loom's architecture — a parallel agent fleet + feedback loops, with the loop closed by an _independent_ judge rather than self-evaluation; the internals deep-dive and README reflect the new cockpit.
+
+The deterministic 7-layer judge still gates every rebuild, gates are never auto-approved, and protected paths are unchanged — the cockpit/autonomy layer never weakens the safety model.
+
 ## v1.1.0 — 2026-06-17
 
 Loom becomes a harness you can **talk to**, with a real approval system and an OpenAI/Azure-only model path. Highlights since v1.0.0:
