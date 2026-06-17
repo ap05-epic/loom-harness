@@ -31,3 +31,15 @@ So the `LlmGateway` now has **two transports**, and the loop (Model B) is unchan
 - **`OpenAiDriver` (alternative).** The direct BYOK endpoint, for environments that _do_ have a key (e.g. the pod's provider env). Locked to the configured model.
 
 The harness tells the operator which is active (`loom models list` / `doctor`): **Copilot login ⇒ you choose the model; Azure/OpenAI key ⇒ locked to the configured model.** Both go through the same loop, guards, and evaluator. (An Anthropic driver remains for reuse elsewhere.) The agentic "delegate the whole build to `copilot --allow-all-tools`" path remains rejected for the reasons above — Copilot is a completion transport here, not the agent.
+
+## Update (2026-06-16) — Copilot suppressed; OpenAI/Azure is the only active transport
+
+Superseding the 2026-06-15 update above: Loom is now **OpenAI/Azure-only**. Two reasons, one decisive. The Copilot-login transport proved unreliable in the target pod; and — the deciding factor — **only the OpenAI and Anthropic drivers surface _tool calls_; the Copilot CLI does not.** The agent loop (and therefore the agentic `loom chat`) is tool-driven, so it can't run on a transport that won't return tool calls. OpenAI-only and the agentic chat are the same bet.
+
+The `CopilotDriver` code stays in the tree (`packages/agents/src/drivers/copilot-driver.ts`) but is no longer wired anywhere at runtime:
+
+- `gatewayFromProfile` (`packages/cli/src/pipeline-config.ts`) constructs only `OpenAiDriver` / `AnthropicDriver`; a `driver: copilot` profile gets a clear CONFIG error pointing at the key path.
+- `loom init` defaults to `driver: openai` (the Copilot auto-detect is gone).
+- The profile schema still accepts `'copilot'` in the enum so old configs parse — it errors at gateway-build with the switch hint, never at parse time.
+
+**Model B (the harness owns the loop) is unchanged.** The active path is the **direct OpenAI/Azure key**: `LLM_BASE_URL` (ending in `/openai/v1`) + `LLM_API_KEY` — the path verified against the Azure endpoint (HTTP 200). `OpenAiDriver` sends both `Authorization: Bearer` and `api-key` headers, so Azure's `/openai/v1` surface authenticates with no extra config. See [docs/research/adopted-patterns.md](../research/adopted-patterns.md) for the permission/approval patterns this unlocked.

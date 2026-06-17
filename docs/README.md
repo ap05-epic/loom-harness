@@ -4,6 +4,7 @@ Start here. The docs are organized by intent:
 
 ## Understand it
 
+- [**Internals deep-dive**](internals.md) — the whole system end to end in one document: the mental model, every package, the three data stores, the pipeline, the agent loop, permissions, the evaluator, and an FAQ. Start here if you're maintaining Loom.
 - [Architecture](architecture.md) — the system at a glance: the pipeline, the subsystems, the data stores, how a screen flows from legacy to a verified rebuild.
 - [Concepts](concepts/) — the "why and how" behind each idea:
   - [How you interact with Loom](concepts/interaction-model.md) — command-driven + human-in-the-loop; the agentic `chat`; where the model fits

@@ -4,6 +4,18 @@ How to take a fresh, undocumented legacy app from zero to mass-produced rebuilds
 
 > Prereqs: the pod is set up per the [POD-RUNBOOK](POD-RUNBOOK.md) (`loom doctor` all-green, including `browser`, `proxy`, and `data-dir`). All project data lives in `LOOM_DATA_DIR`, **outside** any clone.
 
+The whole playbook at a glance:
+
+```mermaid
+flowchart TD
+  R["0–1 · Verify backend + profile<br/>+ load conversion skills"] --> M["2 · MAP<br/>recover the documentation"]
+  M --> C["3 · CRAWL<br/>capture the prod baseline"]
+  C --> P["4 · PLAN<br/>work packages + plan gate"]
+  P --> PI["5 · Pilot<br/>5 representative screens"]
+  PI --> MP["6 · Mass production<br/>the unattended shift"]
+  MP --> D["7 · Completion<br/>100% coverage ledger + report"]
+```
+
 ## 0. Verify the model backend (do this first)
 
 Prove the backend end-to-end before any autonomous shift relies on it — the one gate worth clearing early:

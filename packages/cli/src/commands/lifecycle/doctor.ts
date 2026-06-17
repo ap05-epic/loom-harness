@@ -7,7 +7,7 @@ type DoctorData = { checks: DoctorResult[]; passed: number; total: number };
 export const doctorCommand = defineCommand({
   name: 'doctor',
   group: 'lifecycle',
-  describe: 'Check this environment can run the harness',
+  describe: 'Check this environment can run Loom',
   exitCodes: ['RUNTIME'],
   examples: ['loom doctor', 'loom doctor --data-dir <dir> --json'],
   async run(ctx) {

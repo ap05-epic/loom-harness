@@ -59,10 +59,12 @@ export type EvaluateScreenArgs = {
 };
 
 /**
- * Evaluate one rebuilt screen against its legacy baseline across all three deterministic gates
- * (visual pixel diff, structural DOM, computed-style) and report the combined verdict. Shared by
- * the per-attempt BUILD→EVAL loop and the cross-screen integration eval, so there is exactly one
- * definition of "does this screen pass parity".
+ * Evaluate one rebuilt screen against its legacy baseline across the deterministic parity gates and
+ * report the combined verdict. Always on: visual pixel diff, structural DOM, computed-style, and the
+ * functional/validation gate (legacy form fields + rules must survive). Two more become gates when
+ * their seam is supplied: accessibility (`a11yCapture`, axe) and anti-cheat (`legacyAssets`,
+ * copied-asset detection). Shared by the per-attempt BUILD→EVAL loop and the cross-screen
+ * integration eval, so there is exactly one definition of "does this screen pass parity".
  */
 export async function evaluateScreen(args: EvaluateScreenArgs): Promise<ScreenEval> {
   const serve = args.serve ?? serveDir;

@@ -8,18 +8,23 @@ If an LLM judged parity — especially the model that did the building — it co
 
 ## The layers
 
-The evaluator grows into seven deterministic layers; each emits machine-readable verdicts the fixer consumes. Built today:
+The evaluator is a stack of deterministic checks; each emits machine-readable verdicts the fixer consumes. A screen passes only when **every active gate** passes — the verdict is an AND, so one missing dropdown option fails the screen even at 0% pixel diff. `evaluateScreen` (in the conductor) is the single definition of "does this screen pass parity," shared by the per-attempt loop and the cross-screen integration eval.
 
-1. **Visual** — `diffImages` does a masked pixel diff per state × viewport (× interaction state as it deepens); `scoreVisual` passes only if every capture is within its threshold. Built and mutation-tested.
-2. **Structural / DOM** — `diffDom` does a normalized tree compare (tags, roles, semantic attributes like input `name`/`type`, link targets, labels, `<select>` option lists) and reports each difference with a readable path + reason code. This catches what a pixel gate can't — a missing dropdown option, a text→password swap, a relabelled control, a dropped field. The browser's `captureDom` extracts the normalized tree; the conductor runs it as a **second gate** alongside visual (a pixel-perfect rebuild that drops an option is still blocked). Calibrated both directions.
-3. **Computed-style** — `diffStyles` compares per-element style digests (typography, colour, borders, spacing — not layout dimensions) captured by `captureDom`. Catches sub-threshold "death by 1px" drift a pixel gate is too coarse to see, and runs as a **third gate** in the conductor. Calibrated both directions.
+**Always on** — the conductor runs these four on every screen:
 
-Landing as the evaluator deepens:
+1. **Visual** — `diffImages` does a masked pixel diff per state × viewport (× interaction state as it deepens); `scoreVisual` passes only if every capture is within its threshold. Mutation-tested both directions.
+2. **Structural / DOM** — `diffDom` does a normalized tree compare (tags, roles, semantic attributes like input `name`/`type`, link targets, labels, `<select>` option lists) and reports each difference with a readable path + reason code. Catches what a pixel gate can't — a missing dropdown option, a text→password swap, a relabelled control, a dropped field. A pixel-perfect rebuild that drops an option is still blocked. Calibrated both directions.
+3. **Computed-style** — `diffStyles` compares per-element style digests (typography, colour, borders, spacing — not layout dimensions) captured by `captureDom`. Catches sub-threshold "death by 1px" drift a pixel gate is too coarse to see. Calibrated both directions.
+4. **Functional / validation** — `diffForms` compares every legacy form field and validation rule (required, maxlength, pattern, option lists, input types) against the rebuild; any field or rule the rebuild dropped or changed fails the gate.
 
-4. **Behavioural replay** — recorded legacy flows re-run on the rebuild; same inputs → equivalent requests and end-state; includes negative cases (every validation rule, boundary/invalid inputs, error messages per field).
-5. **Functional micro-checks** — auto-generated per-form matrices (required, validation, maxlength, tab order); sort/filter/pagination for tables.
-6. **Accessibility & hygiene** — axe-core, accessibility-tree compare, zero console errors.
-7. **Anti-cheat** — real interactive controls present (no screenshot/base64 walls), no copied legacy assets.
+**Enabled by a seam** — built and wired, but off unless you supply the capture:
+
+5. **Accessibility** — `diffA11y` compares axe-core violations A-vs-B. Supply an `a11yCapture` (axe in the browser) and a rebuild that is _less_ accessible than the legacy screen fails.
+6. **Anti-cheat** — `findCopiedAssets` scans the rebuilt bundle for files byte-identical to legacy source assets. Supply the legacy `legacyAssets` digests and a smuggled-in original fails the gate. (The structural gate already defeats the screenshot-embed cheat, since a screenshot has none of the real controls.)
+
+**On the roadmap:**
+
+7. **Behavioural replay** — recorded legacy flows re-run on the rebuild: same inputs → equivalent requests (HAR mapping form-POST → API) and equivalent end-state, including negative cases (every validation rule fired with boundary/invalid inputs, error messages per field). This is the one originally-planned layer not yet built.
 
 ## Thresholds and human judgement
 
