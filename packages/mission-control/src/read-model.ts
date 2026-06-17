@@ -33,12 +33,16 @@ export type DashboardState = {
   }>;
   /** Screen count by state — drives the pipeline tally. */
   counts: Record<string, number>;
-  /** Workers currently active (building/evaluating/fixing) — the "Live Now" view. */
+  /** Workers currently active (building/evaluating/fixing) — the "Live Now" fleet view. */
   liveNow: Array<{
     wpId: string;
     screenKey: string | null;
     state: string;
     attempt: number;
+    /** When the current attempt began (ISO) — the UI shows elapsed-since. */
+    startedAt: string | null;
+    /** Cumulative token spend on this screen so far. */
+    tokens: number;
     lastEvent: string | null;
     lastEventTs: string | null;
   }>;
@@ -145,11 +149,15 @@ export function dashboardState(
     .filter((w) => ACTIVE.has(w.state))
     .map((w) => {
       const le = lastEventByWp.get(w.id);
+      const atts = attemptsByWp.get(w.id)!;
+      const latest = atts[atts.length - 1];
       return {
         wpId: w.id,
         screenKey: w.screenKey,
         state: w.state,
-        attempt: attemptsByWp.get(w.id)!.length,
+        attempt: atts.length,
+        startedAt: latest?.startedAt ?? null,
+        tokens: atts.reduce((sum, a) => sum + a.inputTokens + a.outputTokens, 0),
         lastEvent: le?.type ?? null,
         lastEventTs: le?.ts ?? null,
       };

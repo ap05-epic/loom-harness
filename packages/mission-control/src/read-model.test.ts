@@ -120,6 +120,16 @@ describe('dashboardState', () => {
     expect(state.recent.map((e) => e.type)).toContain('wp.passed');
   });
 
+  test('Live Now enriches each active worker with its start time + cumulative tokens', () => {
+    const runId = seed();
+    const w = dashboardState(db, runId).liveNow[0]!;
+    // startedAt = when this worker began its current attempt — drives the fleet view's "elapsed".
+    expect(typeof w.startedAt).toBe('string');
+    expect(w.startedAt!.length).toBeGreaterThan(0);
+    // tokens = cumulative spend on this screen so far (0 here: its one attempt failed pre-usage).
+    expect(w.tokens).toBe(0);
+  });
+
   test('defaults to the latest run and degrades to null when there is none', () => {
     expect(dashboardState(db).run).toBeNull();
     const runId = seed();

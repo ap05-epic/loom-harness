@@ -43,6 +43,10 @@ export type Attempt = {
   role: string;
   status: AttemptStatus;
   pid: number | null;
+  /** When this attempt began (ISO) — drives the live fleet view's "elapsed". */
+  startedAt: string;
+  /** When it finished (ISO), or null while still running. */
+  finishedAt: string | null;
   inputTokens: number;
   outputTokens: number;
   failureReason: string | null;
@@ -93,6 +97,8 @@ type AttemptRow = {
   role: string;
   status: AttemptStatus;
   pid: number | null;
+  started_at: string;
+  finished_at: string | null;
   input_tokens: number;
   output_tokens: number;
   failure_reason: string | null;
@@ -133,6 +139,8 @@ const toAttempt = (r: AttemptRow): Attempt => ({
   role: r.role,
   status: r.status,
   pid: r.pid,
+  startedAt: r.started_at,
+  finishedAt: r.finished_at,
   inputTokens: r.input_tokens,
   outputTokens: r.output_tokens,
   failureReason: r.failure_reason,

@@ -146,6 +146,22 @@ section h2 .hbar { width: 3px; height: 13px; border-radius: 2px; background: var
 .s-passed, .s-shipped { color: var(--pass); } .d-passed, .d-shipped { background: var(--pass); }
 .s-building, .s-evaluating, .s-fixing { color: var(--info); } .d-building, .d-evaluating, .d-fixing { background: var(--info); }
 .s-blocked, .s-failed, .s-needs_human { color: var(--fail); } .d-blocked, .d-failed, .d-needs_human { background: var(--fail); }
+/* kanban board */
+.board { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 880px) { .board { grid-template-columns: 1fr 1fr; } }
+.bcol { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 11px; }
+.bcolh { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; margin-bottom: 9px; display: flex; align-items: center; gap: 7px; }
+.bcount { margin-left: auto; font-variant-numeric: tabular-nums; }
+.bcard { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; margin-bottom: 6px; cursor: pointer; font-size: 12.5px; transition: border-color .12s ease; }
+.bcard:last-child { margin-bottom: 0; }
+.bcard:hover { border-color: var(--brand); }
+.bempty { color: var(--muted); font-size: 12px; padding: 4px 2px; }
+/* live fleet */
+.fleet { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 10px; }
+.fcard { background: var(--surface-2); border: 1px solid var(--border); border-left: 3px solid var(--info); border-radius: 9px; padding: 10px 12px; cursor: pointer; transition: border-color .12s ease; }
+.fcard:hover { border-color: var(--brand); }
+.fcard .fhead { display: flex; align-items: center; gap: 7px; }
+.fcard .fmeta { color: var(--muted); font-size: 11.5px; margin-top: 5px; line-height: 1.5; font-variant-numeric: tabular-nums; }
 .row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); }
 .row:first-of-type { border-top: 0; padding-top: 2px; }
 .row .name, .name { font-weight: 600; color: var(--text); }
@@ -215,6 +231,7 @@ a:hover { text-decoration: underline; }
     <nav>
       <div class="navgroup">Observe</div>
       <a class="nav" data-sec="sec-live" href="#sec-live"><svg viewBox="0 0 16 16"><path d="M1.8 8H4l1.4-4 2.2 8 1.5-6 1 4 1-2h3.1"/></svg><span class="navt">Live now</span><span class="navc" id="c-live">0</span></a>
+      <a class="nav" data-sec="sec-board" href="#sec-board"><svg viewBox="0 0 16 16"><path d="M2.5 3h3v10h-3zM6.5 3h3v6h-3zM10.5 3h3v8h-3z"/></svg><span class="navt">Board</span></a>
       <a class="nav" data-sec="sec-pipeline" href="#sec-pipeline"><svg viewBox="0 0 16 16"><path d="M3 13.2V7M8 13.2V3M13 13.2V9.4"/></svg><span class="navt">Pipeline</span><span class="navc" id="c-screens">0</span></a>
       <a class="nav" data-sec="sec-cost" href="#sec-cost"><svg viewBox="0 0 16 16"><ellipse cx="8" cy="4.6" rx="4.7" ry="1.9"/><path d="M3.3 4.6v6.8c0 1 2.1 1.9 4.7 1.9s4.7-.9 4.7-1.9V4.6M3.3 8c0 1 2.1 1.9 4.7 1.9s4.7-.9 4.7-1.9"/></svg><span class="navt">Cost</span></a>
       <a class="nav" data-sec="sec-evals" href="#sec-evals"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.7"/><path d="M5.6 8.1l1.7 1.7L10.6 6"/></svg><span class="navt">Eval analytics</span></a>
@@ -239,6 +256,7 @@ a:hover { text-decoration: underline; }
     </header>
     <main>
       <section class="wide" id="sec-live"><h2><span class="hbar"></span>Live now</h2><div id="live"></div></section>
+      <section class="wide" id="sec-board"><h2><span class="hbar"></span>Board <span class="dt">what's queued, in flight, and done</span></h2><div id="board" class="board"></div></section>
       <section class="wide" id="sec-pipeline"><h2><span class="hbar"></span>Pipeline</h2>
         <div id="tally" class="tally"></div><div id="screens"></div></section>
       <section class="wide" id="detailwrap" style="display:none"><h2><span class="hbar"></span>Work package <span id="detail-title" class="dt"></span><button class="iconbtn" id="detail-close" title="Close" aria-label="Close inspector">&times;</button></h2><div id="detail"></div></section>
@@ -314,13 +332,14 @@ function renderState(s) {
     : '\\u2014 no active run';
   const live = s.liveNow || [];
   $('c-live').textContent = live.length;
-  $('live').innerHTML = live.map((w) =>
-    '<div class="row" data-wp="' + w.wpId + '" style="cursor:pointer"><span class="dot d-' + w.state + '"></span><span class="grow el"><span class="nm">'
-    + h(w.screenKey || w.wpId) + '</span> <span class="s-' + w.state + '">' + w.state + '</span>'
-    + ' <span class="muted">attempt ' + w.attempt + '</span></span>'
-    + (w.lastEvent ? '<span class="muted" style="font-size:12px">' + h(w.lastEvent)
-        + (w.lastEventTs ? ' \\u00b7 ' + h(w.lastEventTs.slice(11, 19)) : '') + '</span>' : '') + '</div>').join('')
-    || '<span class="muted">idle \\u2014 no workers building right now</span>';
+  $('live').innerHTML = live.length ? '<div class="fleet">' + live.map((w) =>
+    '<div class="fcard" data-wp="' + w.wpId + '"><div class="fhead"><span class="dot d-' + w.state + '"></span>'
+    + '<span class="nm grow el">' + h(w.screenKey || w.wpId) + '</span><span class="s-' + w.state + '">' + w.state + '</span></div>'
+    + '<div class="fmeta">attempt ' + w.attempt + (w.startedAt ? ' \\u00b7 ' + elapsed(w.startedAt) : '')
+    + ' \\u00b7 ' + (w.tokens || 0).toLocaleString() + ' tok'
+    + (w.lastEvent ? '<br>' + h(w.lastEvent) + (w.lastEventTs ? ' \\u00b7 ' + h(w.lastEventTs.slice(11, 19)) : '') : '')
+    + '</div></div>').join('') + '</div>'
+    : '<span class="muted">idle \\u2014 no workers building right now</span>';
   $('c-screens').textContent = (s.screens || []).length;
   $('tally').innerHTML = Object.entries(s.counts || {})
     .map(([st, n]) => '<span class="s-' + st + '"><span class="dot d-' + st + '"></span>' + n + ' ' + st + '</span>').join('')
@@ -329,6 +348,7 @@ function renderState(s) {
     '<div class="row" data-wp="' + x.wpId + '" style="cursor:pointer"><span class="grow ellip">' + h(x.screenKey || x.wpId) + '</span>'
     + '<span class="s-' + x.state + '">' + x.state + '</span>'
     + (x.diffPercent != null ? '<span class="muted">' + x.diffPercent.toFixed(2) + '%</span>' : '') + '</div>').join('');
+  renderBoard(s);
   const c = s.cost || {};
   $('cost').innerHTML = '<b>' + ((c.inputTokens || 0) + (c.outputTokens || 0)).toLocaleString() + '</b> tokens'
     + '<div class="sub">' + (c.inputTokens || 0) + ' in / ' + (c.outputTokens || 0) + ' out \\u00b7 ' + (c.spans || 0) + ' spans \\u00b7 '
@@ -357,6 +377,27 @@ function renderState(s) {
   $('inbox').innerHTML = (gates + qs) || '<span class="muted">nothing waiting \\u2014 all clear</span>';
   $('feed').innerHTML = (s.recent || []).slice().reverse().map((e) =>
     '<div><time>' + h(e.ts.slice(11, 19)) + '</time> ' + h(e.type) + (e.wpId ? ' <span class="muted">' + h(e.wpId) + '</span>' : '') + '</div>').join('');
+}
+
+function renderBoard(s) {
+  const cols = [
+    { label: 'Queued', states: ['pending', 'planned'] },
+    { label: 'In progress', states: ['building', 'evaluating', 'fixing'] },
+    { label: 'Needs you', states: ['blocked', 'needs_human'] },
+    { label: 'Done', states: ['passed', 'shipped'] },
+    { label: 'Failed', states: ['failed'] },
+  ];
+  const screens = s.screens || [];
+  $('board').innerHTML = cols.map((col) => {
+    const items = screens.filter((x) => col.states.indexOf(x.state) >= 0);
+    return '<div class="bcol"><div class="bcolh">' + col.label + '<span class="bcount">' + items.length + '</span></div>'
+      + (items.map((x) =>
+          '<div class="bcard" data-wp="' + x.wpId + '"><span class="dot d-' + x.state + '"></span>'
+          + '<span class="grow ellip">' + h(x.screenKey || x.wpId) + '</span>'
+          + (x.diffPercent != null ? '<span class="muted">' + x.diffPercent.toFixed(1) + '%</span>' : '')
+          + '</div>').join('')
+        || '<div class="bempty">\\u2014</div>') + '</div>';
+  }).join('');
 }
 
 function renderInventory(inv) {
