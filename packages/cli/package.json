@@ -30,6 +30,7 @@
     "@loom/skills": "workspace:*",
     "@loom/surveyor": "workspace:*",
     "@loom/tokens": "workspace:*",
+    "@loom/tools": "workspace:*",
     "@inquirer/prompts": "^7.8.0",
     "commander": "^14.0.0",
     "picocolors": "^1.1.1"

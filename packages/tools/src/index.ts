@@ -12,6 +12,7 @@ export { protectedPathsHook } from './protected-paths.js';
 export {
   createPolicy,
   decidePermission,
+  checkPermission,
   permissionHook,
   type PermissionMode,
   type PermissionPolicy,

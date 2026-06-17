@@ -57,10 +57,38 @@ export type PermissionPrompt = (
 ) => Promise<PermissionAnswer> | PermissionAnswer;
 
 /**
- * A `PreToolUse` hook that enforces a {@link PermissionPolicy} at the existing
- * L1 HookBus seam. For an `ask` decision it calls `prompt`; the answers mutate
- * the policy — "always" remembers the tool for the session, "all" flips the
- * whole policy to allow-all. Returning `{ block: true }` vetoes the tool call.
+ * The core gate — used by both the agentic chat (which calls tools directly) and
+ * {@link permissionHook}. Decide → for an `ask` decision, prompt → apply the
+ * answer (mutating the session policy: "always" remembers the tool, "all" flips
+ * the whole policy to allow-all). Returns whether the call may proceed.
+ */
+export async function checkPermission(
+  policy: PermissionPolicy,
+  riskOf: (name: string) => ToolRisk,
+  prompt: PermissionPrompt,
+  req: { name: string; input: unknown },
+): Promise<{ allowed: boolean; reason?: string }> {
+  const risk = riskOf(req.name);
+  const decision = decidePermission(policy, { name: req.name, risk });
+  if (decision === 'allow') return { allowed: true };
+  if (decision === 'deny') return { allowed: false, reason: `denied by the ${policy.mode} policy` };
+  const answer = await prompt({ name: req.name, risk, input: req.input });
+  if (answer === 'yes') return { allowed: true };
+  if (answer === 'always') {
+    policy.allow.add(req.name);
+    return { allowed: true };
+  }
+  if (answer === 'all') {
+    policy.mode = 'allow-all';
+    return { allowed: true };
+  }
+  return { allowed: false, reason: 'you declined' };
+}
+
+/**
+ * A `PreToolUse` hook that enforces a {@link PermissionPolicy} at the existing L1
+ * HookBus seam — a thin wrapper over {@link checkPermission} for the build loop's
+ * tool calls (the chat gates its tools with `checkPermission` directly).
  */
 export function permissionHook(
   policy: PermissionPolicy,
@@ -70,25 +98,7 @@ export function permissionHook(
   return async (payload) => {
     const { name, input } = (payload ?? {}) as { name?: string; input?: unknown };
     if (!name) return; // not a tool payload — nothing to gate
-    const risk = riskOf(name);
-    const decision = decidePermission(policy, { name, risk });
-    if (decision === 'allow') return;
-    if (decision === 'deny') {
-      return {
-        block: true,
-        reason: `tool "${name}" denied by the ${policy.mode} permission policy`,
-      };
-    }
-    const answer = await prompt({ name, risk, input });
-    if (answer === 'yes') return;
-    if (answer === 'always') {
-      policy.allow.add(name);
-      return;
-    }
-    if (answer === 'all') {
-      policy.mode = 'allow-all';
-      return;
-    }
-    return { block: true, reason: `you declined to run "${name}"` };
+    const { allowed, reason } = await checkPermission(policy, riskOf, prompt, { name, input });
+    if (!allowed) return { block: true, reason: `tool "${name}" ${reason}` };
   };
 }

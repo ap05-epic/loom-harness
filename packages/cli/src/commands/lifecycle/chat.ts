@@ -1,8 +1,22 @@
+import { existsSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { ChatMessage, LlmGateway } from '@loom/agents';
+import { MIGRATIONS, openDb, runMigrations } from '@loom/core';
+import { createPolicy, type PermissionMode, type PermissionPrompt } from '@loom/tools';
+import { configError, usageError } from '../../errors.js';
 import { describeProvider, gatewayFromProfile } from '../../pipeline-config.js';
 import { defineCommand } from '../../registry.js';
+import { agenticChatTurn, CHAT_SYSTEM_PROMPT } from './chat-agent.js';
+import { buildChatTools, type ChatSession } from './chat-tools.js';
 import { readStdin } from './ask.js';
+
+const MODES: readonly PermissionMode[] = ['ask', 'auto', 'allow-all', 'deny'];
+
+const HELP = [
+  'commands: /exit · /help · /allow-all · /ask · /auto · /deny · /allow <tool>',
+  'modes — ask: confirm each action · auto: auto-allow safe ones · allow-all: never ask · deny: block all',
+].join('\n');
 
 export type ChatTurnOptions = {
   model: string;
@@ -33,53 +47,136 @@ export async function chatTurn(
 export const chatCommand = defineCommand({
   name: 'chat',
   group: 'lifecycle',
-  describe: 'Start an interactive chat with the configured model (/exit to quit)',
-  exitCodes: ['CONFIG', 'NETWORK'],
+  describe: 'Chat with the harness — it can map/run the pipeline and work the inbox for you',
+  exitCodes: ['CONFIG', 'NETWORK', 'USAGE'],
   options: [
     { flags: '--model <id>', describe: 'override the model id' },
-    { flags: '--system <text>', describe: 'optional system instruction' },
+    { flags: '--system <text>', describe: 'extra system instruction' },
+    { flags: '--permission-mode <mode>', describe: 'ask | auto | allow-all | deny (default: ask)' },
+    { flags: '--allow-all', describe: 'run every tool without asking (autonomous)' },
+    { flags: '--yolo', describe: 'alias for --allow-all' },
   ],
-  examples: ['loom chat', 'loom chat --model gpt-5.4'],
+  examples: ['loom chat', 'loom chat --allow-all'],
   async run(ctx, input) {
     const p = ctx.requireProfile();
     const gateway = gatewayFromProfile(p);
     const provider = describeProvider(p);
     const model = (input.options.model as string | undefined) ?? p.llm.model;
-    const system = input.options.system as string | undefined;
-    const baseHistory: ChatMessage[] = system ? [{ role: 'system', content: system }] : [];
 
-    // Non-interactive (piped / --json / --no-input / CI): one prompt → one answer → exit.
-    if (!ctx.mode.interactive) {
-      const prompt = (await readStdin()).trim();
-      if (!prompt) return { turns: 0, reply: null, model, provider: provider.driver };
-      const { reply } = await chatTurn(gateway, { model, history: baseHistory, input: prompt });
-      return { turns: 1, reply, model, provider: provider.driver };
-    }
-
-    // Interactive REPL — printed live, line by line.
-    ctx.sink.line(`loom chat — ${provider.driver}:${model}. Type /exit to quit.`);
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    const ask = (q: string): Promise<string> => new Promise((res) => rl.question(q, res));
-    let history = baseHistory;
-    let turns = 0;
-    try {
-      for (;;) {
-        const text = (await ask('› ')).trim();
-        if (text === '/exit' || text === '/quit') break;
-        if (!text) continue;
-        try {
-          const r = await chatTurn(gateway, { model, history, input: text });
-          history = r.history;
-          turns++;
-          ctx.sink.line(r.reply);
-        } catch (error) {
-          ctx.sink.error(error instanceof Error ? error.message : String(error));
-        }
+    // Permission policy from flags.
+    let mode: PermissionMode = 'ask';
+    const flagMode = input.options.permissionMode as string | undefined;
+    if (flagMode) {
+      if (!MODES.includes(flagMode as PermissionMode)) {
+        throw usageError(
+          `unknown permission mode "${flagMode}"`,
+          `choose one of: ${MODES.join(', ')}`,
+        );
       }
-    } finally {
-      rl.close();
+      mode = flagMode as PermissionMode;
     }
-    return { turns, reply: null, model, provider: provider.driver };
+    if (input.options.allowAll || input.options.yolo) mode = 'allow-all';
+    const policy = createPolicy(mode);
+
+    // Open the project db the tools read/write (status, gates, questions, runs).
+    const dataDir = p.dataDir;
+    if (!dataDir) {
+      throw configError(
+        'loom chat needs a project data dir',
+        'run `loom init` first, or pass --data-dir <dir>',
+      );
+    }
+    mkdirSync(dataDir, { recursive: true });
+    const loomDb = join(dataDir, 'loom.db');
+    const legacy = join(dataDir, 'harness.db');
+    const db = openDb(!existsSync(loomDb) && existsSync(legacy) ? legacy : loomDb);
+    runMigrations(db, MIGRATIONS);
+
+    const session: ChatSession = { db, gateway, profile: p, version: ctx.version };
+    const tools = buildChatTools(session);
+    const extra = input.options.system as string | undefined;
+    const system = extra ? `${CHAT_SYSTEM_PROMPT}\n\n${extra}` : CHAT_SYSTEM_PROMPT;
+    const baseHistory: ChatMessage[] = [{ role: 'system', content: system }];
+
+    try {
+      // Non-interactive (piped / --json / CI): one prompt; expensive tools are denied unless --allow-all.
+      if (!ctx.mode.interactive) {
+        const prompt = (await readStdin()).trim();
+        if (!prompt) return { turns: 0, reply: null, model, provider: provider.driver };
+        const { finalText } = await agenticChatTurn(gateway, {
+          model,
+          history: baseHistory,
+          input: prompt,
+          tools,
+          policy,
+          prompt: () => 'no',
+        });
+        return { turns: 1, reply: finalText, model, provider: provider.driver };
+      }
+
+      // Interactive REPL.
+      ctx.sink.line(
+        `loom chat — ${provider.driver}:${model} · permission: ${policy.mode}. /help for commands, /exit to quit.`,
+      );
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      const ask = (q: string): Promise<string> => new Promise((res) => rl.question(q, res));
+      const prompt: PermissionPrompt = async (req) => {
+        const a = (await ask(`  allow ${req.name} (${req.risk})? [y/N/a=always/!=all] `))
+          .trim()
+          .toLowerCase();
+        if (a === 'y' || a === 'yes') return 'yes';
+        if (a === 'a' || a === 'always') return 'always';
+        if (a === '!' || a === 'all') return 'all';
+        return 'no';
+      };
+
+      let history = baseHistory;
+      let turns = 0;
+      try {
+        for (;;) {
+          const text = (await ask('› ')).trim();
+          if (text === '/exit' || text === '/quit') break;
+          if (!text) continue;
+          if (text === '/help') {
+            ctx.sink.line(HELP);
+            continue;
+          }
+          if (text === '/allow-all' || text === '/ask' || text === '/auto' || text === '/deny') {
+            policy.mode = text.slice(1) as PermissionMode;
+            ctx.sink.line(`permission: ${policy.mode}`);
+            continue;
+          }
+          if (text.startsWith('/allow ')) {
+            const t = text.slice('/allow '.length).trim();
+            if (t) {
+              policy.allow.add(t);
+              ctx.sink.line(`always allowing: ${t}`);
+            }
+            continue;
+          }
+          try {
+            const r = await agenticChatTurn(gateway, {
+              model,
+              history,
+              input: text,
+              tools,
+              policy,
+              prompt,
+            });
+            history = r.history;
+            turns += 1;
+            ctx.sink.line(r.finalText ?? '(no reply)');
+          } catch (error) {
+            ctx.sink.error(error instanceof Error ? error.message : String(error));
+          }
+        }
+      } finally {
+        rl.close();
+      }
+      return { turns, reply: null, model, provider: provider.driver };
+    } finally {
+      db.close();
+    }
   },
   render(data, ctx) {
     const d = data as { reply: string | null };

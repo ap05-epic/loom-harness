@@ -17,6 +17,7 @@
     { "path": "../surveyor" },
     { "path": "../conductor" },
     { "path": "../mission-control" },
-    { "path": "../tokens" }
+    { "path": "../tokens" },
+    { "path": "../tools" }
   ]
 }
