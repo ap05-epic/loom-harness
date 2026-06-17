@@ -54,6 +54,17 @@ export type ChooserContext = {
 /** Picks the next action (click a control / fill a field) on the current page, or `null` to backtrack. */
 export type Chooser = (ctx: ChooserContext) => Promise<ExploreAction | null>;
 
+/** One step the explorer took — surfaced live for progress + diagnostics. */
+export type ExploreStep = {
+  action: ExploreAction;
+  /** The label of the activated control, if known (e.g. a menu item's text). */
+  label?: string;
+  /** Total distinct screens discovered so far. */
+  discovered: number;
+  /** Whether this step revealed a screen not seen before. */
+  isNew: boolean;
+};
+
 export type ExploreOptions = {
   driver: ExploreDriver;
   chooser: Chooser;
@@ -61,6 +72,8 @@ export type ExploreOptions = {
   maxStates?: number;
   /** Cap total clicks (default max(maxStates×10, 200)). */
   maxVisits?: number;
+  /** Called after each action — for live progress lines / diagnostics. */
+  onStep?: (step: ExploreStep) => void;
 };
 
 export type ExploreResult = {
@@ -219,9 +232,12 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
     tried.add(edge(curKey, action));
     if (!takenByScreen.has(curKey)) takenByScreen.set(curKey, []);
     takenByScreen.get(curKey)!.push(action);
+    const label = cands.find((c) => c.ref === action.ref)?.label;
+    const before = states.length;
     cur = await driver.activate(action);
     visited += 1;
     curKey = record(cur);
+    opts.onStep?.({ action, label, discovered: states.length, isNew: states.length > before });
   }
 
   return { states, visited, truncated: states.length >= maxStates || visited >= maxVisits };

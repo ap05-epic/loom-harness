@@ -6,6 +6,7 @@ import {
   type Chooser,
   type ExploreDriver,
   type ExploreResult,
+  type ExploreStep,
 } from './explorer.js';
 
 export type ExploreAppOptions = {
@@ -26,6 +27,8 @@ export type ExploreAppOptions = {
   maxVisits?: number;
   executablePath?: string;
   viewport?: Viewport;
+  /** Called after each action — live progress / diagnostics. */
+  onStep?: (step: ExploreStep) => void;
 };
 
 /**
@@ -51,9 +54,11 @@ export async function exploreApp(options: ExploreAppOptions): Promise<ExploreRes
       if (a.waitForSelector) await session.waitForSelector(a.waitForSelector);
     }
 
+    // Combine all frames so the explorer's screen identity tracks the CONTENT (BAA's screens live in
+    // frameset child frames), not the static shell — and so a bodyless frameset doc doesn't crash.
     const snapshot = async (): Promise<{ url: string; dom: DomSnapshot }> => ({
       url: session.currentUrl(),
-      dom: await session.captureDom(),
+      dom: await session.captureCombined(),
     });
     // The ONLY place a `$secret` placeholder becomes a real value — downstream of the chooser.
     const secrets = options.secrets ?? {};
@@ -82,6 +87,7 @@ export async function exploreApp(options: ExploreAppOptions): Promise<ExploreRes
       chooser: options.chooser ?? heuristicChooser,
       maxStates: options.maxStates,
       maxVisits: options.maxVisits,
+      onStep: options.onStep,
     });
   } finally {
     await session.close();

@@ -136,4 +136,43 @@ describe('CrawlSession frame-aware interaction', () => {
     },
     30_000,
   );
+
+  test.runIf(liveOk)(
+    'does not crash reading a frameset document (no <body>)',
+    async () => {
+      const html =
+        '<!doctype html><html><frameset cols="100%"><frame src="about:blank"></frameset></html>';
+      const session = new CrawlSession();
+      await session.open();
+      try {
+        await session.navigate(`data:text/html,${encodeURIComponent(html)}`, 'domcontentloaded');
+        const dom = await session.captureDom(); // bodyless doc — must fall back, not throw
+        expect(dom).toBeTruthy();
+        expect(['html', 'frameset']).toContain(dom.tag);
+      } finally {
+        await session.close();
+      }
+    },
+    30_000,
+  );
+
+  test.runIf(liveOk)(
+    'captureCombined merges child-frame content into one snapshot (frameset apps)',
+    async () => {
+      const html =
+        '<!doctype html><html><body><h1>OUTER</h1>' +
+        '<iframe srcdoc="<h2>INNER-CONTENT</h2>"></iframe></body></html>';
+      const session = new CrawlSession();
+      await session.open();
+      try {
+        await session.navigate(`data:text/html,${encodeURIComponent(html)}`);
+        const texts = collectText(await session.captureCombined());
+        expect(texts.some((t) => t.includes('OUTER'))).toBe(true); // the main document…
+        expect(texts.some((t) => t.includes('INNER-CONTENT'))).toBe(true); // …and the child frame
+      } finally {
+        await session.close();
+      }
+    },
+    30_000,
+  );
 });

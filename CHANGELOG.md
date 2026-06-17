@@ -6,6 +6,13 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.4 — 2026-06-17
+
+`loom explore` now handles **frameset apps**, and **shows you each step**.
+
+- **Frameset support.** BAA's post-login UI is a classic frameset (menu in one frame, content in another), and a frameset document has no `<body>` — which crashed the DOM reader (`Cannot read properties of null (reading 'attributes')`). The reader now falls back to `<html>` for bodyless documents, and the explorer captures a **combined snapshot of all frames** (new `CrawlSession.captureCombined`) so its screen identity tracks the content frames that actually change when you click a menu, not the static shell.
+- **Live step logging.** `loom explore` now prints one line per action to stderr as it goes — `typed $fa into "Quick Search" → new screen (2)`, `clicked "Compensation" → new screen (3)` — so you can watch it work and any stall shows exactly where. Secrets stay as their `$name` placeholder (the real value is never logged); `--quiet` silences it and `--json` keeps the result envelope clean on stdout.
+
 ## v1.3.3 — 2026-06-17
 
 `loom explore` no longer crashes on a navigation. The first deep BAA run logged in, FA-searched, and clicked menu actions, then died with `page.evaluate: execution context was destroyed, most likely because of a navigation` — a menu action / form submit navigated the page while the explorer was mid-read.

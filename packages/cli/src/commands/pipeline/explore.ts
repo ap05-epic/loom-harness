@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import type { Profile } from '@loom/core';
 import { llmChooser } from '@loom/conductor';
-import { exploreApp, openUiAtlas, type ExploreAppOptions } from '@loom/surveyor';
+import { exploreApp, openUiAtlas, type ExploreAppOptions, type ExploreStep } from '@loom/surveyor';
 import { configError } from '../../errors.js';
 import { gatewayFromProfile } from '../../pipeline-config.js';
 import { defineCommand } from '../../registry.js';
@@ -62,6 +62,14 @@ export function exploreOptionsFrom(
   };
 }
 
+/** A one-line, human-readable description of a step — secrets stay as their `$name` placeholder. */
+function describeStep(s: ExploreStep): string {
+  const target = s.label ? `"${s.label}"` : s.action.ref;
+  const what =
+    s.action.kind === 'fill' ? `typed ${s.action.value} into ${target}` : `clicked ${target}`;
+  return s.isNew ? `${what} → new screen (${s.discovered})` : what;
+}
+
 export const exploreCommand = defineCommand({
   name: 'explore',
   group: 'pipeline',
@@ -73,6 +81,7 @@ export const exploreCommand = defineCommand({
     const profile = ctx.requireProfile();
     const max = input.options.maxStates !== undefined ? Number(input.options.maxStates) : undefined;
     const options = exploreOptionsFrom(profile, max);
+    options.onStep = (s) => ctx.sink.info(describeStep(s)); // live progress to stderr
     const result = await exploreApp(options);
 
     // Persist the discovered states into the UI atlas when a data dir is configured.

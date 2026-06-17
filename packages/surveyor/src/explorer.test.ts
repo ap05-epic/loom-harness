@@ -251,6 +251,23 @@ describe('explore', () => {
     expect(driver.filledValues).toEqual({ user: '$user', pass: '$pass' });
     expect(result.visited).toBe(3); // fill user, fill pass, click submit — no repeats
   });
+
+  test('reports each step via onStep (live progress + diagnostics)', async () => {
+    const driver = new FakeMenuApp();
+    const steps: Array<{ kind: string; label?: string; isNew: boolean }> = [];
+    await explore({
+      driver,
+      chooser: heuristicChooser,
+      maxStates: 10,
+      maxVisits: 10,
+      onStep: (s) => steps.push({ kind: s.action.kind, label: s.label, isNew: s.isNew }),
+    });
+    // it clicked "Open A" then "Open B", each revealing a new screen
+    expect(steps).toEqual([
+      { kind: 'click', label: 'Open A', isNew: true },
+      { kind: 'click', label: 'Open B', isNew: true },
+    ]);
+  });
 });
 
 describe('heuristicChooser', () => {

@@ -47,7 +47,10 @@ function extractDomSnapshot(styleProps: string[] | null): DomSnapshot {
       .map(extract);
     return node;
   };
-  return extract(document.body);
+  // A frameset document has no <body> (its screens live in child frames) — fall back to <html> so we
+  // capture the shell instead of crashing on `null.attributes`.
+  const root = (document.body as Element | null) ?? document.documentElement;
+  return extract(root);
 }
 
 /**
@@ -260,6 +263,24 @@ export class CrawlSession {
       await this.settle();
       return await this.active().evaluate(extractDomSnapshot, styleProps ?? null);
     }
+  }
+
+  /**
+   * Capture EVERY frame merged into one snapshot — for frameset apps (BAA) where the real screen
+   * lives in child frames, not the (bodyless) frameset shell. The AI-explorer uses this so its
+   * screen identity tracks the content that actually changes when you click a menu, not the static
+   * shell. Cross-origin / detached / mid-navigation frames are skipped rather than throwing.
+   */
+  async captureCombined(styleProps?: string[]): Promise<DomSnapshot> {
+    const children: DomSnapshot[] = [];
+    for (const frame of this.active().frames()) {
+      try {
+        children.push(await frame.evaluate(extractDomSnapshot, styleProps ?? null));
+      } catch {
+        // cross-origin / detached / navigating frame — contributes nothing
+      }
+    }
+    return { tag: 'html', attrs: {}, children };
   }
 
   async screenshot(): Promise<Buffer> {
