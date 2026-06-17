@@ -1,7 +1,16 @@
 import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { findWorkspaceUp, loadWorkspace, WORKSPACE_FILE, type Workspace } from '@loom/core';
 import { configError } from './errors.js';
+
+/**
+ * The global Loom home — the default profile + data dir when nothing else is configured, so `loom`
+ * works with zero ceremony (like Hermes's `~/.hermes`). Override with `LOOM_HOME`.
+ */
+export function homeDataDir(env: Record<string, string | undefined>): string {
+  return env.LOOM_HOME ?? join(homedir(), '.loom');
+}
 
 /** Which project's profile dir + (per-project) data dir a command should use. */
 export type ProjectResolution = { profileDir: string; dataDir?: string; project?: string };
@@ -36,7 +45,8 @@ function assertNoDuplicateDataDirs(ws: Workspace): void {
  *      legacy single-profile path, workspace ignored — this preserves every existing flow + test;
  *   2. `--project` / `LOOM_PROJECT` resolved within a discoverable workspace;
  *   3. the workspace's `active` project;
- *   4. no workspace at all ⇒ today's behavior (cwd as the profile dir, `LOOM_DATA_DIR` if set).
+ *   4. nothing configured ⇒ the global `~/.loom` home (override with `LOOM_HOME`), so `loom` runs
+ *      with zero ceremony — like Hermes's `~/.hermes`.
  * Each workspace project gets its OWN data dir (`<project>/data`), so two projects can never share
  * loom.db / the atlases / b-repo.
  */
@@ -85,8 +95,9 @@ export function resolveProjectContext(input: ResolveInput): ProjectResolution {
     }
   }
 
-  // 3. No workspace / no active project ⇒ today's behavior.
-  return { profileDir: cwd };
+  // 4. Nothing configured at all ⇒ the global home (~/.loom), so `loom` works with no flags.
+  const home = homeDataDir(env);
+  return { profileDir: home, dataDir: home };
 }
 
 /** Locate + load the workspace (explicit `--workspace`/`LOOM_WORKSPACE`, else walk up from cwd). */

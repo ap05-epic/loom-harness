@@ -35,7 +35,7 @@ warn() { printf '  \033[1;33m! %s\033[0m\n' "$*"; }
 fail() { printf '  \033[1;31m✗ %s\033[0m\n' "$*"; exit 1; }
 
 # ---- options -------------------------------------------------------------
-DATA_DIR="${LOOM_DATA_DIR:-$HOME/loom-data/first-project}"
+DATA_DIR="${LOOM_DATA_DIR:-$HOME/.loom}"   # the global home — `loom` uses it with no flags
 PROJECT="first-project"
 MODEL="${LLM_MODEL:-gpt-5.4}"
 DRIVER=""
@@ -171,10 +171,11 @@ cat <<EOF
   profile:   $DATA_DIR
   driver:    $DRIVER   model: $MODEL
 
-  Next:
-    loom next --data-dir $DATA_DIR        # what to do now
-    loom ask  --profile  $DATA_DIR "say pong"
-    loom map  --data-dir $DATA_DIR        # begin mapping a legacy app
+  Next — just run:
+    loom chat                  # talk to it: set up + map + rebuild, all in conversation
+  Or:  loom next  ·  loom ask "say pong"  ·  loom map  ·  loom ui
 
-  (If you used the wrapper, open a new shell or 'source ~/.bashrc' so 'loom' resolves.)
+  ('loom' uses $DATA_DIR by default — no --data-dir needed. If you chose a custom
+   --data-dir, first run:  export LOOM_DATA_DIR=$DATA_DIR
+   If the ~/.local/bin/loom wrapper was used, open a new shell or 'source ~/.bashrc'.)
 EOF

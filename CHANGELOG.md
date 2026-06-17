@@ -6,6 +6,13 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.2.1 — 2026-06-17
+
+Zero-config onboarding — `loom` now works with **no `--data-dir`**, the way Hermes uses `~/.hermes`.
+
+- **A global home (`~/.loom`).** When nothing else is configured, every command resolves its profile + data dir to `~/.loom` (override with `LOOM_HOME`). Setup becomes `bash scripts/setup-pod.sh` (it prompts for the model URL + key and writes them there) → `loom chat` — no `--data-dir` on any command, and `loom init` defaults there too. Explicit `--profile` / `--data-dir` / `LOOM_DATA_DIR` and workspaces still short-circuit, so every existing flow is unchanged.
+- `scripts/setup-pod.sh` targets the home; docs (README quickstart, POD-RUNBOOK) drop `--data-dir` throughout.
+
 ## v1.2.0 — 2026-06-17
 
 The "easy mode" cockpit — Loom becomes more autonomous, conversational, and observable, built on data the engine already records. Highlights since v1.1.0:

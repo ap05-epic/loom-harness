@@ -3,6 +3,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { input } from '@inquirer/prompts';
 import { configError, usageError } from '../../errors.js';
 import { defineCommand } from '../../registry.js';
+import { homeDataDir } from '../../workspace.js';
 
 function insideGitTree(startDir: string): boolean {
   let current = resolve(startDir);
@@ -60,10 +61,13 @@ export const initCommand = defineCommand({
   async run(ctx, input_) {
     const o = input_.options;
     let dir = (o.dir as string | undefined) ?? ctx.flags.dataDir;
-    if (!dir && ctx.mode.interactive) {
-      dir = await input({ message: 'Data directory (outside any git repo):' });
+    if (!dir) {
+      // Default to the global home (~/.loom) so `loom init` needs no flags; interactive users override.
+      const home = homeDataDir(ctx.env);
+      dir = ctx.mode.interactive
+        ? await input({ message: 'Data directory:', default: home })
+        : home;
     }
-    if (!dir) throw usageError('no target directory', 'pass --data-dir <path> or --dir <path>');
     dir = resolve(dir);
 
     if (insideGitTree(dir)) {

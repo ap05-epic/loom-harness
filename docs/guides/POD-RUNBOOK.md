@@ -9,7 +9,7 @@ The one-shot script does everything below and verifies it (idempotent — safe t
 ```bash
 git clone https://github.com/ap05-epic/loom-harness && cd loom-harness
 git checkout <latest-tag>
-bash scripts/setup-pod.sh --data-dir ~/loom-data/<project>
+bash scripts/setup-pod.sh        # sets up the global home (~/.loom) + prompts for the model URL + key
 #   add --base-url https://<host>/openai/v1 --api-key <key>  to skip the prompts
 ```
 
@@ -35,10 +35,10 @@ If `better-sqlite3`'s native prebuild won't install, do nothing — the adapter 
 ## Configure
 
 ```bash
-loom init --data-dir ~/loom-data/<project>   # writes config + .env OUTSIDE the clone
+loom init        # writes config + .env to the global home (~/.loom) — no flags needed
 ```
 
-Fill `~/loom-data/<project>/.env` for the **direct** endpoint (Model B):
+Fill `~/.loom/.env` for the **direct** endpoint (Model B):
 
 ```
 LLM_BASE_URL=https://<host>/openai/v1     # note the /openai/v1 path
@@ -59,15 +59,17 @@ Paste the `doctor` output back if anything is red.
 ## Doctor's green — now what?
 
 ```bash
-loom next                                                     # the next command for your state
-loom chat   --data-dir ~/loom-data/<project>                  # drive it by talking — "what's the status?", "rebuild login" (asks before anything expensive)
-loom map    --data-dir ~/loom-data/<project>                  # scan the legacy source → CodeAtlas
-loom crawl  --data-dir ~/loom-data/<project> --max-states 20  # capture the baseline (read-only)
-loom run    --data-dir ~/loom-data/<project> --shift          # rebuild unattended (loom stop / loom resume)
-loom ui     --data-dir ~/loom-data/<project>                  # Mission Control: progress + gate approvals
+loom chat                    # drive it by talking — set up + map + rebuild, all in conversation
+loom next                    # or: what should I do now?
+loom map                     # scan the legacy source → CodeAtlas
+loom crawl --max-states 20   # capture the baseline (read-only)
+loom run --shift             # rebuild unattended (loom stop / loom resume)
+loom ui                      # Mission Control: kanban board, live fleet, gate approvals
 ```
 
-Sanity-check the model any time with `loom ask "say pong"` or `loom models test`. See [how you interact with Loom](../concepts/interaction-model.md) for the full picture. For BAA specifically, load the conversion skills first — `loom skills load --from skills/conversion --data-dir ~/loom-data/<project>` — and follow the [onboarding playbook](baa-onboarding.md).
+> **No `--data-dir` needed** — `loom` uses the global home (`~/.loom`) that `setup-pod.sh` set up. (Working on a _second_ project? Give it its own home with a workspace: `loom project new <name>`.)
+
+Sanity-check the model any time with `loom ask "say pong"` or `loom models test`. See [how you interact with Loom](../concepts/interaction-model.md) for the full picture. For BAA specifically, load the conversion skills first — `loom skills load --from skills/conversion` — and follow the [onboarding playbook](baa-onboarding.md).
 
 ## Update loop
 

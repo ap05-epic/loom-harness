@@ -69,16 +69,13 @@ bash scripts/setup-pod.sh            # --base-url … --api-key … to skip the 
 ```bash
 corepack enable && pnpm install && pnpm build
 pnpm link --global ./packages/cli         # or just call: node packages/cli/dist/bin.js …
-                                          # (some pods have no global bin dir — setup-pod.sh adds a ~/.local/bin/loom wrapper)
+loom init                                 # writes the profile to the global home (~/.loom)
+# edit ~/.loom/.env  → LLM_BASE_URL (…/openai/v1) + LLM_API_KEY
 loom doctor                               # verify the environment
-loom init --data-dir ~/loom-data/demo     # create a profile (outside any repo)
-# edit ~/loom-data/demo/.env  → LLM_BASE_URL (…/openai/v1) + LLM_API_KEY
-loom models test --profile ~/loom-data/demo   # probe the model backend
-loom next        --data-dir ~/loom-data/demo  # what to do next
-loom ask         --profile  ~/loom-data/demo "say pong"   # talk to the model
+loom chat                                 # talk to it — no flags, no --data-dir
 ```
 
-Models are reached via a **direct OpenAI/Azure key** — `LLM_BASE_URL` (ending in `…/openai/v1`) + `LLM_API_KEY`, surfaced by `loom models list`. (`loom chat` then drives the harness conversationally — see [how you interact with Loom](docs/concepts/interaction-model.md).) Deploying inside a locked-down environment? See the [Pod runbook](docs/guides/POD-RUNBOOK.md) and the [onboarding playbook](docs/guides/baa-onboarding.md).
+**`loom` uses a global home at `~/.loom`** (like Hermes's `~/.hermes`), so **no command needs `--data-dir`** — set it up once, then just run `loom chat`. (Override the location with `LOOM_HOME`, or point at a specific project with `--data-dir`/a workspace.) Models are reached via a **direct OpenAI/Azure key** — `LLM_BASE_URL` (ending in `…/openai/v1`) + `LLM_API_KEY`. `loom chat` drives the harness conversationally — it even interviews you and writes the project config for you (see [how you interact with Loom](docs/concepts/interaction-model.md)). Locked-down environment? See the [Pod runbook](docs/guides/POD-RUNBOOK.md) and the [onboarding playbook](docs/guides/baa-onboarding.md).
 
 ## CLI
 
@@ -143,7 +140,7 @@ pnpm format      # prettier check
 
 ## Status
 
-**v1.2.0** — the `--json` envelope and the exit-code table are frozen as stable (see the [CHANGELOG](CHANGELOG.md)). The foundations, the full MAP → CRAWL → PLAN → BUILD → EVAL → FIX pipeline, the deterministic evaluator, skills/memory recall, shift-mode safeguards, the typed-tool + hook substrate, MCP, parallel workers, the agentic `loom chat` (now with conversational project setup), and Mission Control (a live kanban board + worker fleet view + the gate/question inbox) are all in place and tested (770+ tests, CI green on Linux + Windows). The live frontier is onboarding the first real application end-to-end on a pod.
+**v1.2.1** — the `--json` envelope and the exit-code table are frozen as stable (see the [CHANGELOG](CHANGELOG.md)). The foundations, the full MAP → CRAWL → PLAN → BUILD → EVAL → FIX pipeline, the deterministic evaluator, skills/memory recall, shift-mode safeguards, the typed-tool + hook substrate, MCP, parallel workers, the agentic `loom chat` (now with conversational project setup), and Mission Control (a live kanban board + worker fleet view + the gate/question inbox) are all in place and tested (770+ tests, CI green on Linux + Windows). The live frontier is onboarding the first real application end-to-end on a pod.
 
 New to the codebase? Read the [internals deep-dive](docs/internals.md) — the whole system, end to end, in one document.
 

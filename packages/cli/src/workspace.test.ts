@@ -61,6 +61,17 @@ describe('resolveProjectContext', () => {
     }
   });
 
+  test('with nothing configured at all, defaults to the global ~/.loom home', () => {
+    const lonely = mkdtempSync(join(tmpdir(), 'lonely-'));
+    try {
+      // No flags, no env, no workspace ⇒ the implicit home, so `loom` works with zero ceremony.
+      const r = resolveProjectContext({ flags: {}, env: { LOOM_HOME: '/h' }, cwd: lonely });
+      expect(r).toEqual({ profileDir: '/h', dataDir: '/h' });
+    } finally {
+      rmSync(lonely, { recursive: true, force: true });
+    }
+  });
+
   test('an unknown --project is a clear error', () => {
     expect(() => resolveProjectContext({ flags: { project: 'nope' }, env: {}, cwd: ws })).toThrow(
       /nope/,
