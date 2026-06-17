@@ -130,6 +130,12 @@ function enumerateInteractive(): Array<{ ref: string; label: string; kind: strin
   return out;
 }
 
+/** True for the transient "the page navigated out from under an evaluate/read" Playwright errors. */
+function isContextDestroyed(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /context was destroyed|frame (was|got) detached|target closed/i.test(message);
+}
+
 export type CaptureOptions = {
   url: string;
   viewport?: Viewport;
@@ -238,8 +244,22 @@ export class CrawlSession {
     return this.active().url();
   }
 
+  /** Best-effort wait for the page to settle after an action that may or may not have navigated. */
+  private async settle(): Promise<void> {
+    const page = this.active();
+    await page.waitForLoadState('domcontentloaded').catch(() => undefined);
+    await page.waitForLoadState('networkidle').catch(() => undefined);
+  }
+
   async captureDom(styleProps?: string[]): Promise<DomSnapshot> {
-    return this.active().evaluate(extractDomSnapshot, styleProps ?? null);
+    try {
+      return await this.active().evaluate(extractDomSnapshot, styleProps ?? null);
+    } catch (error) {
+      if (!isContextDestroyed(error)) throw error;
+      // A navigation tore down the context mid-read — wait for the new page, then read it.
+      await this.settle();
+      return await this.active().evaluate(extractDomSnapshot, styleProps ?? null);
+    }
   }
 
   async screenshot(): Promise<Buffer> {
@@ -272,7 +292,7 @@ export class CrawlSession {
         const local = await frames[fi]!.evaluate(enumerateInteractive);
         for (const c of local) out.push({ ...c, ref: `${fi}:${c.ref}` });
       } catch {
-        // cross-origin or detached frame — contributes no candidates
+        // cross-origin / detached frame, or one navigating mid-read — contributes no candidates
       }
     }
     return out;
@@ -301,9 +321,9 @@ export class CrawlSession {
   async clickCandidate(ref: string): Promise<void> {
     const { frame, selector } = this.resolveRef(ref);
     await frame.dispatchEvent(selector, 'click');
-    await this.active()
-      .waitForLoadState('networkidle')
-      .catch(() => undefined);
+    // The click may trigger a navigation (a menu action, a form submit) — wait for it to land so the
+    // caller's next read isn't torn down mid-navigation.
+    await this.settle();
   }
 
   /** Type into (or, for a <select>, choose) a fillable candidate, by its frame-prefixed ref. */

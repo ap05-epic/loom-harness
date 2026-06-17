@@ -110,4 +110,30 @@ describe('CrawlSession frame-aware interaction', () => {
     },
     30_000,
   );
+
+  test.runIf(liveOk)(
+    'survives a click that navigates — re-reads the new page instead of crashing',
+    async () => {
+      // The click triggers a real navigation (reload). Reading the page right after must not throw
+      // "execution context was destroyed" — clickCandidate settles and captureDom retries.
+      const html =
+        '<!doctype html><html><body><h1>HOME</h1>' +
+        '<button onclick="location.reload()">Reload</button>' +
+        '</body></html>';
+      const session = new CrawlSession();
+      await session.open();
+      try {
+        await session.navigate(`data:text/html,${encodeURIComponent(html)}`);
+        const cands = await session.enumerateCandidates();
+        const btn = cands.find((c) => c.kind !== 'textbox');
+        expect(btn).toBeTruthy();
+        await session.clickCandidate(btn!.ref); // triggers a navigation
+        const dom = await session.captureDom(); // must not throw — re-reads the settled page
+        expect(collectText(dom).some((t) => t.includes('HOME'))).toBe(true);
+      } finally {
+        await session.close();
+      }
+    },
+    30_000,
+  );
 });

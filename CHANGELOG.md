@@ -6,6 +6,12 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.3 — 2026-06-17
+
+`loom explore` no longer crashes on a navigation. The first deep BAA run logged in, FA-searched, and clicked menu actions, then died with `page.evaluate: execution context was destroyed, most likely because of a navigation` — a menu action / form submit navigated the page while the explorer was mid-read.
+
+- **Navigation-resilient reads.** `CrawlSession.captureDom` now retries once (after settling) if a read is torn down by a navigation; `clickCandidate` waits for the page to settle (`domcontentloaded` + `networkidle`) after firing — `dispatchEvent` doesn't auto-wait for the navigation it triggers, so the next read used to race it. Together they handle the full mix of BAA's navigating menu actions and AJAX (`#pmenu`) hydration. Pure robustness; no API change.
+
 ## v1.3.2 — 2026-06-17
 
 `loom explore` now navigates **flyout/overlay menus**. The first post-login BAA run logged in, ran the FA Quick Search, and began clicking real menu actions (`<a href="javascript:menu('faassetsgraph',…)">`) — then a click timed out with `<ul id="node_Profile"> intercepts pointer events`: an open submenu was rendered on top of its own links, so a coordinate-based mouse click couldn't land on them.
