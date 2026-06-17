@@ -46,6 +46,8 @@ export type ExploreAppOptions = {
    * placed in the chooser's prompt. Keyed without the `$`.
    */
   secrets?: Record<string, string>;
+  /** ms to wait for late-AJAX controls (BAA's `#pmenu`) to appear before reading a page (default 0). */
+  hydrateMs?: number;
   maxStates?: number;
   maxVisits?: number;
   executablePath?: string;
@@ -80,10 +82,17 @@ export async function exploreApp(options: ExploreAppOptions): Promise<ExploreRes
 
     // Combine all frames so the explorer's screen identity tracks the CONTENT (BAA's screens live in
     // frameset child frames), not the static shell — and so a bodyless frameset doc doesn't crash.
-    const snapshot = async (): Promise<{ url: string; dom: DomSnapshot }> => ({
-      url: session.currentUrl(),
-      dom: await session.captureCombined(),
-    });
+    const hydrateMs = options.hydrateMs ?? 0;
+    const snapshot = async (): Promise<{ url: string; dom: DomSnapshot }> => {
+      // Some legacy homes load their menu via AJAX after the page settles (BAA's #pmenu) — give the
+      // page a bounded chance to surface interactive controls before we read it. Breaks early as soon
+      // as anything is clickable/fillable, so non-hydrating pages pay nothing.
+      const deadline = Date.now() + hydrateMs;
+      while (Date.now() < deadline && (await session.enumerateCandidates()).length === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      return { url: session.currentUrl(), dom: await session.captureCombined() };
+    };
     // The ONLY place a `$secret` placeholder becomes a real value — downstream of the chooser.
     const secrets = options.secrets ?? {};
     const resolveValue = (v: string): string =>

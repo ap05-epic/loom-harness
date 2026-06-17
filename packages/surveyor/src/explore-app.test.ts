@@ -31,6 +31,31 @@ function collectText(dom: DomSnapshot): string[] {
 
 describe('exploreApp (live AI-explorer)', () => {
   test.runIf(liveOk)(
+    'waits for late-AJAX controls to appear before reading the page (hydrateMs)',
+    async () => {
+      // The button is added 600ms after load — without a hydration wait the explorer reads an empty
+      // page and does nothing (the BAA #pmenu case).
+      const html =
+        '<!doctype html><html><body><div id="app"></div>' +
+        '<script>setTimeout(function(){' +
+        'var b=document.createElement("button");b.textContent="LateButton";' +
+        'document.getElementById("app").appendChild(b);},600);</script>' +
+        '</body></html>';
+      const startUrl = `data:text/html,${encodeURIComponent(html)}`;
+      const result = await exploreApp({
+        startUrl,
+        chooser: async () => null, // don't act — just check the start was read AFTER hydration
+        hydrateMs: 4000,
+        maxStates: 2,
+        maxVisits: 1,
+      });
+      const texts = result.states.flatMap((s) => collectText(s.dom));
+      expect(texts.some((t) => t.includes('LateButton'))).toBe(true);
+    },
+    30_000,
+  );
+
+  test.runIf(liveOk)(
     'discovers a screen reachable only by clicking a button (no link to follow)',
     async () => {
       const html =

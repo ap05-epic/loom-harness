@@ -74,6 +74,8 @@ const crawlSchema = z.object({
   maxStates: z.number().int().positive().optional(),
   /** Env var holding the FA Quick-Search code the explorer types as `$fa` (default 'fa_numbers'). */
   faEnv: z.string().min(1).optional(),
+  /** ms to wait for late-AJAX controls (e.g. BAA's `#pmenu`) to appear before reading a page. */
+  hydrateMs: z.number().int().nonnegative().optional(),
   auth: crawlAuthSchema.optional(),
 });
 

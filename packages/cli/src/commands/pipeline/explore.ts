@@ -58,6 +58,8 @@ export function exploreOptionsFrom(
     chooser: llmChooser(gatewayFromProfile(profile), profile.llm.model, Object.keys(secrets)),
     storageStatePath: profile.app?.storageStatePath,
     cookiesPath: profile.app?.cookiesPath,
+    // Legacy homes (BAA) load their menu via AJAX after settle — wait for controls by default.
+    hydrateMs: c.hydrateMs ?? 12_000,
     maxStates: maxStatesOverride ?? c.maxStates,
     viewport: profile.eval?.viewport,
   };

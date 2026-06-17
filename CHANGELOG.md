@@ -6,6 +6,12 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.7 — 2026-06-17
+
+`loom explore` now waits for late-loading menus (BAA's `#pmenu`).
+
+- **`crawl.hydrateMs`.** Some legacy homes load their menu via AJAX a few seconds after the page settles, so the explorer would read the page first and find nothing to act on (`0 actions`). It now polls for interactive controls — up to `crawl.hydrateMs` (default 12s in `loom explore`) — before reading each page, breaking early the moment anything is clickable/fillable. So hydrating apps surface their menus and normal pages pay nothing.
+
 ## v1.3.6 — 2026-06-17
 
 `loom explore` now fails clearly when your saved session has expired, instead of trying to log into the SSO provider.
