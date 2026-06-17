@@ -6,6 +6,12 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.2 — 2026-06-17
+
+`loom explore` now navigates **flyout/overlay menus**. The first post-login BAA run logged in, ran the FA Quick Search, and began clicking real menu actions (`<a href="javascript:menu('faassetsgraph',…)">`) — then a click timed out with `<ul id="node_Profile"> intercepts pointer events`: an open submenu was rendered on top of its own links, so a coordinate-based mouse click couldn't land on them.
+
+- **Overlay-proof clicks.** `CrawlSession.clickCandidate` now uses `dispatchEvent('click')` (≡ `element.click()`) instead of a coordinate click. It activates the control's handler / `javascript:` href / form-submit directly, regardless of what's painted on top — so the explorer never has to fight (or visually open) a flyout menu; triggering a `menu(...)` link just runs it. Login submit and ordinary buttons behave the same. Pure robustness change; no API change.
+
 ## v1.3.1 — 2026-06-17
 
 `loom explore` now completes **multi-step logins**. The first live BAA run reached the form login (on `localhost`, no SSO — the explorer hits Tomcat directly, so the Microsoft SSO that guards the *external* devpod URL is irrelevant) but stopped after one action: the LLM chooser is stateless per step, so it couldn't see it had already typed the username, repeated the same action, and the dedup guard backed it out before it filled the password and submitted.

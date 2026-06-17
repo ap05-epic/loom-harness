@@ -290,10 +290,17 @@ export class CrawlSession {
     };
   }
 
-  /** Click a control previously returned by `enumerateCandidates`, by its frame-prefixed ref. */
+  /**
+   * Trigger a control previously returned by `enumerateCandidates`, by its frame-prefixed ref.
+   * Uses `dispatchEvent('click')` (≡ `element.click()`) rather than a coordinate click: it fires the
+   * control's handler / `javascript:` href / form-submit directly, regardless of overlays — legacy
+   * flyout menus (BAA's qpmenu) render an open submenu on top of their own links, which a real mouse
+   * click can't reach ("`<ul> intercepts pointer events`"). We only need to activate the control, not
+   * simulate a mouse, so this is more robust and frees us from opening menus visually.
+   */
   async clickCandidate(ref: string): Promise<void> {
     const { frame, selector } = this.resolveRef(ref);
-    await frame.click(selector);
+    await frame.dispatchEvent(selector, 'click');
     await this.active()
       .waitForLoadState('networkidle')
       .catch(() => undefined);

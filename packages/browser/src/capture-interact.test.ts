@@ -83,4 +83,31 @@ describe('CrawlSession frame-aware interaction', () => {
     },
     30_000,
   );
+
+  test.runIf(liveOk)(
+    'clicks a control through an overlay that intercepts pointer events (flyout-menu case)',
+    async () => {
+      // The button is fully covered by a fixed top-z-index overlay — a real mouse click can't reach
+      // it (BAA's open-submenu-over-its-own-links case). A dispatched click fires the handler anyway.
+      const html =
+        '<!doctype html><html><body>' +
+        '<button onclick="document.body.innerHTML=\'<h1>FIRED</h1>\'">Target</button>' +
+        '<div style="position:fixed;inset:0;z-index:9999;background:#fff">overlay</div>' +
+        '</body></html>';
+      const session = new CrawlSession();
+      await session.open();
+      try {
+        await session.navigate(`data:text/html,${encodeURIComponent(html)}`);
+        const cands = await session.enumerateCandidates();
+        const btn = cands.find((c) => c.kind !== 'textbox');
+        expect(btn).toBeTruthy();
+        await session.clickCandidate(btn!.ref);
+        const dom = await session.captureDom();
+        expect(collectText(dom).some((t) => t.includes('FIRED'))).toBe(true);
+      } finally {
+        await session.close();
+      }
+    },
+    30_000,
+  );
 });
