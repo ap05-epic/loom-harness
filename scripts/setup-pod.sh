@@ -17,7 +17,7 @@
 #   --data-dir <path>   profile/data dir, OUTSIDE the clone  (LOOM_DATA_DIR)
 #   --project  <name>   project name                         (default: first-project)
 #   --model    <id>     default model id                     (LLM_MODEL, default gpt-5.4)
-#   --driver   <name>   openai | copilot | anthropic         (default: auto)
+#   --driver   <name>   openai | anthropic                   (default: openai)
 #   --base-url <url>    OpenAI/Azure base URL (…/openai/v1)   (LLM_BASE_URL)
 #   --api-key  <key>    OpenAI/Azure API key                  (LLM_API_KEY)
 #   --with-browser      also run `npx playwright install chromium`
@@ -122,23 +122,16 @@ if [ "$WITH_BROWSER" = "1" ]; then
   npx playwright install chromium >/dev/null 2>&1 && ok "chromium installed" || warn "could not install chromium (the pod may already have it cached)"
 fi
 
-# ---- 6. choose the provider ---------------------------------------------
-step "6. Model provider"
-if [ -z "$DRIVER" ]; then
-  if [ -n "$API_KEY" ]; then
-    DRIVER="openai"
-  elif [ -t 0 ]; then
-    printf '  Provider:  [1] OpenAI/Azure key (recommended)   [2] GitHub Copilot login\n'
-    read -r -p "  Choose 1 or 2 [1]: " _choice
-    case "${_choice:-1}" in 2) DRIVER="copilot" ;; *) DRIVER="openai" ;; esac
-  else
-    DRIVER="copilot"
-  fi
+# ---- 6. provider creds (OpenAI/Azure key — the only active driver) -------
+step "6. Model provider (OpenAI/Azure)"
+[ -z "$DRIVER" ] && DRIVER="openai"
+if [ "$DRIVER" = "copilot" ]; then
+  warn "the copilot driver is disabled — Loom is OpenAI/Azure-only; using openai"
+  DRIVER="openai"
 fi
-if [ "$DRIVER" = "openai" ]; then
-  [ -z "$BASE_URL" ] && [ -t 0 ] && read -r -p "  LLM_BASE_URL (…/openai/v1): " BASE_URL
-  if [ -z "$API_KEY" ] && [ -t 0 ]; then read -r -s -p "  LLM_API_KEY: " API_KEY; printf '\n'; fi
-fi
+# OpenAI/Azure needs a base URL + key; prompt for whatever wasn't passed (interactive only).
+[ -z "$BASE_URL" ] && [ -t 0 ] && read -r -p "  LLM_BASE_URL (…/openai/v1): " BASE_URL
+if [ -z "$API_KEY" ] && [ -t 0 ]; then read -r -s -p "  LLM_API_KEY: " API_KEY; printf '\n'; fi
 ok "driver: $DRIVER"
 
 # ---- 7. create the profile (idempotent) ---------------------------------
@@ -151,7 +144,7 @@ else
 fi
 
 # Fill the .env with the real key/URL only when provided (never clobber with blanks).
-if [ "$DRIVER" = "openai" ] && [ -n "$API_KEY" ]; then
+if [ -n "$API_KEY" ]; then
   mkdir -p "$DATA_DIR"
   cat > "$DATA_DIR/.env" <<EOF
 # Loom — direct OpenAI/Azure endpoint (written by setup-pod.sh). Keep this file private.
@@ -160,17 +153,15 @@ LLM_API_KEY=$API_KEY
 EOF
   chmod 600 "$DATA_DIR/.env"
   ok "wrote $DATA_DIR/.env (LLM_BASE_URL + LLM_API_KEY, mode 600)"
-elif [ "$DRIVER" = "copilot" ]; then
-  info "Copilot login: run 'copilot login' (or 'dc login') before the first model call"
 fi
 
 # ---- 8. doctor + a live model probe -------------------------------------
 step "8. Verify"
 loom_run doctor --data-dir "$DATA_DIR" || warn "doctor reported issues — review the output above"
-if [ "$DRIVER" = "openai" ] && [ -z "$API_KEY" ]; then
-  warn "no API key set — fill LLM_API_KEY in $DATA_DIR/.env, then run: loom models test --profile $DATA_DIR"
+if [ -z "$API_KEY" ]; then
+  warn "no API key yet — add LLM_API_KEY (and LLM_BASE_URL) to $DATA_DIR/.env, then run: loom models test --profile $DATA_DIR"
 else
-  loom_run models test --profile "$DATA_DIR" || warn "model probe failed — check creds (openai) or run 'copilot login' (copilot)"
+  loom_run models test --profile "$DATA_DIR" || warn "model probe failed — re-check LLM_BASE_URL (…/openai/v1) + LLM_API_KEY, and that NO_PROXY covers the host"
 fi
 
 # ---- done ----------------------------------------------------------------
