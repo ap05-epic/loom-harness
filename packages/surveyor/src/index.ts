@@ -16,6 +16,7 @@ export {
   type Candidate,
   type Chooser,
   type ChooserContext,
+  type ExploreAction,
   type ExploreDriver,
   type ExploreOptions,
   type ExploreResult,

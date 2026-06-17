@@ -1,0 +1,86 @@
+import { describe, expect, test } from 'vitest';
+import { canLaunchBrowser, CrawlSession, type DomSnapshot } from './capture.js';
+
+const liveOk = await canLaunchBrowser();
+
+function collectText(dom: DomSnapshot): string[] {
+  const out: string[] = [];
+  const walk = (n: DomSnapshot): void => {
+    if (n.text) out.push(n.text);
+    n.children.forEach(walk);
+  };
+  walk(dom);
+  return out;
+}
+
+describe('CrawlSession frame-aware interaction', () => {
+  test.runIf(liveOk)(
+    'enumerates fillable textboxes and types into them (single frame)',
+    async () => {
+      const html =
+        '<!doctype html><html><body>' +
+        '<input name="q" oninput="document.getElementById(\'echo\').textContent=this.value">' +
+        '<button>Go</button><div id="echo"></div></body></html>';
+      const session = new CrawlSession();
+      await session.open();
+      try {
+        await session.navigate(`data:text/html,${encodeURIComponent(html)}`);
+        const cands = await session.enumerateCandidates();
+
+        // a text input is now a fillable candidate, tagged 'textbox'
+        const box = cands.find((c) => c.kind === 'textbox');
+        expect(box).toBeTruthy();
+        // refs carry a frame prefix "<frameIdx>:<local>"
+        expect(box!.ref).toContain(':');
+        // the button is still a clickable candidate
+        expect(cands.some((c) => c.kind !== 'textbox')).toBe(true);
+
+        await session.fillCandidate(box!.ref, 'hello');
+        const dom = await session.captureDom();
+        expect(collectText(dom).some((t) => t.includes('hello'))).toBe(true);
+      } finally {
+        await session.close();
+      }
+    },
+    30_000,
+  );
+
+  test.runIf(liveOk)(
+    'enumerates and fills controls inside a child frame',
+    async () => {
+      const inner =
+        '<!doctype html><body>' +
+        '<input name="q" oninput="document.getElementById(\'e\').textContent=this.value">' +
+        '<button>InnerBtn</button><div id="e"></div></body>';
+      const html =
+        '<!doctype html><html><body><button>MainBtn</button>' +
+        `<iframe name="inner" srcdoc="${inner.replace(/"/g, '&quot;')}"></iframe>` +
+        '</body></html>';
+      const session = new CrawlSession();
+      await session.open();
+      try {
+        await session.navigate(`data:text/html,${encodeURIComponent(html)}`);
+        const cands = await session.enumerateCandidates();
+
+        // candidates span more than one frame (distinct frame prefixes)
+        const prefixes = new Set(cands.map((c) => c.ref.split(':')[0]));
+        expect(prefixes.size).toBeGreaterThanOrEqual(2);
+
+        // the child frame's text input is discoverable — invisible to a main-frame-only enumerate
+        const box = cands.find((c) => c.kind === 'textbox');
+        expect(box).toBeTruthy();
+        expect(box!.ref.split(':')[0]).not.toBe('0');
+
+        await session.fillCandidate(box!.ref, 'world');
+        const frames = await session.captureFrames();
+        const innerFrame = frames.find((f) => f.framePath === 'inner');
+        expect(innerFrame && collectText(innerFrame.dom).some((t) => t.includes('world'))).toBe(
+          true,
+        );
+      } finally {
+        await session.close();
+      }
+    },
+    30_000,
+  );
+});

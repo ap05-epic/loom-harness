@@ -16,6 +16,12 @@ export type ExploreAppOptions = {
   auth?: FormLogin;
   /** Reuse a saved auth state (the SSO bootstrap) instead of a form login. */
   storageStatePath?: string;
+  /**
+   * Secret values the chooser may reference by name: a fill `value` of `$user` is replaced with
+   * `secrets.user` here, in the driver — so credentials/FA codes are typed into the page but never
+   * placed in the chooser's prompt. Keyed without the `$`.
+   */
+  secrets?: Record<string, string>;
   maxStates?: number;
   maxVisits?: number;
   executablePath?: string;
@@ -49,6 +55,10 @@ export async function exploreApp(options: ExploreAppOptions): Promise<ExploreRes
       url: session.currentUrl(),
       dom: await session.captureDom(),
     });
+    // The ONLY place a `$secret` placeholder becomes a real value — downstream of the chooser.
+    const secrets = options.secrets ?? {};
+    const resolveValue = (v: string): string =>
+      v.startsWith('$') ? (secrets[v.slice(1)] ?? '') : v;
     const driver: ExploreDriver = {
       start: async () => {
         await session.navigate(options.startUrl);
@@ -59,8 +69,10 @@ export async function exploreApp(options: ExploreAppOptions): Promise<ExploreRes
         return snapshot();
       },
       candidates: () => session.enumerateCandidates(),
-      activate: async (ref) => {
-        await session.clickCandidate(ref);
+      activate: async (action) => {
+        if (action.kind === 'fill')
+          await session.fillCandidate(action.ref, resolveValue(action.value));
+        else await session.clickCandidate(action.ref);
         return snapshot();
       },
     };

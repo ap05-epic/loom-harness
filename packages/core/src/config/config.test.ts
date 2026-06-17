@@ -171,6 +171,7 @@ crawl:
   startPath: /list
   exclude: ['/logout']
   maxStates: 50
+  faEnv: FA_NUMBERS
   auth:
     loginPath: /login
     usernameSelector: 'input[name=username]'
@@ -183,6 +184,7 @@ crawl:
     const profile = loadProfile(dir, { env: {} });
     expect(profile.crawl?.startPath).toBe('/list');
     expect(profile.crawl?.exclude).toEqual(['/logout']);
+    expect(profile.crawl?.faEnv).toBe('FA_NUMBERS'); // the FA Quick-Search code's env var name
     expect(profile.crawl?.auth?.usernameEnv).toBe('APP_USER');
     expect(profile.crawl?.auth?.loginPath).toBe('/login');
   });

@@ -6,6 +6,16 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.0 — 2026-06-17
+
+The **LLM-driven explorer** — `loom explore` lets gpt-5.4 drive a menu-driven, frameset-based legacy app itself: read each page across frames, type its own way through login + an FA Quick Search, and walk the app to discover screens — **no hard-coded selectors**. (First real-BAA contact showed a hard-coded `input[name=user]` login times out inside a frameset; this closes that for good.)
+
+- **`loom explore` (new pipeline command).** Wires the (already-built, previously-unused) LLM chooser to the live AI-explorer: gpt-5.4 sees each screen's fillable fields + clickable controls and picks the next action — fill or click — steered toward unseen screens and away from destructive submits. Discovered states ingest into `uiatlas.db`, exactly like `loom crawl`. `--max-states`, `--json`.
+- **Frame-aware interaction.** `CrawlSession.enumerateCandidates`/`clickCandidate` now span **every frame**, and a new `fillCandidate` types into the right one; fillable `<input>`/`<textarea>`/`<select>` are surfaced as candidates. This is what lets the explorer log into a **frameset** login where a main-frame-only `fill` timed out.
+- **The explorer can type, not just click.** A new `ExploreAction` (`click` | `fill`) is threaded through the explore loop; the loop stays behaviour-preserving for click-only apps.
+- **Secrets never reach the model.** The chooser references credentials only as `$user`/`$pass`/`$fa`; the real values are substituted in the driver and never placed in a prompt or transcript. New **`crawl.faEnv`** config names the env var holding the FA code (default `fa_numbers`); `loom explore` reuses `crawl.auth`'s `usernameEnv`/`passwordEnv` and ignores its selectors.
+- Read-only safety is unchanged — the explorer is forbidden from submitting/clicking anything that creates, updates, deletes, sends, or pays; the deterministic 7-layer evaluator still gates every rebuild.
+
 ## v1.2.1 — 2026-06-17
 
 Zero-config onboarding — `loom` now works with **no `--data-dir`**, the way Hermes uses `~/.hermes`.

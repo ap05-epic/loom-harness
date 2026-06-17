@@ -66,6 +66,8 @@ const crawlSchema = z.object({
   /** URL substrings to never follow (e.g. "/logout"). */
   exclude: z.array(z.string()).optional(),
   maxStates: z.number().int().positive().optional(),
+  /** Env var holding the FA Quick-Search code the explorer types as `$fa` (default 'fa_numbers'). */
+  faEnv: z.string().min(1).optional(),
   auth: crawlAuthSchema.optional(),
 });
 

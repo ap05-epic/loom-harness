@@ -1,5 +1,5 @@
 import axe from 'axe-core';
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { chromium, type Browser, type BrowserContext, type Frame, type Page } from 'playwright';
 
 export type Viewport = { width: number; height: number };
 
@@ -50,7 +50,11 @@ function extractDomSnapshot(styleProps: string[] | null): DomSnapshot {
   return extract(document.body);
 }
 
-/** Tag and list the page's JS-interactive controls (the AI-explorer's candidates). Runs in-page. */
+/**
+ * Tag and list a frame's fillable fields + JS-interactive controls (the AI-explorer's candidates).
+ * Runs in-page. Fillable inputs/textarea/select are tagged `kind: 'textbox'` so the explorer can
+ * TYPE into them (login, search); everything else is a clickable control.
+ */
 function enumerateInteractive(): Array<{ ref: string; label: string; kind: string }> {
   const ROLES = new Set([
     'button',
@@ -64,6 +68,17 @@ function enumerateInteractive(): Array<{ ref: string; label: string; kind: strin
     'treeitem',
   ]);
   const NATIVE = new Set(['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA']);
+  // <input> types we can type a value into (everything that isn't a button/checkbox/etc.).
+  const FILLABLE_INPUT = new Set([
+    'text',
+    'email',
+    'password',
+    'search',
+    'tel',
+    'url',
+    'number',
+    '',
+  ]);
   const interactive = (el: Element): boolean => {
     const tag = el.tagName;
     const role = el.getAttribute('role');
@@ -81,23 +96,35 @@ function enumerateInteractive(): Array<{ ref: string; label: string; kind: strin
     if (ti !== null && ti !== '-1' && !NATIVE.has(tag)) return true;
     return false;
   };
+  const fillable = (el: Element): boolean => {
+    const tag = el.tagName;
+    if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
+    if (tag === 'INPUT') return FILLABLE_INPUT.has((el.getAttribute('type') ?? '').toLowerCase());
+    return false;
+  };
   const out: Array<{ ref: string; label: string; kind: string }> = [];
   let i = 0;
   for (const el of Array.from(document.body.querySelectorAll('*'))) {
-    if (!interactive(el)) continue;
+    const isFill = fillable(el);
+    const isClick = interactive(el);
+    if (!isFill && !isClick) continue;
     el.setAttribute('data-loom-cand', String(i));
-    const label = (
-      el.textContent ??
+    const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+    const attr = (
       el.getAttribute('aria-label') ??
+      el.getAttribute('placeholder') ??
+      el.getAttribute('name') ??
       el.getAttribute('title') ??
       el.getAttribute('value') ??
       el.getAttribute('alt') ??
       ''
     )
       .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 120);
-    out.push({ ref: String(i), label, kind: el.getAttribute('role') ?? el.tagName.toLowerCase() });
+      .trim();
+    // Clickables read best from their text ("Login"); fillable fields have none, so prefer attrs.
+    const label = (isFill ? attr || text : text || attr).slice(0, 120);
+    const kind = isFill ? 'textbox' : (el.getAttribute('role') ?? el.tagName.toLowerCase());
+    out.push({ ref: String(i), label, kind });
     i++;
   }
   return out;
@@ -231,16 +258,55 @@ export class CrawlSession {
     await this.active().waitForSelector(selector);
   }
 
-  /** Tag and return the page's interactive controls — the AI-explorer's candidate list. */
+  /**
+   * Tag and return the interactive controls + fillable fields across EVERY frame — the AI-explorer's
+   * candidate list. Each `ref` is prefixed with its frame index (`"<frameIdx>:<local>"`) so a later
+   * `clickCandidate`/`fillCandidate` targets the right frame; frameset apps (BAA login + menus) hide
+   * whole controls inside child frames a main-frame-only enumerate would miss.
+   */
   async enumerateCandidates(): Promise<Array<{ ref: string; label: string; kind: string }>> {
-    return this.active().evaluate(enumerateInteractive);
+    const frames = this.active().frames();
+    const out: Array<{ ref: string; label: string; kind: string }> = [];
+    for (let fi = 0; fi < frames.length; fi++) {
+      try {
+        const local = await frames[fi]!.evaluate(enumerateInteractive);
+        for (const c of local) out.push({ ...c, ref: `${fi}:${c.ref}` });
+      } catch {
+        // cross-origin or detached frame — contributes no candidates
+      }
+    }
+    return out;
   }
 
-  /** Click a control previously returned by `enumerateCandidates`, by its ref. */
+  /** Resolve a frame-prefixed candidate ref to its frame + selector (bare ref ⇒ main frame). */
+  private resolveRef(ref: string): { frame: Frame; selector: string } {
+    const idx = ref.indexOf(':');
+    const fi = idx === -1 ? 0 : Number(ref.slice(0, idx));
+    const local = idx === -1 ? ref : ref.slice(idx + 1);
+    const frames = this.active().frames();
+    return {
+      frame: frames[fi] ?? this.active().mainFrame(),
+      selector: `[data-loom-cand="${local}"]`,
+    };
+  }
+
+  /** Click a control previously returned by `enumerateCandidates`, by its frame-prefixed ref. */
   async clickCandidate(ref: string): Promise<void> {
-    const page = this.active();
-    await page.click(`[data-loom-cand="${ref}"]`);
-    await page.waitForLoadState('networkidle').catch(() => undefined);
+    const { frame, selector } = this.resolveRef(ref);
+    await frame.click(selector);
+    await this.active()
+      .waitForLoadState('networkidle')
+      .catch(() => undefined);
+  }
+
+  /** Type into (or, for a <select>, choose) a fillable candidate, by its frame-prefixed ref. */
+  async fillCandidate(ref: string, value: string): Promise<void> {
+    const { frame, selector } = this.resolveRef(ref);
+    const handle = await frame.$(selector);
+    if (!handle) throw new Error(`fillCandidate: no element for ref ${ref}`);
+    const tag = (await handle.evaluate((el) => el.tagName)).toLowerCase();
+    if (tag === 'select') await frame.selectOption(selector, value);
+    else await frame.fill(selector, value);
   }
 
   /** Run axe-core in the page and return its violations — the a11y layer's input. */

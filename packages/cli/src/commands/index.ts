@@ -12,6 +12,7 @@ import { initCommand } from './lifecycle/init.js';
 import { evalCommand } from './pipeline/eval.js';
 import { mapCommand } from './pipeline/map.js';
 import { crawlCommand } from './pipeline/crawl.js';
+import { exploreCommand } from './pipeline/explore.js';
 import { runCommand, resumeCommand } from './pipeline/run.js';
 import { stopCommand } from './pipeline/stop.js';
 import { wpListCommand, wpShowCommand } from './work/wp.js';
@@ -61,6 +62,7 @@ export const ALL_COMMANDS = [
   nextCommand,
   mapCommand,
   crawlCommand,
+  exploreCommand,
   evalCommand,
   runCommand,
   resumeCommand,

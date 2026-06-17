@@ -6,6 +6,8 @@ import {
   explore,
   heuristicChooser,
   type Candidate,
+  type Chooser,
+  type ExploreAction,
   type ExploreDriver,
 } from './explorer.js';
 
@@ -75,9 +77,58 @@ class FakeMenuApp implements ExploreDriver {
         ]
       : [];
   }
-  async activate(ref: string): Promise<{ url: string; dom: DomSnapshot }> {
+  async activate(action: ExploreAction): Promise<{ url: string; dom: DomSnapshot }> {
     this.activations += 1;
-    if (this.cur === 'S0') this.cur = ref === 'a' ? 'SA' : 'SB';
+    if (action.kind === 'click' && this.cur === 'S0') this.cur = action.ref === 'a' ? 'SA' : 'SB';
+    return this.state();
+  }
+  private state(): { url: string; dom: DomSnapshot } {
+    return { url: 'http://app/', dom: this.doms[this.cur]! };
+  }
+}
+
+/** Returns a chooser that plays a fixed script of actions, then backtracks (null) — mimics the LLM. */
+const scripted = (script: ExploreAction[]): Chooser => {
+  let i = 0;
+  return () => Promise.resolve(script[i++] ?? null);
+};
+
+/** A login/search app: HOME is reachable ONLY by TYPING into a field and THEN clicking submit. */
+class FakeFormApp implements ExploreDriver {
+  private cur: 'LOGIN' | 'HOME' = 'LOGIN';
+  private filled = false;
+  private readonly doms: Record<string, DomSnapshot> = {
+    LOGIN: body([
+      el('input', { type: 'text', name: 'q' }, 'Login'),
+      el('button', { id: 'go' }, 'Go'),
+    ]),
+    HOME: body([el('h1', {}, 'Home')]),
+  };
+  filledValue?: string;
+  async start(): Promise<{ url: string; dom: DomSnapshot }> {
+    this.cur = 'LOGIN';
+    this.filled = false;
+    return this.state();
+  }
+  async reset(): Promise<{ url: string; dom: DomSnapshot }> {
+    this.cur = 'LOGIN'; // the login session persists — don't drop the typed state on backtrack
+    return this.state();
+  }
+  async candidates(): Promise<Candidate[]> {
+    return this.cur === 'LOGIN'
+      ? [
+          { ref: 'q', label: 'Search', kind: 'textbox' },
+          { ref: 'go', label: 'Go', kind: 'button' },
+        ]
+      : [];
+  }
+  async activate(action: ExploreAction): Promise<{ url: string; dom: DomSnapshot }> {
+    if (action.kind === 'fill' && action.ref === 'q') {
+      this.filled = true;
+      this.filledValue = action.value;
+    } else if (action.kind === 'click' && action.ref === 'go' && this.filled) {
+      this.cur = 'HOME';
+    }
     return this.state();
   }
   private state(): { url: string; dom: DomSnapshot } {
@@ -115,6 +166,25 @@ describe('explore', () => {
     expect(result.visited).toBe(1);
     expect(result.truncated).toBe(true);
   });
+
+  test('types into a field then submits to reach a screen (the login/search flow)', async () => {
+    const driver = new FakeFormApp();
+    const result = await explore({
+      driver,
+      chooser: scripted([
+        { kind: 'fill', ref: 'q', value: '$user' },
+        { kind: 'click', ref: 'go' },
+      ]),
+      maxStates: 10,
+      maxVisits: 10,
+    });
+
+    const texts = result.states.flatMap((s) => collectText(s.dom));
+    expect(texts).toContain('Home'); // reachable ONLY by fill-then-submit
+    expect(driver.filledValue).toBe('$user'); // the value flows through the loop unchanged (no substitution here)
+    expect(result.visited).toBe(2);
+    expect(result.truncated).toBe(false);
+  });
 });
 
 describe('heuristicChooser', () => {
@@ -128,7 +198,7 @@ describe('heuristicChooser', () => {
       ],
       visitedKeys: new Set<string>(),
     };
-    expect(await heuristicChooser(ctx)).toBe('2'); // the menuitem wins over a plain button
+    expect(await heuristicChooser(ctx)).toEqual({ kind: 'click', ref: '2' }); // menuitem over a plain button
     expect(await heuristicChooser({ ...ctx, candidates: [] })).toBeNull();
   });
 });

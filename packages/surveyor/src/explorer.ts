@@ -18,6 +18,11 @@ export type Candidate = { ref: string; label: string; kind: string; selector?: s
 /** A captured page: its URL and normalized DOM. */
 export type ExploreState = { url: string; dom: DomSnapshot };
 
+/** One step the explorer can take from a screen: click a control, or type a value into a field. */
+export type ExploreAction =
+  | { kind: 'click'; ref: string }
+  | { kind: 'fill'; ref: string; value: string };
+
 /** The page-driving seam (a real browser in production, a fake state machine in tests). */
 export interface ExploreDriver {
   /** Navigate to the start and return the initial state. */
@@ -26,8 +31,8 @@ export interface ExploreDriver {
   reset(): Promise<ExploreState>;
   /** The interactive controls on the current page. */
   candidates(): Promise<Candidate[]>;
-  /** Activate a candidate by its `ref`; returns the resulting state. */
-  activate(ref: string): Promise<ExploreState>;
+  /** Perform an action (click a control, or fill a field) on the current page; returns the state. */
+  activate(action: ExploreAction): Promise<ExploreState>;
 }
 
 export type ChooserContext = {
@@ -39,8 +44,8 @@ export type ChooserContext = {
   visitedKeys: Set<string>;
 };
 
-/** Picks the next control to click (returns its `ref`), or `null` to backtrack. */
-export type Chooser = (ctx: ChooserContext) => Promise<string | null>;
+/** Picks the next action (click a control / fill a field) on the current page, or `null` to backtrack. */
+export type Chooser = (ctx: ChooserContext) => Promise<ExploreAction | null>;
 
 export type ExploreOptions = {
   driver: ExploreDriver;
@@ -136,17 +141,20 @@ const NAV_LABEL =
   /\b(menu|nav|view|detail|list|search|account|schedule|open|tab|next|continue|go|edit|new|select|expand|more|report|pricing|credit)\b/i;
 
 /**
- * A deterministic, LLM-free chooser: prefer a clearly-navigational control (menu item / tab /
- * link role, or a nav-ish label), else the first untried candidate. The offline fallback and the
+ * A deterministic, LLM-free chooser: type a constant into the first fillable field (so an offline
+ * walk still exercises forms, no secrets), else prefer a clearly-navigational control (menu item /
+ * tab / link role, or a nav-ish label), else the first candidate. The offline fallback and the
  * baseline the LLM chooser must beat.
  */
-export const heuristicChooser: Chooser = (ctx) => {
-  if (ctx.candidates.length === 0) return Promise.resolve(null);
+export const heuristicChooser: Chooser = async (ctx) => {
+  if (ctx.candidates.length === 0) return null;
+  const box = ctx.candidates.find((c) => c.kind === 'textbox');
+  if (box) return { kind: 'fill', ref: box.ref, value: 'loom' };
   const byRole = ctx.candidates.find((c) => INTERACTIVE_ROLES.has(c.kind) && c.kind !== 'button');
-  if (byRole) return Promise.resolve(byRole.ref);
+  if (byRole) return { kind: 'click', ref: byRole.ref };
   const byLabel = ctx.candidates.find((c) => NAV_LABEL.test(c.label));
-  if (byLabel) return Promise.resolve(byLabel.ref);
-  return Promise.resolve(ctx.candidates[0]!.ref);
+  if (byLabel) return { kind: 'click', ref: byLabel.ref };
+  return { kind: 'click', ref: ctx.candidates[0]!.ref };
 };
 
 /**
@@ -162,7 +170,9 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
   const states: UiState[] = [];
   const seen = new Set<string>();
   const tried = new Set<string>();
-  const edge = (key: string, ref: string): string => `${key}|${ref}`;
+  const actionKey = (a: ExploreAction): string =>
+    a.kind === 'fill' ? `fill:${a.ref}=${a.value}` : `click:${a.ref}`;
+  const edge = (key: string, a: ExploreAction): string => `${key}|${actionKey(a)}`;
   const record = (s: ExploreState): string => {
     const key = screenKey({ url: s.url, dom: s.dom });
     if (!seen.has(key)) {
@@ -179,22 +189,25 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
 
   while (states.length < maxStates && visited < maxVisits) {
     const cands = await driver.candidates();
-    const untried = cands.filter((c) => !tried.has(edge(curKey, c.ref)));
-    const ref = untried.length
-      ? await chooser({ url: cur.url, dom: cur.dom, candidates: untried, visitedKeys: seen })
+    // Offer fillable fields always (re-fillable with a new value), clicks only until tried — so a
+    // deterministic chooser exhausts the click frontier instead of re-picking a dead control.
+    const offer = cands.filter(
+      (c) => c.kind === 'textbox' || !tried.has(edge(curKey, { kind: 'click', ref: c.ref })),
+    );
+    const action = offer.length
+      ? await chooser({ url: cur.url, dom: cur.dom, candidates: offer, visitedKeys: seen })
       : null;
 
-    if (ref == null) {
+    // Backtrack on null, or on a repeat of an action already taken here (the runaway-fill guard).
+    if (action == null || tried.has(edge(curKey, action))) {
       if (curKey === startKey) break; // root exhausted (or the chooser gave up at the root)
       cur = await driver.reset();
       curKey = record(cur);
-      const rootCands = await driver.candidates();
-      if (rootCands.every((c) => tried.has(edge(curKey, c.ref)))) break;
       continue;
     }
 
-    tried.add(edge(curKey, ref));
-    cur = await driver.activate(ref);
+    tried.add(edge(curKey, action));
+    cur = await driver.activate(action);
     visited += 1;
     curKey = record(cur);
   }

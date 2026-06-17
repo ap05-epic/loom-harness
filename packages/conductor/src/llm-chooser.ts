@@ -1,43 +1,58 @@
 import type { ChatMessage, LlmGateway } from '@loom/agents';
-import type { Candidate, Chooser, ChooserContext } from '@loom/surveyor';
+import type { Candidate, Chooser, ChooserContext, ExploreAction } from '@loom/surveyor';
 
 /**
- * The LLM-backed explorer chooser: given the interactive controls on the current screen and how
- * many screens have been discovered, the model picks the one most likely to reveal an unseen screen
- * — steered toward navigation and away from destructive actions (the crawl is read-only). The
- * `surveyor.explore` loop owns the budget + dedup; this only decides "click which control next".
+ * The LLM-backed explorer chooser: given the fillable fields + clickable controls on the current
+ * screen (across all frames) and how many screens have been discovered, the model picks the next
+ * ACTION — type into a field (login, FA Quick Search) or click a control — most likely to reveal an
+ * unseen screen. Credentials/codes are referenced only by placeholder ($user/$pass/$fa); the real
+ * values are substituted later in the driver and never enter this prompt. The `surveyor.explore`
+ * loop owns the budget + dedup; this only decides "what to do next".
  */
 
 /** The navigation prompt — strict-JSON reply, read-only safety baked in. */
-export function buildChoosePrompt(ctx: ChooserContext): ChatMessage[] {
-  const list = ctx.candidates
-    .map((c) => `- ${c.ref}: ${c.label || '(no label)'} [${c.kind}]`)
-    .join('\n');
+export function buildChoosePrompt(ctx: ChooserContext, secretRefs: string[] = []): ChatMessage[] {
+  const fillable = ctx.candidates.filter((c) => c.kind === 'textbox');
+  const clickable = ctx.candidates.filter((c) => c.kind !== 'textbox');
+  const fmt = (cs: Candidate[]): string =>
+    cs.map((c) => `- ${c.ref}: ${c.label || '(no label)'} [${c.kind}]`).join('\n') || '(none)';
+  const secrets = secretRefs.map((s) => `$${s}`).join(', ') || '(none)';
   return [
     {
       role: 'system',
       content:
-        'You are the Explorer mapping a legacy app to discover every distinct screen. You receive ' +
-        'the interactive controls on the CURRENT screen and how many screens are already found. ' +
-        'Pick the ONE control most likely to reveal a screen NOT YET SEEN. Prefer navigation — ' +
-        'menus, tabs, "view"/"detail"/"open"/"search" actions. NEVER pick a destructive or mutating ' +
-        'action (delete, remove, save, submit, send, pay, confirm) — the crawl must not change data. ' +
-        'Reply with STRICT JSON only: {"ref":"<ref>"} to click that control, or {"ref":null} to go ' +
-        'back. No prose.',
+        'You are the Explorer mapping a legacy menu-driven app to discover every distinct screen. ' +
+        "You receive the CURRENT screen's fillable fields and clickable controls (across all frames) " +
+        'and how many screens are already found. Reply with STRICT JSON only, no prose:\n' +
+        '  {"action":"fill","ref":"<ref>","value":"<text or $secret>"}  to type into a field, or\n' +
+        '  {"action":"click","ref":"<ref>"}  to click a control, or\n' +
+        '  {"action":null}  to go back.\n' +
+        'Secret placeholders you may use as a fill value (the real value is substituted for you and ' +
+        `is NEVER shown to you): ${secrets}. $user = login username, $pass = login password, ` +
+        '$fa = the FA code for Quick Search.\n' +
+        'Strategy: on a LOGIN screen, fill $user and $pass then click the submit/login control. If a ' +
+        'Quick Search / FA box exists and you have not searched yet, fill $fa and submit. Otherwise ' +
+        'click a control likely to reveal a screen NOT yet seen (menus, tabs, "view"/"detail"/"open"). ' +
+        'You MAY submit LOGIN and SEARCH forms to navigate. NEVER submit a form or click a control that ' +
+        'creates, updates, deletes, saves, pays, sends, or confirms business data.',
     },
     {
       role: 'user',
-      content: `Discovered so far: ${ctx.visitedKeys.size} screens.\nControls:\n${list}`,
+      content:
+        `Discovered so far: ${ctx.visitedKeys.size} screens.\n` +
+        `Fillable fields:\n${fmt(fillable)}\n\nClickable controls:\n${fmt(clickable)}`,
     },
   ];
 }
 
 /**
- * Parse the model's reply into a candidate ref, or `null` to backtrack. Tolerates prose around the
- * JSON and **only** returns a ref the page actually offered (a hallucinated ref ⇒ backtrack), so a
- * sloppy or adversarial reply can never drive a click that isn't there.
+ * Parse the model's reply into an {@link ExploreAction}, or `null` to backtrack. Tolerates prose
+ * around the JSON and **only** returns an action whose `ref` the page actually offered (a
+ * hallucinated ref ⇒ backtrack), so a sloppy or adversarial reply can never drive an action that
+ * isn't there. A `$secret` fill value is passed through verbatim (it's resolved later, in the
+ * driver) — it is deliberately NOT validated as a ref.
  */
-export function parseChoice(content: string | null, validRefs: string[]): string | null {
+export function parseChoice(content: string | null, validRefs: string[]): ExploreAction | null {
   if (!content) return null;
   const start = content.indexOf('{');
   const end = content.lastIndexOf('}');
@@ -49,16 +64,21 @@ export function parseChoice(content: string | null, validRefs: string[]): string
     return null;
   }
   if (!obj || typeof obj !== 'object') return null;
-  const ref = (obj as Record<string, unknown>).ref;
-  if (typeof ref !== 'string') return null; // null / missing ⇒ backtrack
-  return validRefs.includes(ref) ? ref : null;
+  const o = obj as Record<string, unknown>;
+  if (o.action == null || o.ref == null) return null; // {"action":null} / missing ⇒ backtrack
+  if (typeof o.ref !== 'string' || !validRefs.includes(o.ref)) return null; // hallucination defense
+  if (o.action === 'fill') {
+    return { kind: 'fill', ref: o.ref, value: typeof o.value === 'string' ? o.value : '' };
+  }
+  if (o.action === 'click' || o.action === 'submit') return { kind: 'click', ref: o.ref };
+  return null;
 }
 
-/** Build a `Chooser` that asks the model which control to click next. */
-export function llmChooser(gateway: LlmGateway, model: string): Chooser {
-  return async (ctx: ChooserContext): Promise<string | null> => {
+/** Build a `Chooser` that asks the model which action to take next. */
+export function llmChooser(gateway: LlmGateway, model: string, secretRefs: string[] = []): Chooser {
+  return async (ctx: ChooserContext): Promise<ExploreAction | null> => {
     if (ctx.candidates.length === 0) return null;
-    const res = await gateway.complete({ model, messages: buildChoosePrompt(ctx) });
+    const res = await gateway.complete({ model, messages: buildChoosePrompt(ctx, secretRefs) });
     return parseChoice(
       res.content,
       ctx.candidates.map((c: Candidate) => c.ref),
