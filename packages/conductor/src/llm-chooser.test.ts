@@ -78,6 +78,19 @@ describe('buildChoosePrompt', () => {
     expect(user).toContain('c2: Search'); // the textbox, listed separately
     expect(user).toContain('1 screens'); // visited count surfaced
   });
+
+  test('surfaces the actions already taken on this screen so the model does the next step', () => {
+    const withTaken: ChooserContext = {
+      ...ctx,
+      taken: [{ kind: 'fill', ref: 'c2', value: '$user' }],
+    };
+    const msgs = buildChoosePrompt(withTaken, ['user', 'pass']);
+    const system = (msgs.find((m) => m.role === 'system')!.content as string).toLowerCase();
+    const user = msgs.find((m) => m.role === 'user')!.content as string;
+    expect(user).toMatch(/already done|filled c2/i); // the done-list is shown…
+    expect(user).toContain('c2'); // …naming the field it already filled
+    expect(system).toMatch(/next step|do ?n['o]t repeat|already (done|taken)/); // …and told not to repeat
+  });
 });
 
 describe('llmChooser', () => {

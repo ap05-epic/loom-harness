@@ -6,6 +6,12 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.1 — 2026-06-17
+
+`loom explore` now completes **multi-step logins**. The first live BAA run reached the form login (on `localhost`, no SSO — the explorer hits Tomcat directly, so the Microsoft SSO that guards the *external* devpod URL is irrelevant) but stopped after one action: the LLM chooser is stateless per step, so it couldn't see it had already typed the username, repeated the same action, and the dedup guard backed it out before it filled the password and submitted.
+
+- **Per-screen action history.** `ChooserContext` now carries `taken` — the actions already performed on the current screen; the explore loop accumulates it per `screenKey`, and the LLM-chooser prompt lists _"Already done on THIS screen … do the NEXT step, don't repeat."_ So the model fills the username, then the password, then submits — and the same applies to any multi-field screen (e.g. the FA Quick Search). Pure addition; click-only and single-field flows are unchanged.
+
 ## v1.3.0 — 2026-06-17
 
 The **LLM-driven explorer** — `loom explore` lets gpt-5.4 drive a menu-driven, frameset-based legacy app itself: read each page across frames, type its own way through login + an FA Quick Search, and walk the app to discover screens — **no hard-coded selectors**. (First real-BAA contact showed a hard-coded `input[name=user]` login times out inside a frameset; this closes that for good.)

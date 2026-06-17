@@ -136,6 +136,51 @@ class FakeFormApp implements ExploreDriver {
   }
 }
 
+/** A two-field login: HOME needs BOTH fields typed (any order) THEN submit — the BAA shape. */
+class FakeLoginApp implements ExploreDriver {
+  private cur: 'LOGIN' | 'HOME' = 'LOGIN';
+  private readonly filled = new Set<string>();
+  filledValues: Record<string, string> = {};
+  private readonly doms: Record<string, DomSnapshot> = {
+    LOGIN: body([
+      el('input', { type: 'text', name: 'user' }),
+      el('input', { type: 'password', name: 'pass' }),
+      el('input', { type: 'submit', value: 'Login' }),
+    ]),
+    HOME: body([el('h1', {}, 'Welcome')]),
+  };
+  async start(): Promise<{ url: string; dom: DomSnapshot }> {
+    this.cur = 'LOGIN';
+    this.filled.clear();
+    return this.state();
+  }
+  async reset(): Promise<{ url: string; dom: DomSnapshot }> {
+    this.cur = 'LOGIN'; // session persists across a backtrack
+    return this.state();
+  }
+  async candidates(): Promise<Candidate[]> {
+    return this.cur === 'LOGIN'
+      ? [
+          { ref: 'user', label: 'user', kind: 'textbox' },
+          { ref: 'pass', label: 'pass', kind: 'textbox' },
+          { ref: 'go', label: 'Login', kind: 'button' },
+        ]
+      : [];
+  }
+  async activate(action: ExploreAction): Promise<{ url: string; dom: DomSnapshot }> {
+    if (action.kind === 'fill') {
+      this.filled.add(action.ref);
+      this.filledValues[action.ref] = action.value;
+    } else if (action.ref === 'go' && this.filled.has('user') && this.filled.has('pass')) {
+      this.cur = 'HOME';
+    }
+    return this.state();
+  }
+  private state(): { url: string; dom: DomSnapshot } {
+    return { url: 'http://app/', dom: this.doms[this.cur]! };
+  }
+}
+
 describe('explore', () => {
   test('discovers states reachable only by clicking (what synthetic URL nav cannot)', async () => {
     const driver = new FakeMenuApp();
@@ -184,6 +229,27 @@ describe('explore', () => {
     expect(driver.filledValue).toBe('$user'); // the value flows through the loop unchanged (no substitution here)
     expect(result.visited).toBe(2);
     expect(result.truncated).toBe(false);
+  });
+
+  test('completes a multi-field login using per-screen action history (taken)', async () => {
+    // A stateless chooser that relies on ctx.taken to know which fields it has already filled —
+    // without it, it would re-pick the first field forever and never reach submit (the live bug).
+    const loginChooser: Chooser = async (ctx) => {
+      const filledRefs = new Set(
+        (ctx.taken ?? []).filter((a) => a.kind === 'fill').map((a) => a.ref),
+      );
+      const box = ctx.candidates.find((c) => c.kind === 'textbox' && !filledRefs.has(c.ref));
+      if (box) return { kind: 'fill', ref: box.ref, value: box.ref === 'user' ? '$user' : '$pass' };
+      const submit = ctx.candidates.find((c) => c.kind !== 'textbox');
+      return submit ? { kind: 'click', ref: submit.ref } : null;
+    };
+    const driver = new FakeLoginApp();
+    const result = await explore({ driver, chooser: loginChooser, maxStates: 10, maxVisits: 20 });
+
+    const texts = result.states.flatMap((s) => collectText(s.dom));
+    expect(texts).toContain('Welcome'); // reached HOME — only by filling BOTH fields then submitting
+    expect(driver.filledValues).toEqual({ user: '$user', pass: '$pass' });
+    expect(result.visited).toBe(3); // fill user, fill pass, click submit — no repeats
   });
 });
 

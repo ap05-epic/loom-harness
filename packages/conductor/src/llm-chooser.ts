@@ -17,6 +17,10 @@ export function buildChoosePrompt(ctx: ChooserContext, secretRefs: string[] = []
   const fmt = (cs: Candidate[]): string =>
     cs.map((c) => `- ${c.ref}: ${c.label || '(no label)'} [${c.kind}]`).join('\n') || '(none)';
   const secrets = secretRefs.map((s) => `$${s}`).join(', ') || '(none)';
+  const done =
+    (ctx.taken ?? [])
+      .map((a) => (a.kind === 'fill' ? `filled ${a.ref} (${a.value})` : `clicked ${a.ref}`))
+      .join(', ') || '(nothing yet)';
   return [
     {
       role: 'system',
@@ -30,7 +34,9 @@ export function buildChoosePrompt(ctx: ChooserContext, secretRefs: string[] = []
         'Secret placeholders you may use as a fill value (the real value is substituted for you and ' +
         `is NEVER shown to you): ${secrets}. $user = login username, $pass = login password, ` +
         '$fa = the FA code for Quick Search.\n' +
-        'Strategy: on a LOGIN screen, fill $user and $pass then click the submit/login control. If a ' +
+        'Strategy: do the NEXT step you have not done yet — never repeat an action listed under ' +
+        '"Already done" below (a filled field looks identical to an empty one, so trust that list). ' +
+        'On a LOGIN screen, fill $user and $pass then click the submit/login control. If a ' +
         'Quick Search / FA box exists and you have not searched yet, fill $fa and submit. Otherwise ' +
         'click a control likely to reveal a screen NOT yet seen (menus, tabs, "view"/"detail"/"open"). ' +
         'You MAY submit LOGIN and SEARCH forms to navigate. NEVER submit a form or click a control that ' +
@@ -40,6 +46,7 @@ export function buildChoosePrompt(ctx: ChooserContext, secretRefs: string[] = []
       role: 'user',
       content:
         `Discovered so far: ${ctx.visitedKeys.size} screens.\n` +
+        `Already done on THIS screen: ${done}.\n\n` +
         `Fillable fields:\n${fmt(fillable)}\n\nClickable controls:\n${fmt(clickable)}`,
     },
   ];

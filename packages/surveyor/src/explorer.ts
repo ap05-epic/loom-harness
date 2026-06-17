@@ -42,6 +42,13 @@ export type ChooserContext = {
   candidates: Candidate[];
   /** Screen keys already discovered (so the chooser can steer toward the unseen). */
   visitedKeys: Set<string>;
+  /**
+   * Actions already taken on THIS screen. A stateless chooser (the LLM) can't see what it already
+   * typed — a filled field looks identical to an empty one — so without this it repeats its first
+   * action forever. Feeding it back lets the model do the NEXT step: fill the password after the
+   * username, then submit.
+   */
+  taken?: ExploreAction[];
 };
 
 /** Picks the next action (click a control / fill a field) on the current page, or `null` to backtrack. */
@@ -170,6 +177,8 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
   const states: UiState[] = [];
   const seen = new Set<string>();
   const tried = new Set<string>();
+  /** Actions taken per screen — fed back to the chooser so it can progress on multi-step screens. */
+  const takenByScreen = new Map<string, ExploreAction[]>();
   const actionKey = (a: ExploreAction): string =>
     a.kind === 'fill' ? `fill:${a.ref}=${a.value}` : `click:${a.ref}`;
   const edge = (key: string, a: ExploreAction): string => `${key}|${actionKey(a)}`;
@@ -194,8 +203,9 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
     const offer = cands.filter(
       (c) => c.kind === 'textbox' || !tried.has(edge(curKey, { kind: 'click', ref: c.ref })),
     );
+    const taken = takenByScreen.get(curKey) ?? [];
     const action = offer.length
-      ? await chooser({ url: cur.url, dom: cur.dom, candidates: offer, visitedKeys: seen })
+      ? await chooser({ url: cur.url, dom: cur.dom, candidates: offer, visitedKeys: seen, taken })
       : null;
 
     // Backtrack on null, or on a repeat of an action already taken here (the runaway-fill guard).
@@ -207,6 +217,8 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
     }
 
     tried.add(edge(curKey, action));
+    if (!takenByScreen.has(curKey)) takenByScreen.set(curKey, []);
+    takenByScreen.get(curKey)!.push(action);
     cur = await driver.activate(action);
     visited += 1;
     curKey = record(cur);
