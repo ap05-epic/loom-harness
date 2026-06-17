@@ -60,13 +60,14 @@ Paste the `doctor` output back if anything is red.
 
 ```bash
 loom next                                                     # the next command for your state
+loom chat   --data-dir ~/loom-data/<project>                  # drive it by talking — "what's the status?", "rebuild login" (asks before anything expensive)
 loom map    --data-dir ~/loom-data/<project>                  # scan the legacy source → CodeAtlas
 loom crawl  --data-dir ~/loom-data/<project> --max-states 20  # capture the baseline (read-only)
 loom run    --data-dir ~/loom-data/<project> --shift          # rebuild unattended (loom stop / loom resume)
 loom ui     --data-dir ~/loom-data/<project>                  # Mission Control: progress + gate approvals
 ```
 
-Sanity-check the model any time with `loom ask "say pong"` or `loom models test`. See [how you interact with Loom](../concepts/interaction-model.md) for the full picture.
+Sanity-check the model any time with `loom ask "say pong"` or `loom models test`. See [how you interact with Loom](../concepts/interaction-model.md) for the full picture. For BAA specifically, load the conversion skills first — `loom skills load --from skills/conversion --data-dir ~/loom-data/<project>` — and follow the [onboarding playbook](baa-onboarding.md).
 
 ## Update loop
 
@@ -84,7 +85,7 @@ Before trusting an autonomous shift, dry-run the whole loop on the pod with no p
 
 ```bash
 bash scripts/offline-rehearsal.sh                 # install → build → tests → doctor → fixture pipeline
-FROM_TAG=v1.0.0 TO_TAG=v1.0.1 bash scripts/offline-rehearsal.sh   # also rehearse the update loop
+FROM_TAG=v1.0.0 TO_TAG=v1.1.0 bash scripts/offline-rehearsal.sh   # also rehearse the update loop
 ```
 
 It fails loudly on the first broken step, and writes its scratch data to a temp dir outside the clone.
