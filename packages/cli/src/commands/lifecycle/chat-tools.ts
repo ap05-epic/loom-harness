@@ -5,11 +5,14 @@ import { runPipeline } from '@loom/conductor';
 import {
   applyGateDecision,
   GateStore,
+  loadProfile,
   MIGRATIONS,
   QuestionStore,
   runMigrations,
+  saveProfile,
   TaskStore,
   type Profile,
+  type ProfileConfig,
   type SqliteDatabase,
 } from '@loom/core';
 import type { ToolRisk } from '@loom/tools';
@@ -106,6 +109,99 @@ export function buildChatTools(session: ChatSession): ChatTool[] {
         const qs = new QuestionStore(db).list({ status: 'open' });
         if (!qs.length) return 'No open questions.';
         return qs.map((q) => `${q.id} — ${q.question}`).join('\n');
+      },
+    ),
+
+    tool(
+      'show_profile',
+      'Show the current project profile and what (if anything) is missing before it can run.',
+      NO_ARGS,
+      'read',
+      async () => {
+        const p = session.profile;
+        const lines = [
+          `project: ${p.project}`,
+          `model: ${p.llm.driver} / ${p.llm.model}`,
+          `source.strutsConfig: ${p.source?.strutsConfig ?? '(not set)'}`,
+          `app.baseUrl: ${p.app?.baseUrl ?? '(not set)'}`,
+          `target.bRepo: ${p.target?.bRepo ?? 'b-repo (default)'}`,
+          `eval.threshold: ${p.eval?.threshold ?? 1}%`,
+        ];
+        const { cfg, problem } = resolveCfg(session);
+        lines.push(
+          cfg ? 'status: ready to run (map, then run)' : `status: not runnable yet — ${problem}`,
+        );
+        return lines.join('\n');
+      },
+    ),
+
+    tool(
+      'configure_project',
+      'Set up or update the project profile from what the user told you about their app. Collect ' +
+        'the values in conversation first, then call this. Writes loom.config.yaml — never secrets ' +
+        '(those go in .env).',
+      {
+        type: 'object',
+        properties: {
+          project: { type: 'string', description: 'project name' },
+          strutsConfig: {
+            type: 'string',
+            description: 'path to the legacy struts-config.xml (the MAP source)',
+          },
+          baseUrl: {
+            type: 'string',
+            description: 'URL of the running legacy app to match (the baseline)',
+          },
+          bRepo: {
+            type: 'string',
+            description: 'directory to write the rebuild into (default b-repo)',
+          },
+          threshold: { type: 'number', description: 'max visual diff %% to pass (default 1)' },
+          storageStatePath: {
+            type: 'string',
+            description: 'saved SSO auth-state file, for login-gated apps',
+          },
+        },
+        additionalProperties: false,
+      },
+      'expensive',
+      async (args) => {
+        const a = (args ?? {}) as {
+          project?: string;
+          strutsConfig?: string;
+          baseUrl?: string;
+          bRepo?: string;
+          threshold?: number;
+          storageStatePath?: string;
+        };
+        const p = session.profile;
+        const baseUrl = a.baseUrl ?? p.app?.baseUrl;
+        const storageStatePath = a.storageStatePath ?? p.app?.storageStatePath;
+        const config: ProfileConfig = {
+          project: a.project ?? p.project,
+          llm: p.llm,
+          source: a.strutsConfig ? { strutsConfig: a.strutsConfig } : p.source,
+          app: baseUrl ? { baseUrl, ...(storageStatePath ? { storageStatePath } : {}) } : p.app,
+          target: a.bRepo ? { bRepo: a.bRepo } : p.target,
+          eval: a.threshold != null ? { ...(p.eval ?? {}), threshold: a.threshold } : p.eval,
+          crawl: p.crawl,
+          mcp: p.mcp,
+          skills: p.skills,
+        };
+        let saved: string;
+        try {
+          saved = saveProfile(config, p.dir);
+        } catch (error) {
+          return `Could not save the profile — ${
+            error instanceof Error ? error.message : String(error)
+          }. Ask the user for the missing value.`;
+        }
+        // Reload so this session — and the next map/run — sees the update.
+        session.profile = loadProfile(p.dir, p.dataDir ? { dataDir: p.dataDir } : {});
+        const { cfg, problem } = resolveCfg(session);
+        return cfg
+          ? `Saved ${saved}. The project is ready — source + app are set. Offer to run \`map\`, then \`run\`.`
+          : `Saved ${saved}. Still not runnable — ${problem}. Ask the user for the missing value.`;
       },
     ),
 

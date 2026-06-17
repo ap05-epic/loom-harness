@@ -1,8 +1,11 @@
-import { resolve } from 'node:path';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import type { LlmGateway } from '@loom/agents';
 import {
   GateStore,
+  loadProfile,
   MIGRATIONS,
   openDb,
   QuestionStore,
@@ -91,5 +94,44 @@ describe('chat tools — pipeline tools degrade gracefully on a minimal profile'
 
   test('run returns a friendly config message on a minimal profile', async () => {
     expect(await run(session(), 'run')).toMatch(/can't run yet/i);
+  });
+});
+
+describe('chat tools — conversational project setup', () => {
+  test('configure_project writes the profile so the project becomes runnable', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'chat-cfg-'));
+    try {
+      const s = session({
+        profile: {
+          project: 'baa',
+          dir: join(tmp, 'profile'),
+          dataDir: tmp,
+          env: {},
+          llm: { driver: 'openai', model: 'm' },
+        } as Profile,
+      });
+      // a bare profile can't run yet (no source/app)
+      expect(await run(s, 'map')).toMatch(/can't map yet/i);
+      // set the two required fields conversationally
+      const out = await run(s, 'configure_project', {
+        strutsConfig: join(tmp, 'struts-config.xml'),
+        baseUrl: 'http://legacy.app/',
+      });
+      expect(out).toMatch(/saved/i);
+      // the session reloaded its profile → now runnable (map fails on the missing file, not config)
+      expect(await run(s, 'map')).not.toMatch(/can't map yet/i);
+      // and it persisted to disk
+      expect(loadProfile(join(tmp, 'profile'), { env: {} }).app?.baseUrl).toBe(
+        'http://legacy.app/',
+      );
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('show_profile reports what is missing on a minimal profile', async () => {
+    const out = await run(session(), 'show_profile');
+    expect(out).toMatch(/project: fixture/);
+    expect(out).toMatch(/not runnable yet/i);
   });
 });

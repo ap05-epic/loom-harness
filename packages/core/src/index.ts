@@ -12,8 +12,10 @@ export { MIGRATIONS } from './db/migrations.js';
 export { EventLog, type AppendEvent, type HarnessEvent } from './events/events.js';
 export {
   loadProfile,
+  saveProfile,
   parseDotEnv,
   type Profile,
+  type ProfileConfig,
   type LlmConfig,
   type ModelProfileOverrides,
   type SourceConfig,

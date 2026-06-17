@@ -1,6 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
 
 const modelProfileSchema = z.object({
@@ -119,6 +119,9 @@ export type Profile = z.infer<typeof profileSchema> & {
   env: Record<string, string>;
 };
 
+/** A profile's persisted config — everything written to loom.config.yaml (no runtime fields). */
+export type ProfileConfig = z.infer<typeof profileSchema>;
+
 export type LoadProfileOptions = {
   /** Environment to overlay on .env values (defaults to process.env). */
   env?: Record<string, string | undefined>;
@@ -193,4 +196,21 @@ export function loadProfile(dir: string, options: LoadProfileOptions = {}): Prof
   }
 
   return { ...parsed.data, dir, dataDir, env };
+}
+
+/**
+ * Write a project's config to `<dir>/loom.config.yaml`, validated against the schema. Runtime-only
+ * fields (dir/dataDir/env) and any unknown keys are dropped by the parse, and secrets are never
+ * written (they live in .env). Round-trips through {@link loadProfile}. Returns the written path.
+ */
+export function saveProfile(config: ProfileConfig, dir: string): string {
+  const parsed = profileSchema.safeParse(config);
+  if (!parsed.success) {
+    const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+    throw new Error(`Invalid profile: ${issues}`);
+  }
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, 'loom.config.yaml');
+  writeFileSync(path, stringifyYaml(parsed.data), 'utf8');
+  return path;
 }

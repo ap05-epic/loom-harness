@@ -1,8 +1,8 @@
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { loadProfile } from './config.js';
+import { loadProfile, saveProfile } from './config.js';
 
 let dir: string;
 beforeEach(() => {
@@ -185,5 +185,51 @@ crawl:
     expect(profile.crawl?.exclude).toEqual(['/logout']);
     expect(profile.crawl?.auth?.usernameEnv).toBe('APP_USER');
     expect(profile.crawl?.auth?.loginPath).toBe('/login');
+  });
+});
+
+describe('saveProfile', () => {
+  test('writes a profile loadProfile reads back (round-trip)', () => {
+    const path = saveProfile(
+      {
+        project: 'baa',
+        llm: {
+          driver: 'openai',
+          model: 'gpt-5.4',
+          baseUrlEnv: 'LLM_BASE_URL',
+          apiKeyEnv: 'LLM_API_KEY',
+        },
+        source: { strutsConfig: './struts-config.xml' },
+        app: { baseUrl: 'https://prod.example/' },
+        eval: { threshold: 1.5 },
+      },
+      dir,
+    );
+    expect(path).toBe(join(dir, 'loom.config.yaml'));
+    const p = loadProfile(dir, { env: {} });
+    expect(p.project).toBe('baa');
+    expect(p.source?.strutsConfig).toBe('./struts-config.xml');
+    expect(p.app?.baseUrl).toBe('https://prod.example/');
+    expect(p.eval?.threshold).toBe(1.5);
+  });
+
+  test('strips runtime-only fields + secrets, and rejects an invalid config', () => {
+    saveProfile(
+      {
+        project: 'x',
+        llm: { driver: 'openai', model: 'm' },
+        // runtime-only fields that must never be persisted:
+        dir: '/should-not-appear',
+        env: { SECRET: 'nope' },
+      } as never,
+      dir,
+    );
+    const text = readFileSync(join(dir, 'loom.config.yaml'), 'utf8');
+    expect(text).not.toContain('SECRET');
+    expect(text).not.toContain('should-not-appear');
+    // a config missing the required `project` is rejected with a helpful message
+    expect(() => saveProfile({ llm: { driver: 'openai', model: 'm' } } as never, dir)).toThrow(
+      /project/,
+    );
   });
 });
