@@ -34,7 +34,7 @@ export function decideNext(s: NextState): NextStep {
     return {
       command: 'loom models test',
       reason:
-        'Set your model credentials in .env (LLM_BASE_URL …/openai/v1 + LLM_API_KEY) or run `copilot login`, then verify the backend.',
+        'Set your model credentials in .env (LLM_BASE_URL …/openai/v1 + LLM_API_KEY), then verify the backend.',
     };
   }
   if (!s.atlasExists) {
@@ -98,7 +98,7 @@ function gatherNextState(ctx: CliContext, optionDb: unknown): NextState {
   }
 
   const provider = describeProvider(profile);
-  const providerReady = provider.driver === 'copilot' || !/NOT SET/.test(provider.auth);
+  const providerReady = !/NOT SET|disabled/i.test(provider.auth);
   const dataDir = profile.dataDir;
   const atlasExists = dataDir ? existsSync(join(dataDir, 'codeatlas.db')) : false;
   const base = empty({ configured: true, providerReady, atlasExists });

@@ -2,7 +2,6 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { MIGRATIONS, openDb, runMigrations, TaskStore, type SqliteDatabase } from '@loom/core';
 import {
-  copilotBuildStrategy,
   runPipeline,
   type BuildStrategy,
   type RunPipelineResult,
@@ -123,9 +122,9 @@ function openHarnessDb(cfg: ResolvedPipeline): SqliteDatabase {
   return db;
 }
 
-/** With a Copilot login (no key) the Builder uses Copilot's own agent; else our loop. */
-function buildStrategyFor(profile: Profile): BuildStrategy | undefined {
-  return profile.llm.driver === 'copilot' ? copilotBuildStrategy() : undefined;
+/** OpenAI-only: always our own agent loop (the copilot build strategy is disabled). */
+function buildStrategyFor(_profile: Profile): BuildStrategy | undefined {
+  return undefined;
 }
 
 function pipelineArgs(

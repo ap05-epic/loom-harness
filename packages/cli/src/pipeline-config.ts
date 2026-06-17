@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
-import { AnthropicDriver, CopilotDriver, OpenAiDriver, type LlmGateway } from '@loom/agents';
+import { AnthropicDriver, OpenAiDriver, type LlmGateway } from '@loom/agents';
 import type { Profile, Viewport } from '@loom/core';
 import { configError } from './errors.js';
 
@@ -95,19 +95,23 @@ export function resolvePipelineConfig(
 
 /** Build the LLM gateway from a profile's llm config + resolved env. */
 export function gatewayFromProfile(profile: Profile): LlmGateway {
-  const { driver, model, baseUrlEnv, apiKeyEnv } = profile.llm;
+  const { driver, baseUrlEnv, apiKeyEnv } = profile.llm;
 
-  // GitHub Copilot login: no base URL / key — auth comes from the copilot session.
+  // The copilot driver is disabled — Loom uses the OpenAI/Azure key path only.
+  // (CopilotDriver still ships in @loom/agents but is no longer constructed here.)
   if (driver === 'copilot') {
-    return new CopilotDriver({ model });
+    throw configError(
+      'the copilot driver is disabled — Loom now uses the OpenAI/Azure key path only',
+      'set llm.driver: openai with LLM_BASE_URL (…/openai/v1) + LLM_API_KEY (e.g. `loom init --driver openai`)',
+    );
   }
 
   const base = baseUrlEnv ? profile.env[baseUrlEnv] : undefined;
   const key = apiKeyEnv ? profile.env[apiKeyEnv] : undefined;
   if (!key) {
     throw configError(
-      `no API key set (${apiKeyEnv ?? 'LLM_API_KEY'}) — set it, or use driver: copilot for a GitHub Copilot login (no key/URL needed)`,
-      'add the key to your .env, or switch llm.driver to copilot',
+      `no API key set (${apiKeyEnv ?? 'LLM_API_KEY'}) — set it in your .env`,
+      'add LLM_API_KEY (and LLM_BASE_URL …/openai/v1) to the profile .env',
     );
   }
   if (driver === 'anthropic') {
@@ -142,10 +146,10 @@ export function describeProvider(profile: Profile): ProviderInfo {
   if (driver === 'copilot') {
     return {
       driver,
-      auth: 'GitHub Copilot login (copilot CLI session — no key/URL)',
+      auth: 'disabled — Loom is OpenAI/Azure-only; switch llm.driver to openai',
       model,
-      modelSelectable: true,
-      note: 'Model is selectable via Copilot; auth is your `copilot login` session.',
+      modelSelectable: false,
+      note: 'The copilot driver is disabled; set llm.driver: openai with a key.',
     };
   }
   const keySet = Boolean(apiKeyEnv && profile.env[apiKeyEnv]);

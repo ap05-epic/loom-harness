@@ -37,9 +37,7 @@ export const modelsListCommand = defineCommand({
     const d = data as { provider: ReturnType<typeof describeProvider>; models: ModelRow[] };
     ctx.sink.line(`provider: ${d.provider.driver}`);
     ctx.sink.line(`auth:     ${d.provider.auth}`);
-    ctx.sink.line(
-      `model:    ${d.provider.model} ${d.provider.modelSelectable ? '(selectable — GitHub Copilot lets you choose)' : '(locked to this model by the key/endpoint)'}`,
-    );
+    ctx.sink.line(`model:    ${d.provider.model} (set by the key/endpoint)`);
     ctx.sink.line('');
     const rows = d.models.map((r) => ({
       ...r,
@@ -90,9 +88,7 @@ export const modelsTestCommand = defineCommand({
     } catch (error) {
       throw networkError(
         error instanceof Error ? error.message : String(error),
-        p.llm.driver === 'copilot'
-          ? 'run `copilot login` (or `dc login`) — the Copilot session may be missing or expired'
-          : 'check the endpoint URL, API key, and that NO_PROXY covers the LLM host',
+        'check the endpoint URL, API key, and that NO_PROXY covers the LLM host',
       );
     }
   },

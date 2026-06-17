@@ -1,6 +1,5 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
-import { detectCopilot } from '@loom/agents';
 import { input } from '@inquirer/prompts';
 import { configError, usageError } from '../../errors.js';
 import { defineCommand } from '../../registry.js';
@@ -15,34 +14,29 @@ function insideGitTree(startDir: string): boolean {
   }
 }
 
-type Driver = 'copilot' | 'openai' | 'anthropic';
+type Driver = 'openai' | 'anthropic';
 
 function configYaml(project: string, model: string, driver: Driver): string {
-  const lines = [`project: ${project}`, `llm:`, `  driver: ${driver}`, `  model: ${model}`];
-  if (driver !== 'copilot') {
-    // copilot needs no key/URL — auth comes from the `copilot login` session.
-    lines.push(`  baseUrlEnv: LLM_BASE_URL`, `  apiKeyEnv: LLM_API_KEY`);
-  }
-  lines.push('');
-  return lines.join('\n');
+  return (
+    [
+      `project: ${project}`,
+      `llm:`,
+      `  driver: ${driver}`,
+      `  model: ${model}`,
+      `  baseUrlEnv: LLM_BASE_URL`,
+      `  apiKeyEnv: LLM_API_KEY`,
+    ].join('\n') + '\n'
+  );
 }
 
-const ENV_COPILOT = [
-  '# Provider: GitHub Copilot login — NO key needed (auth via `copilot login` / `dc login`).',
-  '# To switch to a direct BYOK key instead, set llm.driver: openai and fill these:',
-  '# LLM_BASE_URL=',
-  '# LLM_API_KEY=',
-  '',
-].join('\n');
-
 const ENV_KEY = [
-  '# Direct OpenAI-compatible endpoint (base URL must include the version path, e.g. /openai/v1)',
+  '# Direct OpenAI/Azure endpoint (base URL must include the version path, e.g. /openai/v1)',
   'LLM_BASE_URL=',
   'LLM_API_KEY=',
   '',
 ].join('\n');
 
-const DRIVERS: readonly Driver[] = ['copilot', 'openai', 'anthropic'];
+const DRIVERS: readonly Driver[] = ['openai', 'anthropic'];
 
 export const initCommand = defineCommand({
   name: 'init',
@@ -55,7 +49,7 @@ export const initCommand = defineCommand({
     { flags: '--model <id>', describe: 'default model id (default: gpt-5.4)' },
     {
       flags: '--driver <driver>',
-      describe: 'copilot | openai | anthropic (default: auto — copilot if its CLI is present)',
+      describe: 'openai | anthropic (default: openai)',
     },
     { flags: '--force', describe: 'overwrite an existing loom.config.yaml' },
   ],
@@ -91,22 +85,15 @@ export const initCommand = defineCommand({
       if (!o.model) model = await input({ message: 'Default model:', default: model });
     }
 
-    // Driver: explicit flag wins; otherwise default to GitHub Copilot if its CLI
-    // is present (the common case — a Copilot login, no key), else openai.
+    // Driver: explicit flag wins; otherwise default to the OpenAI/Azure key path
+    // (Loom is OpenAI-only — the copilot driver is disabled).
     let driver = o.driver as Driver | undefined;
     if (driver && !DRIVERS.includes(driver)) {
       throw usageError(`unknown driver "${driver}"`, `choose one of: ${DRIVERS.join(', ')}`);
     }
     let autoDetected = false;
     if (!driver) {
-      // Prefer the direct key path when a key is already in the environment (the
-      // reliable BYOK route on the pod); else a Copilot login if its CLI is present.
-      if (ctx.env.LLM_API_KEY) {
-        driver = 'openai';
-      } else {
-        const copilot = await detectCopilot({ probeAuth: false });
-        driver = copilot.installed ? 'copilot' : 'openai';
-      }
+      driver = 'openai';
       autoDetected = true;
     }
 
@@ -114,7 +101,7 @@ export const initCommand = defineCommand({
     writeFileSync(configPath, configYaml(project, model, driver));
     const envPath = join(dir, '.env');
     const wroteEnv = !existsSync(envPath);
-    if (wroteEnv) writeFileSync(envPath, driver === 'copilot' ? ENV_COPILOT : ENV_KEY);
+    if (wroteEnv) writeFileSync(envPath, ENV_KEY);
 
     return { dir, configPath, envPath, project, model, driver, autoDetected, wroteEnv };
   },
@@ -128,23 +115,13 @@ export const initCommand = defineCommand({
     };
     ctx.sink.line(`Wrote ${d.configPath}`);
     ctx.sink.line(
-      `provider: ${d.driver}${d.autoDetected ? ' (auto-detected)' : ''}` +
-        (d.driver === 'copilot'
-          ? ' — GitHub Copilot login, no key needed'
-          : ' — direct key (BYOK)'),
+      `provider: ${d.driver}${d.autoDetected ? ' (default)' : ''} — direct OpenAI/Azure key (BYOK)`,
     );
-    if (d.driver === 'copilot') {
-      ctx.sink.line(
-        d.wroteEnv ? `Wrote ${d.envPath} (no key required)` : `Kept existing ${d.envPath}`,
-      );
-      ctx.sink.line('Next: ensure `copilot login` is done, then run `loom doctor`.');
-    } else {
-      ctx.sink.line(
-        d.wroteEnv
-          ? `Wrote ${d.envPath} (fill in LLM_BASE_URL + LLM_API_KEY)`
-          : `Kept existing ${d.envPath}`,
-      );
-      ctx.sink.line('Next: edit .env, then run `loom doctor`.');
-    }
+    ctx.sink.line(
+      d.wroteEnv
+        ? `Wrote ${d.envPath} (fill in LLM_BASE_URL + LLM_API_KEY)`
+        : `Kept existing ${d.envPath}`,
+    );
+    ctx.sink.line('Next: edit .env, then run `loom doctor`.');
   },
 });

@@ -1,6 +1,5 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { detectCopilot } from '@loom/agents';
 import { canLaunchBrowser } from '@loom/browser';
 import { openDb } from '@loom/core';
 
@@ -96,19 +95,18 @@ export const BUILTIN_CHECKS: DoctorCheck[] = [
     hint: 'crawl + eval need Playwright Chromium — install with `npx playwright install chromium`, or set browser.executablePath / PLAYWRIGHT_BROWSERS_PATH (already cached on the pod).',
   },
   {
-    // Informational: never fails (the openai-key path is the alternative), but
-    // tells the operator whether a GitHub Copilot login is available — the
-    // default driver for the many devs who have no direct endpoint key.
-    name: 'llm-copilot',
-    run: async () => {
-      const status = await detectCopilot({ probeAuth: false });
-      if (status.installed) {
-        const model = status.model ? `, model ${status.model}` : '';
-        return `${status.version ?? 'GitHub Copilot CLI'}${model} — usable with driver: copilot (no key/URL; auth verified on first call)`;
-      }
-      return 'GitHub Copilot CLI not found — run `copilot login` to use driver: copilot, or set an API key for the openai driver';
+    // Informational: never fails — reports whether the OpenAI/Azure creds are in the
+    // environment (they can also live in the profile .env). Loom is OpenAI/Azure-only.
+    name: 'llm',
+    run: () => {
+      const base = process.env.LLM_BASE_URL;
+      const key = process.env.LLM_API_KEY;
+      if (base && key) return 'OpenAI/Azure creds present in env (LLM_BASE_URL + LLM_API_KEY)';
+      if (key && !base) return 'LLM_API_KEY set; LLM_BASE_URL missing — set it (…/openai/v1)';
+      if (base && !key) return 'LLM_BASE_URL set; LLM_API_KEY missing — set your key';
+      return 'no LLM creds in env yet — set LLM_BASE_URL + LLM_API_KEY (or in the profile .env)';
     },
-    hint: 'Most developers auth via Copilot login (driver: copilot, no key). A direct BYOK key (openai driver) is the alternative.',
+    hint: 'Loom uses an OpenAI/Azure key: LLM_BASE_URL (…/openai/v1) + LLM_API_KEY.',
   },
   {
     // Informational: reports the outbound-proxy posture + whether the LLM endpoint bypasses it.

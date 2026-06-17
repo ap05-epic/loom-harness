@@ -1,5 +1,5 @@
 import { join, resolve } from 'node:path';
-import { CopilotDriver, OpenAiDriver } from '@loom/agents';
+import { OpenAiDriver } from '@loom/agents';
 import type { Profile } from '@loom/core';
 import { describe, expect, test } from 'vitest';
 import { describeProvider, gatewayFromProfile, resolvePipelineConfig } from './pipeline-config.js';
@@ -92,9 +92,9 @@ describe('resolvePipelineConfig', () => {
 });
 
 describe('gatewayFromProfile', () => {
-  test('the copilot driver needs no key or URL (GitHub Copilot login)', () => {
+  test('the copilot driver is disabled — errors with a switch-to-openai hint', () => {
     const p = profile({ llm: { driver: 'copilot', model: 'gpt-5.4' }, env: {} });
-    expect(gatewayFromProfile(p)).toBeInstanceOf(CopilotDriver);
+    expect(() => gatewayFromProfile(p)).toThrow(/disabled/i);
   });
 
   test('the openai driver builds from the env key + URL', () => {
@@ -110,20 +110,20 @@ describe('gatewayFromProfile', () => {
     expect(gatewayFromProfile(p)).toBeInstanceOf(OpenAiDriver);
   });
 
-  test('a keyless openai profile errors and points at the copilot login', () => {
+  test('a keyless openai profile errors and points at setting the key', () => {
     const p = profile({
       llm: { driver: 'openai', model: 'gpt-5.4', apiKeyEnv: 'LLM_API_KEY' },
       env: {},
     });
-    expect(() => gatewayFromProfile(p)).toThrow(/copilot/i);
+    expect(() => gatewayFromProfile(p)).toThrow(/api key|LLM_API_KEY/i);
   });
 });
 
 describe('describeProvider', () => {
-  test('copilot: GitHub login, model is selectable', () => {
+  test('copilot: reported as disabled (Loom is OpenAI/Azure-only)', () => {
     const info = describeProvider(profile({ llm: { driver: 'copilot', model: 'gpt-5.4' } }));
-    expect(info.modelSelectable).toBe(true);
-    expect(info.auth).toMatch(/copilot/i);
+    expect(info.modelSelectable).toBe(false);
+    expect(info.auth).toMatch(/disabled/i);
   });
 
   test('azure key: locked to the configured model', () => {

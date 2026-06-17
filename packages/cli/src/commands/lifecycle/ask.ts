@@ -42,10 +42,8 @@ export function readStdin(): Promise<string> {
   });
 }
 
-const NETWORK_HINT = (driver: string): string =>
-  driver === 'copilot'
-    ? 'run `copilot login` (or `dc login`) — the Copilot session may be missing or expired'
-    : 'check LLM_BASE_URL (…/openai/v1) + LLM_API_KEY, and that NO_PROXY covers the LLM host';
+const NETWORK_HINT =
+  'check LLM_BASE_URL (…/openai/v1) + LLM_API_KEY, and that NO_PROXY covers the LLM host';
 
 export const askCommand = defineCommand({
   name: 'ask',
@@ -80,10 +78,7 @@ export const askCommand = defineCommand({
       });
       return { answer, model, provider: provider.driver, usage };
     } catch (error) {
-      throw networkError(
-        error instanceof Error ? error.message : String(error),
-        NETWORK_HINT(p.llm.driver),
-      );
+      throw networkError(error instanceof Error ? error.message : String(error), NETWORK_HINT);
     }
   },
   render(data, ctx) {
