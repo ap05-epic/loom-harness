@@ -7,6 +7,8 @@ import { createPolicy, type PermissionMode, type PermissionPrompt } from '@loom/
 import { configError, usageError } from '../../errors.js';
 import { describeProvider, gatewayFromProfile } from '../../pipeline-config.js';
 import { defineCommand } from '../../registry.js';
+import { makePalette } from '../../ui/colors.js';
+import { ChatView } from '../../ui/chat-view.js';
 import { agenticChatTurn, CHAT_SYSTEM_PROMPT } from './chat-agent.js';
 import { buildChatTools, type ChatSession } from './chat-tools.js';
 import { readStdin } from './ask.js';
@@ -114,16 +116,18 @@ export const chatCommand = defineCommand({
         return { turns: 1, reply: finalText, model, provider: provider.driver };
       }
 
-      // Interactive REPL.
-      ctx.sink.line(
-        `loom chat — ${provider.driver}:${model} · permission: ${policy.mode}. /help for commands, /exit to quit.`,
-      );
+      // Interactive REPL with a polished chat view (banner, spinner, live tool lines).
+      const view = new ChatView(makePalette(ctx.mode.color), (s) => process.stdout.write(s), {
+        unicode: ctx.mode.color,
+        tty: ctx.mode.spinner,
+      });
+      view.banner({ provider: provider.driver, model, mode: policy.mode });
       const rl = createInterface({ input: process.stdin, output: process.stdout });
       const ask = (q: string): Promise<string> => new Promise((res) => rl.question(q, res));
       const prompt: PermissionPrompt = async (req) => {
-        const a = (await ask(`  allow ${req.name} (${req.risk})? [y/N/a=always/!=all] `))
-          .trim()
-          .toLowerCase();
+        view.stop(); // pause the spinner so the approval line renders clean
+        const a = (await ask(view.approvalText(req.name, req.risk))).trim().toLowerCase();
+        view.thinking();
         if (a === 'y' || a === 'yes') return 'yes';
         if (a === 'a' || a === 'always') return 'always';
         if (a === '!' || a === 'all') return 'all';
@@ -134,26 +138,27 @@ export const chatCommand = defineCommand({
       let turns = 0;
       try {
         for (;;) {
-          const text = (await ask('› ')).trim();
+          const text = (await ask(view.promptText())).trim();
           if (text === '/exit' || text === '/quit') break;
           if (!text) continue;
           if (text === '/help') {
-            ctx.sink.line(HELP);
+            view.note(HELP);
             continue;
           }
           if (text === '/allow-all' || text === '/ask' || text === '/auto' || text === '/deny') {
             policy.mode = text.slice(1) as PermissionMode;
-            ctx.sink.line(`permission: ${policy.mode}`);
+            view.note(`permission: ${policy.mode}`);
             continue;
           }
           if (text.startsWith('/allow ')) {
             const t = text.slice('/allow '.length).trim();
             if (t) {
               policy.allow.add(t);
-              ctx.sink.line(`always allowing: ${t}`);
+              view.note(`always allowing: ${t}`);
             }
             continue;
           }
+          view.thinking();
           try {
             const r = await agenticChatTurn(gateway, {
               model,
@@ -162,15 +167,20 @@ export const chatCommand = defineCommand({
               tools,
               policy,
               prompt,
+              onTool: (e) =>
+                e.phase === 'start'
+                  ? view.toolStart(e.name)
+                  : view.toolDone(e.name, e.summary ?? '', e.ok ?? true),
             });
             history = r.history;
             turns += 1;
-            ctx.sink.line(r.finalText ?? '(no reply)');
+            view.assistant(r.finalText ?? '(no reply)');
           } catch (error) {
-            ctx.sink.error(error instanceof Error ? error.message : String(error));
+            view.error(error instanceof Error ? error.message : String(error));
           }
         }
       } finally {
+        view.stop();
         rl.close();
       }
       return { turns, reply: null, model, provider: provider.driver };

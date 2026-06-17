@@ -37,6 +37,8 @@ export type AgenticTurnOptions = {
   prompt: PermissionPrompt;
   /** Guard overrides (defaults are generous — the user is present and bounds the run). */
   guards?: { maxIterations?: number; maxTokens?: number; maxWallClockMs?: number };
+  /** Fired as each tool starts/finishes, so the view can show live progress. */
+  onTool?: (e: { name: string; phase: 'start' | 'done'; ok?: boolean; summary?: string }) => void;
 };
 
 /**
@@ -62,7 +64,16 @@ export async function agenticChatTurn(
       });
       if (!check.allowed)
         return `Not run — permission ${check.reason}. Ask the user before retrying.`;
-      return t.def.execute(args);
+      opts.onTool?.({ name: t.def.name, phase: 'start' });
+      try {
+        const result = await t.def.execute(args);
+        opts.onTool?.({ name: t.def.name, phase: 'done', ok: true, summary: result });
+        return result;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        opts.onTool?.({ name: t.def.name, phase: 'done', ok: false, summary: msg });
+        throw error;
+      }
     },
   }));
 
