@@ -6,7 +6,8 @@ Start here. The docs are organized by intent:
 
 - [Architecture](architecture.md) — the system at a glance: the pipeline, the subsystems, the data stores, how a screen flows from legacy to a verified rebuild.
 - [Concepts](concepts/) — the "why and how" behind each idea:
-  - [How you interact with Loom](concepts/interaction-model.md) — command-driven + human-in-the-loop; `ask`/`chat`; why it's not a chatbot
+  - [How you interact with Loom](concepts/interaction-model.md) — command-driven + human-in-the-loop; the agentic `chat`; where the model fits
+  - [The agentic chat & permissions](concepts/agentic-chat.md) — the chat loop, the toolset, and the `ask → auto → allow-all` permission modes
   - [Profiles](concepts/profiles.md) — how a project is described to the harness
   - [LLM gateway & drivers](concepts/llm-gateway-and-drivers.md) — Model B, the provider abstraction
   - [Context packing](concepts/context-packing.md) — model-adaptive budgeting (128K–1M)

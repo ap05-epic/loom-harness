@@ -14,23 +14,20 @@ loom models test --data-dir "$LOOM_DATA_DIR"   # a real round-trip to the endpoi
 loom doctor      --data-dir "$LOOM_DATA_DIR"   # node / sqlite backend / git / jdk / browser / proxy + LLM-no-proxy
 ```
 
-Two supported paths:
-
-- **GitHub Copilot login** (the default elsewhere) — `llm: { driver: copilot, model: <copilot-model> }`, no key or URL; auth comes from `copilot login`. Run `loom models test` against a _real_ login to reconcile the live `--output-format json` schema before trusting it for a shift.
-- **Direct key (the pod)** — `driver: openai` + `LLM_BASE_URL` (ends in `/openai/v1`) + `LLM_API_KEY`. This is the path verified against the Azure endpoint (HTTP 200), so it's the safe fallback if a Copilot-schema surprise appears.
+The provider is the **direct OpenAI/Azure key** — `llm: { driver: openai, model: gpt-5.4 }` + `LLM_BASE_URL` (ends in `/openai/v1`) + `LLM_API_KEY`. This is the path verified against the Azure endpoint (HTTP 200); `loom models test` probes it live before a shift. (Loom is OpenAI/Azure-only — the `copilot` driver is disabled.)
 
 ### `loom doctor` red-line triage
 
-| Red check        | Means                         | Fix                                                                                                                           |
-| ---------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `node-version`   | Node too old                  | use the pod's Node 24 (`node -v`); the harness targets 22+                                                                    |
-| `sqlite`         | no native SQLite              | nothing to do — the adapter auto-falls back to `node:sqlite`; doctor just reports the live backend                            |
-| `pnpm`           | pnpm absent                   | `corepack enable` (or `npm i -g pnpm` from the Nexus mirror)                                                                  |
-| `jdk`            | JDK 17 missing                | only needed to build the fixture; not required to run BAA                                                                     |
-| `browser`        | Playwright can't launch       | browsers are cached on the pod (`chromium-1223`); set `PLAYWRIGHT_BROWSERS_PATH` / `browser.executablePath` if not found      |
-| `proxy`          | git/npm proxy unreachable     | check `HTTP(S)_PROXY`; creds are redacted in output, never logged                                                             |
-| `llm` / endpoint | model call fails              | re-check `LLM_BASE_URL` / `LLM_API_KEY` (or `copilot login`); confirm `NO_PROXY` covers the endpoint so it bypasses the proxy |
-| `data-dir`       | data dir is inside a git tree | move `LOOM_DATA_DIR` outside any clone — project data must never enter a repo                                                 |
+| Red check        | Means                         | Fix                                                                                                                      |
+| ---------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `node-version`   | Node too old                  | use the pod's Node 24 (`node -v`); the harness targets 22+                                                               |
+| `sqlite`         | no native SQLite              | nothing to do — the adapter auto-falls back to `node:sqlite`; doctor just reports the live backend                       |
+| `pnpm`           | pnpm absent                   | `corepack enable` (or `npm i -g pnpm` from the Nexus mirror)                                                             |
+| `jdk`            | JDK 17 missing                | only needed to build the fixture; not required to run BAA                                                                |
+| `browser`        | Playwright can't launch       | browsers are cached on the pod (`chromium-1223`); set `PLAYWRIGHT_BROWSERS_PATH` / `browser.executablePath` if not found |
+| `proxy`          | git/npm proxy unreachable     | check `HTTP(S)_PROXY`; creds are redacted in output, never logged                                                        |
+| `llm` / endpoint | model call fails              | re-check `LLM_BASE_URL` (…/openai/v1) / `LLM_API_KEY`; confirm `NO_PROXY` covers the endpoint so it bypasses the proxy   |
+| `data-dir`       | data dir is inside a git tree | move `LOOM_DATA_DIR` outside any clone — project data must never enter a repo                                            |
 
 Clear every red line before MAP.
 

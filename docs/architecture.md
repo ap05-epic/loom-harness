@@ -8,13 +8,18 @@ This page is the map. Deeper "why" lives in [concepts/](concepts/) and [decision
 
 Every project moves through the same stages. A _work package_ (WP) is usually one screen.
 
-```
-MAP ─▶ CRAWL ─▶ PLAN ─▶ ┌─ per work package ────────────────┐ ─▶ ship gate ─▶ DOCS
- │       │       │       │  BUILD ─▶ EVAL ─▶ FIX (loop) ─▶ REFLECT │
- │       │       │       └────────────────────────────────────────┘
- │       │       └ Planner turns the atlases into dependency-ordered WPs (human-approved)
- │       └ Surveyor drives the running app → UI Atlas (screens, DOM, styles, flows, screenshots)
- └ Cartographer scans the source → Code Atlas (symbols, the screen→action→JSP→service graph, docs)
+```mermaid
+flowchart LR
+  MAP["MAP<br/>source → Code Atlas"] --> CRAWL["CRAWL<br/>running UI → UI Atlas"]
+  CRAWL --> PLAN["PLAN<br/>planner → work packages"]
+  PLAN -. plan gate .-> B
+  subgraph WP["per work package — one screen"]
+    direction LR
+    B["BUILD"] --> E{"EVAL<br/>7-layer judge"}
+    E -- fail --> F["FIX"] --> B
+    E -- pass --> R["REFLECT<br/>draft skills/memory"]
+  end
+  R -. ship gate .-> S["ship + integration eval"] --> DOCS["DOCS<br/>report + parity evidence"]
 ```
 
 - **MAP** (cartographer) builds a queryable model of the _source_.
@@ -39,6 +44,22 @@ MAP ─▶ CRAWL ─▶ PLAN ─▶ ┌─ per work package ──────�
 | `conductor`       | The durable outer loop: WP queue, worker pool, guards, gates, crash-resume, shift mode, spans                                    | ✅     |
 | `mission-control` | Local web UI for supervision (read-only over `loom.db`; gate/question decisions write back)                                      | ✅     |
 | `skills`          | Skill runtime + library; progressive disclosure + DIGIT export/import                                                            | ✅     |
+
+The same picture as a graph — how the pieces and the three stores connect:
+
+```mermaid
+flowchart TB
+  you(["You"]) -->|"commands · loom chat"| cli["cli — loom"]
+  cli --> cond["conductor<br/>durable pipeline · shift mode"]
+  cond --> ag["agents<br/>LlmGateway · AgentRunner"]
+  ag -->|"OpenAI/Azure key"| model[("gpt-5.4")]
+  cond --> cart["cartographer"] --> cdb[("codeatlas.db")]
+  cond --> surv["surveyor"] --> udb[("uiatlas.db")]
+  cond --> evalr["evaluator<br/>deterministic judge"]
+  cond --> ldb[("loom.db<br/>runs · gates · events")]
+  mc["mission-control"] -. reads .-> ldb
+  you -. "approve gates · answer questions" .-> mc
+```
 
 ## Key design choices (and where they're explained)
 

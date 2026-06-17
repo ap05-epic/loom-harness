@@ -92,7 +92,7 @@ It fails loudly on the first broken step, and writes its scratch data to a temp 
 ## Troubleshooting
 
 - **`pnpm link --global` fails (`ERR_PNPM_NO_GLOBAL_BIN_DIR`).** The pod has no global bin dir. `setup-pod.sh` writes a `~/.local/bin/loom` wrapper; or just invoke `node packages/cli/dist/bin.js …`.
-- **`loom models test` fails for Copilot (`exit 1`, no output).** The Copilot session lapsed — run `copilot login` (or `dc login`). If Copilot is unreliable here, prefer the direct key path: set `LLM_BASE_URL` (…/openai/v1) + `LLM_API_KEY` and `loom init --driver openai` (the recommended default).
+- **`loom models test` fails.** Re-check `LLM_BASE_URL` (it must end in `…/openai/v1`) + `LLM_API_KEY`, and that `NO_PROXY` covers the LLM host so model calls bypass the proxy. The error is classified: **401** → check the key; **404** → check the model id and the `…/openai/v1` path; transient **429/5xx** are retried once.
 - **Azure endpoint 401 / 404.** 401 → check `LLM_API_KEY`; 404 → the model id or base URL is wrong (it must include `…/openai/v1`). `loom models test` prints the classified reason. Transient 429/5xx are retried once automatically.
 - **better-sqlite3 native build fails** (missing `make`/compiler, GLIBC). Expected and harmless — the adapter falls back to `node:sqlite`; `loom doctor` shows the live backend.
 

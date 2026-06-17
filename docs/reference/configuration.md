@@ -9,16 +9,16 @@ A profile directory (in the data dir, outside any git tree) contains:
 
 ## `loom.config.yaml`
 
-| Key                | Required | Meaning                                                                                                                              |
-| ------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `project`          | yes      | Project name.                                                                                                                        |
-| `llm.driver`       | yes      | `copilot` (GitHub Copilot login — **default**, no key) · `openai` (direct BYOK key) · `anthropic`.                                   |
-| `llm.model`        | yes      | Model id, e.g. `gpt-5.4`. With `copilot` the model is selectable; with a key it's fixed to this value.                               |
-| `llm.baseUrlEnv`   | —        | Name of the env var holding the endpoint base URL (must include the version path, e.g. `…/openai/v1`). **Not needed for `copilot`.** |
-| `llm.apiKeyEnv`    | —        | Name of the env var holding the API key. **Not needed for `copilot`** (auth is the `copilot login` session).                         |
-| `llm.modelProfile` | —        | Overrides: `contextWindow`, `maxOutput`, `vision`.                                                                                   |
+| Key                | Required | Meaning                                                                                                            |
+| ------------------ | -------- | ------------------------------------------------------------------------------------------------------------------ |
+| `project`          | yes      | Project name.                                                                                                      |
+| `llm.driver`       | yes      | `openai` (direct OpenAI/Azure key — **default**) · `anthropic`. The `copilot` driver still parses but is disabled. |
+| `llm.model`        | yes      | Model id, e.g. `gpt-5.4` — fixed to this value by the key/endpoint.                                                |
+| `llm.baseUrlEnv`   | yes      | Name of the env var holding the endpoint base URL (must include the version path, e.g. `…/openai/v1`).             |
+| `llm.apiKeyEnv`    | yes      | Name of the env var holding the API key.                                                                           |
+| `llm.modelProfile` | —        | Overrides: `contextWindow`, `maxOutput`, `vision`.                                                                 |
 
-**Which provider am I using?** Run `loom models list` (or `doctor`). **`copilot`** = GitHub Copilot login: no key/URL, and you choose the model. **`openai`/`anthropic`** = a direct key (BYOK): locked to the configured `llm.model`. `loom init` defaults to `copilot` when the Copilot CLI is detected and no key is set.
+**Which provider am I using?** Run `loom models list` (or `doctor`). Loom is OpenAI/Azure-only: set `llm.driver: openai` with `LLM_BASE_URL` (…/openai/v1) + `LLM_API_KEY`; `loom init` writes that by default. (`anthropic` is available for portability; the `copilot` driver code still ships but is disabled.)
 
 ### Pipeline blocks (consumed by `loom map`/`run`/`resume`)
 

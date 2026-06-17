@@ -1,6 +1,20 @@
 # How you interact with Loom
 
-Loom is **not a chatbot.** It's a command-driven, autonomous pipeline with a human in the loop. You don't converse with it to get work done — you point it at a legacy app, it runs for minutes to hours, and you supervise. Knowing this up front saves the "wait, how do I talk to it?" moment.
+Loom is a **command-driven, autonomous pipeline with a human in the loop** — and, on top of that, an **agentic chat** you can talk to. You don't converse with it to do the work the way you would a code assistant; you point it at a legacy app, it runs for minutes to hours, and you supervise. Knowing this up front saves the "wait, how do I talk to it?" moment.
+
+```mermaid
+flowchart TB
+  you(["You"])
+  you -->|"loom map / crawl / run"| pipe["Autonomous pipeline<br/>BUILD → EVAL → FIX, per screen"]
+  you -->|"loom chat (agentic)"| chat["Chat agent<br/>calls tools for you"]
+  chat --> pipe
+  pipe -->|"a screen passes"| gates["Ship gates"]
+  pipe -->|"a screen is stuck"| q["Agent questions"]
+  gates --> inbox["Inbox — loom gates / questions / ui"]
+  q --> inbox
+  inbox -->|"approve · answer"| you
+  chat -. "surfaces + resolves inline" .-> inbox
+```
 
 ## The three ways you interact
 
@@ -10,7 +24,7 @@ Loom is **not a chatbot.** It's a command-driven, autonomous pipeline with a hum
 loom map → loom crawl → loom run [--shift] → loom resume / loom stop
 ```
 
-`map` scans the legacy source into the CodeAtlas (and writes the docs it never had); `crawl` captures the running app as the trusted baseline; `run` rebuilds each screen, judges it across the [seven evaluator layers](the-evaluator.md), and fixes failures. `--shift` runs it unattended under [safeguards](the-conductor.md). `loom next` will always tell you which command comes next from your current state.
+`map` scans the legacy source into the CodeAtlas (and writes the docs it never had); `crawl` captures the running app as the trusted baseline; `run` rebuilds each screen, judges it across the [seven evaluator layers](the-evaluator.md), and fixes failures. `--shift` runs it unattended under [safeguards](the-conductor.md). `loom next` always tells you which command comes next from your current state.
 
 **2. Human-in-the-loop decisions — the harness asks, you answer.**
 
@@ -20,33 +34,35 @@ A shift doesn't stop to chat; it queues decisions and keeps working on un-gated 
 - `loom questions list | answer` — a blocked screen escalates here with its worklog.
 - `loom watch` (terminal) or `loom ui` (Mission Control web app) — see live progress, budgets, and the inbox; the web app writes gate/question decisions back.
 
-This _is_ the conversation — structured approvals and answers, not free text.
+This _is_ the conversation in autonomous mode — structured approvals and answers, not free text.
 
-**3. A direct line to the model — for sanity checks and quick questions.**
+**3. The agentic chat — talk to it and it acts.**
 
 ```bash
-loom ask "what does this struts-config snippet define?"   # one-off (prompt arg or piped stdin)
-loom chat                                                  # interactive REPL (/exit to quit)
+loom chat                 # an agentic REPL: it maps/runs and works the inbox for you
+loom ask "…"              # a one-off question to the model (no tools)
 ```
 
-`ask`/`chat` send straight to your configured model and print the reply. They're a convenience on top of the same gateway the pipeline uses — not a way to drive the rebuild. Use them to confirm the model works (`loom ask "say pong"`), draft a note, or ask a question; use the pipeline to actually modernize an app.
+`loom chat` is a Claude-Code-style driver: you say what you want, it calls the right harness tools (`status`, `map`, `run`, `approve_gate`, `answer_question`, …), and after a run it surfaces the screens awaiting approval and the blocked-screen questions and helps you resolve them inline. Every expensive or state-changing action is gated by a [permission policy](agentic-chat.md) (`ask → auto → allow-all`), so the model can't silently spend tokens or change state. `loom ask` is the simpler escape hatch — a direct question with no tools.
 
-## Where the model fits (and what Copilot is)
+## Where the model fits
 
-Every "thinking" step — writing docs, writing the rebuild, deciding what to click — calls a model through one swappable **gateway driver**:
+Every "thinking" step — writing docs, writing the rebuild, deciding what to click, and now driving the chat — calls a model through one **gateway driver**:
 
-- **`openai`** — a direct OpenAI/Azure endpoint (`LLM_BASE_URL` + `LLM_API_KEY`). The reliable default; it authenticates Azure's `…/openai/v1` surface out of the box.
-- **`copilot`** — a **GitHub Copilot login** (no key/URL; auth from your `copilot login` session). Convenient where you have a Copilot login but no key.
+- **`openai`** — a direct OpenAI/Azure endpoint (`LLM_BASE_URL` + `LLM_API_KEY`). The default and only active path; it authenticates Azure's `…/openai/v1` surface out of the box.
 - **`anthropic`** — for portability outside the bank.
 
-The Copilot CLI is just a **transport** — one of three ways to reach a model. It is _not_ the brain: the scanners, crawler, evaluator, conductor, skills, and Mission Control are all Loom's. Swap the driver and the whole pipeline runs identically. `loom models list` shows which is active; `loom models test` probes it live.
+> The `copilot` driver code still ships but is **disabled** — Loom is OpenAI/Azure-only (the agentic chat needs tool-calling, which the Copilot CLI doesn't surface). `loom models list` shows the active provider; `loom models test` probes it live.
 
-## Not a chatbot — by design
+The drivers are swappable: nothing else in the harness — the scanners, crawler, evaluator, conductor, skills, Mission Control — knows or cares which model answered.
 
-There is no "tell Loom in English to rebuild screen X." The pipeline is deterministic and resumable so an 8-hour unattended shift is safe, auditable, and repeatable — properties a chat loop can't give you. The English-language reasoning happens _inside_ each agent step (Planner, Builder, Fixer, Explorer); you steer the whole thing with commands and approvals.
+## Deterministic pipeline, conversational control
+
+There's a useful tension here. The **pipeline** is deterministic and resumable so an 8-hour unattended shift is safe, auditable, and repeatable — properties a chat loop can't give you. The **chat** is the conversational way to _drive_ that pipeline and clear its inbox. Either way, the deterministic evaluator — not the model, and not you — decides whether a rebuild passes, so "allow-all" can never ship unverified work.
 
 ## See also
 
+- [The agentic chat & permissions](agentic-chat.md) — the chat loop, the toolset, and the permission modes.
 - [The CLI](../guides/cli.md) — every command, the `--json` contract, exit codes.
 - [The conductor](the-conductor.md) — shift mode, the work-package state machine, safeguards.
-- [LLM gateway & drivers](llm-gateway-and-drivers.md) — the three-driver abstraction.
+- [LLM gateway & drivers](llm-gateway-and-drivers.md) — the driver abstraction.

@@ -16,13 +16,11 @@ interface LlmGateway {
 
 The loop is the same; only the **transport** differs. Pick one with `llm.driver`.
 
-- **`CopilotDriver`** (default for most developers) — drives the authenticated **GitHub Copilot CLI** headlessly (`copilot -p … --output-format json`). Needs **no base URL or API key**: auth comes from the user's `copilot login` session, and the model is selectable. The prompt/response mappers are pure and exported (`renderCopilotPrompt`, `parseCopilotResponse`, `classifyCopilotError`); the spawn is an injectable seam, so it's conformance-tested against a _stubbed binary_ with no live login. Session-expiry is detected and surfaced as a re-auth hint (important for long shift-mode runs).
-- **`OpenAiDriver`** (direct BYOK key) — any OpenAI-compatible endpoint. Maps our request to the chat-completions wire format, parses tool calls back, and sends both `Authorization: Bearer` and `api-key` headers so OpenAI- and Azure-style auth both work. Maps `maxTokens → max_completion_tokens`. Used where a key _is_ available (e.g. the pod).
+- **`OpenAiDriver`** (the default and only active driver) — any OpenAI-compatible endpoint, including the Azure `…/openai/v1` surface. Maps our request to the chat-completions wire format, parses tool calls back, and sends both `Authorization: Bearer` and `api-key` headers so OpenAI- and Azure-style auth both work. Maps `maxTokens → max_completion_tokens`; classifies 401/404/429 with actionable messages and retries a transient failure once.
 - **`AnthropicDriver`** (portability) — the Anthropic Messages API over direct HTTP: lifts system messages, maps tool calls to `tool_use`/`tool_result` blocks, sets the required `max_tokens`.
+- **`CopilotDriver`** (shipped but **disabled**) — drives the GitHub Copilot CLI headlessly; kept in the tree for reference but no longer constructed on any runtime path. The agentic chat needs tool-calling, which the Copilot CLI doesn't surface, so Loom is OpenAI/Azure-only.
 
-**Which is active, and can I choose the model?** `loom models list` / `doctor` say so plainly: **Copilot login** ⇒ you choose the model; **a direct key** ⇒ locked to the configured `llm.model`. `loom init` defaults to Copilot when its CLI is present and no key is set.
-
-> Note: with `CopilotDriver`, text agents (Summarizer/Planner/Doc-writer) run through the loop directly. Tool-using builds without a key use Copilot's own agentic tools (`copilot --allow-all-tools`) — a build path layered on top — while the deterministic evaluator still gates every result.
+**Which is active, and can I choose the model?** `loom models list` / `doctor` say so plainly: the model is **fixed to the configured `llm.model`** by your key/endpoint. `loom init` writes `driver: openai`.
 
 Adding another transport is small and well-trodden — see [Adding an LLM driver](../guides/extending/adding-an-llm-driver.md).
 

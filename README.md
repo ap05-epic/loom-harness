@@ -33,8 +33,10 @@ A reusable, open-source agentic system that **maps undocumented legacy codebases
 
 A durable, resumable pipeline takes one screen from legacy source to a proven rebuild:
 
-```
-MAP ─▶ CRAWL ─▶ PLAN ─▶ ( BUILD ─▶ EVAL ─▶ FIX )* ─▶ REFLECT ─▶ ship
+```mermaid
+flowchart LR
+  MAP --> CRAWL --> PLAN --> B["BUILD"] --> E["EVAL"] --> R["REFLECT"] --> ship
+  E -- fail --> F["FIX"] --> B
 ```
 
 - **MAP** — custom Struts / Tiles / JSP / web.xml scanners build a CodeAtlas (graph + FTS + PageRank repo-map), then an LLM pass writes the documentation the app never had.
@@ -70,13 +72,13 @@ pnpm link --global ./packages/cli         # or just call: node packages/cli/dist
                                           # (some pods have no global bin dir — setup-pod.sh adds a ~/.local/bin/loom wrapper)
 loom doctor                               # verify the environment
 loom init --data-dir ~/loom-data/demo     # create a profile (outside any repo)
-# edit ~/loom-data/demo/.env  → LLM_BASE_URL (…/openai/v1) + LLM_API_KEY, or a Copilot login
+# edit ~/loom-data/demo/.env  → LLM_BASE_URL (…/openai/v1) + LLM_API_KEY
 loom models test --profile ~/loom-data/demo   # probe the model backend
 loom next        --data-dir ~/loom-data/demo  # what to do next
 loom ask         --profile  ~/loom-data/demo "say pong"   # talk to the model
 ```
 
-Models are reached via a **GitHub Copilot login by default** (no key or URL) or a direct OpenAI/Azure key — your choice, surfaced by `loom models list`. Deploying inside a locked-down environment? See the [Pod runbook](docs/guides/POD-RUNBOOK.md) and the [onboarding playbook](docs/guides/baa-onboarding.md).
+Models are reached via a **direct OpenAI/Azure key** — `LLM_BASE_URL` (ending in `…/openai/v1`) + `LLM_API_KEY`, surfaced by `loom models list`. (`loom chat` then drives the harness conversationally — see [how you interact with Loom](docs/concepts/interaction-model.md).) Deploying inside a locked-down environment? See the [Pod runbook](docs/guides/POD-RUNBOOK.md) and the [onboarding playbook](docs/guides/baa-onboarding.md).
 
 ## CLI
 
@@ -99,19 +101,19 @@ Multiple modernization projects coexist in a **workspace** (`loom-workspace.yaml
 
 A pnpm monorepo of strict-TypeScript, ESM packages under `@loom/*`:
 
-| Package           | Responsibility                                                              |
-| ----------------- | --------------------------------------------------------------------------- |
-| `core`            | domain types · SQLite + migrations · append-only event log + spans · config |
-| `agents`          | LLM gateway (Copilot / OpenAI / Anthropic) · guards · model-adaptive packer |
-| `cartographer`    | legacy scanners → CodeAtlas · repo-map · documentation pass                 |
-| `surveyor`        | Playwright crawler → UI atlas (screenshots, DOM, styles, forms, nav)        |
-| `evaluator`       | the deterministic, LLM-free parity judge + coverage ledger                  |
-| `conductor`       | the durable pipeline · shift mode · gates · integration evals               |
-| `mission-control` | the local observability dashboard + human-in-the-loop decisions             |
-| `skills`          | SKILL.md runtime · progressive disclosure · DIGIT export                    |
-| `tokens`          | the `@loom/tokens` design palette                                           |
-| `cli`             | the `loom` operator surface                                                 |
-| `test-kit`        | mock LLM server + fixtures                                                  |
+| Package           | Responsibility                                                                                        |
+| ----------------- | ----------------------------------------------------------------------------------------------------- |
+| `core`            | domain types · SQLite + migrations · append-only event log + spans · config                           |
+| `agents`          | LLM gateway (OpenAI/Azure · Anthropic) · the `AgentRunner` tool loop · guards · model-adaptive packer |
+| `cartographer`    | legacy scanners → CodeAtlas · repo-map · documentation pass                                           |
+| `surveyor`        | Playwright crawler → UI atlas (screenshots, DOM, styles, forms, nav)                                  |
+| `evaluator`       | the deterministic, LLM-free parity judge + coverage ledger                                            |
+| `conductor`       | the durable pipeline · shift mode · gates · integration evals                                         |
+| `mission-control` | the local observability dashboard + human-in-the-loop decisions                                       |
+| `skills`          | SKILL.md runtime · progressive disclosure · DIGIT export                                              |
+| `tokens`          | the `@loom/tokens` design palette                                                                     |
+| `cli`             | the `loom` operator surface                                                                           |
+| `test-kit`        | mock LLM server + fixtures                                                                            |
 
 ## Brand palette
 
