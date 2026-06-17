@@ -1,7 +1,9 @@
-import { isAbsolute, join } from 'node:path';
+import { mkdirSync } from 'node:fs';
+import { dirname, isAbsolute, join } from 'node:path';
 import { copySkillDir, loadSkillDir, writeSkillFile } from '@loom/skills';
-import type { Profile } from '@loom/core';
+import { MIGRATIONS, openDb, runMigrations, SkillStore, type Profile } from '@loom/core';
 import { configError, notFoundError, usageError } from '../../errors.js';
+import { resolveDbPath } from '../../db-path.js';
 import { defineCommand } from '../../registry.js';
 import { renderTable } from '../../ui/table.js';
 
@@ -209,5 +211,70 @@ export const skillsImportCommand = defineCommand({
         ? `imported ${d.imported.length} skill(s) into ${d.out}: ${d.imported.join(', ')}`
         : 'no SKILL.md files found to import.',
     );
+  },
+});
+
+export const skillsLoadCommand = defineCommand({
+  name: 'skills load',
+  group: 'knowledge',
+  describe:
+    'Load a directory of SKILL.md files into the project as active bundled skills (recalled by the builder)',
+  exitCodes: ['USAGE', 'NOT_FOUND'],
+  options: [
+    { flags: '--from <dir>', describe: 'directory of SKILL.md files to load' },
+    { flags: '--db <path>', describe: 'path to loom.db (else --data-dir)' },
+  ],
+  examples: [
+    'loom skills load --from skills/conversion --data-dir ./.loom-data',
+    'loom skills load --from ./my-skills --db ./loom.db',
+  ],
+  run(ctx, input) {
+    const from = input.options.from as string | undefined;
+    if (!from) throw usageError('no source directory', 'pass --from <dir> of SKILL.md files');
+    const docs = loadSkillDir(from);
+    if (!docs.length) throw notFoundError('SKILL.md files', from, 'check the --from directory');
+
+    const dbPath = resolveDbPath(ctx, input.options.db);
+    mkdirSync(dirname(dbPath), { recursive: true });
+    const db = openDb(dbPath);
+    runMigrations(db, MIGRATIONS);
+    try {
+      const store = new SkillStore(db);
+      const byName = new Map(store.list({}).map((s) => [s.name, s] as const));
+      const loaded: string[] = [];
+      const skipped: string[] = [];
+      for (const d of docs) {
+        const existing = byName.get(d.name);
+        // Never clobber a project-tuned or generated skill of the same name (those went through the gate).
+        if (existing && existing.tier !== 'bundled') {
+          skipped.push(d.name);
+          continue;
+        }
+        store.addSkill({
+          id: existing?.id,
+          name: d.name,
+          description: d.description,
+          triggers: d.triggers,
+          body: d.body,
+          tier: 'bundled',
+          status: 'active',
+        });
+        loaded.push(d.name);
+      }
+      return { from, db: dbPath, loaded, skipped };
+    } finally {
+      db.close();
+    }
+  },
+  render(data, ctx) {
+    const d = data as { loaded: string[]; skipped: string[] };
+    ctx.sink.line(
+      `loaded ${d.loaded.length} skill(s) as active/bundled${d.loaded.length ? `: ${d.loaded.join(', ')}` : ''}`,
+    );
+    if (d.skipped.length) {
+      ctx.sink.line(
+        `skipped ${d.skipped.length} (a project/generated skill of the same name exists): ${d.skipped.join(', ')}`,
+      );
+    }
   },
 });

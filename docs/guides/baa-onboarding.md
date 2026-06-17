@@ -39,7 +39,10 @@ Copy the template and fill it for the app (real values stay pod-side, never comm
 cp profiles/example/loom.config.example.yaml "$LOOM_DATA_DIR/loom.config.yaml"
 # fill: source.strutsConfig, app.baseUrl (the trusted/prod deployment)
 loom profile validate --profile "$LOOM_DATA_DIR"   # typed check before anything runs
+loom skills load --from skills/conversion --data-dir "$LOOM_DATA_DIR"   # bundled Struts→React skills
 ```
+
+The [conversion skill pack](../../skills/conversion/README.md) (Tiles→React, JSTL date parity, `<logic:iterate>` tables, frameset geometry, the `qpmenu` nav shell, 50+-control decomposition) is generic Struts→React knowledge the Builder recalls per screen; the Reflector then compounds project-specific refinements on top.
 
 > **SSO apps (e.g. BAA):** if login isn't a same-origin username/password form, leave `crawl.auth` out and set `app.storageStatePath` instead — do a one-time manual SSO login captured to that file, then every crawl reuses the session. The storageState holds a live session, so keep it in the data dir and never commit it; re-capture when it expires.
 

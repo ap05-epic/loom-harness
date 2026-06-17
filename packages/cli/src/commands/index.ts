@@ -35,6 +35,7 @@ import {
   skillsNewCommand,
   skillsExportCommand,
   skillsImportCommand,
+  skillsLoadCommand,
 } from './knowledge/skills.js';
 import {
   projectListCommand,
@@ -86,6 +87,7 @@ export const ALL_COMMANDS = [
   skillsNewCommand,
   skillsExportCommand,
   skillsImportCommand,
+  skillsLoadCommand,
   projectListCommand,
   projectCurrentCommand,
   projectUseCommand,
