@@ -57,6 +57,7 @@ export function exploreOptionsFrom(
     secrets,
     chooser: llmChooser(gatewayFromProfile(profile), profile.llm.model, Object.keys(secrets)),
     storageStatePath: profile.app?.storageStatePath,
+    cookiesPath: profile.app?.cookiesPath,
     maxStates: maxStatesOverride ?? c.maxStates,
     viewport: profile.eval?.viewport,
   };

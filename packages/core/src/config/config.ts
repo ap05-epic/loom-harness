@@ -33,6 +33,12 @@ const appSchema = z.object({
   baseUrl: z.string().url(),
   /** Reusable saved auth state (cookies/localStorage) for SSO-gated apps. */
   storageStatePath: z.string().optional(),
+  /**
+   * Path to a JSON array of Playwright cookies (e.g. an SSO session exported from a real browser),
+   * loaded fresh on every run. Refreshing the file is all that's needed when the session expires —
+   * no rebuild. Applied on top of `storageStatePath` if both are set.
+   */
+  cookiesPath: z.string().optional(),
 });
 
 /** Where rebuilds are written (the "B" side). */

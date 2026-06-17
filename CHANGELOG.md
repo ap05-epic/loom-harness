@@ -6,6 +6,12 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.5 — 2026-06-17
+
+`loom explore` can now ride an SSO session you already maintain — and stays working when it expires by just refreshing one file.
+
+- **`app.cookiesPath`.** Point it at a JSON array of Playwright cookies (e.g. the `_oauth2_proxy` SSO session you export from a real browser), and `CrawlSession` loads it **fresh on every run** via `context.addCookies`. Getting past a Microsoft-SSO-gated app becomes: export your cookies to the file once, set `app.cookiesPath` + `app.baseUrl` (the proxy URL), and just refresh that file when the session expires — Loom picks up the latest automatically, no wrap/rebuild step. Layered on top of `app.storageStatePath`.
+
 ## v1.3.4 — 2026-06-17
 
 `loom explore` now handles **frameset apps**, and **shows you each step**.

@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { canLaunchBrowser, CrawlSession, type DomSnapshot } from './capture.js';
 
@@ -171,6 +174,38 @@ describe('CrawlSession frame-aware interaction', () => {
         expect(texts.some((t) => t.includes('INNER-CONTENT'))).toBe(true); // …and the child frame
       } finally {
         await session.close();
+      }
+    },
+    30_000,
+  );
+
+  test.runIf(liveOk)(
+    'loads cookies from cookiesPath into the session (SSO session reuse)',
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'loom-cookies-'));
+      const file = join(dir, 'cookies.json');
+      writeFileSync(
+        file,
+        JSON.stringify([
+          {
+            name: 'sess',
+            value: 'abc123',
+            domain: 'example.com',
+            path: '/',
+            secure: true,
+            httpOnly: true,
+            sameSite: 'Lax',
+          },
+        ]),
+      );
+      const session = new CrawlSession({ cookiesPath: file });
+      await session.open();
+      try {
+        const cookies = await session.cookies();
+        expect(cookies.some((c) => c.name === 'sess' && c.value === 'abc123')).toBe(true);
+      } finally {
+        await session.close();
+        rmSync(dir, { recursive: true, force: true });
       }
     },
     30_000,

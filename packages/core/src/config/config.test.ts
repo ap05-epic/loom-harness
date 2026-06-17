@@ -128,6 +128,7 @@ source:
   strutsConfig: ./legacy-src/WEB-INF/struts-config.xml
 app:
   baseUrl: http://127.0.0.1:8090/
+  cookiesPath: /data/baa/cookies.json
 target:
   bRepo: b-repo
 eval:
@@ -140,6 +141,7 @@ eval:
     const profile = loadProfile(dir, { env: {} });
     expect(profile.source?.strutsConfig).toBe('./legacy-src/WEB-INF/struts-config.xml');
     expect(profile.app?.baseUrl).toBe('http://127.0.0.1:8090/');
+    expect(profile.app?.cookiesPath).toBe('/data/baa/cookies.json'); // SSO cookie array, read each run
     expect(profile.target?.bRepo).toBe('b-repo');
     expect(profile.eval?.threshold).toBe(1.5);
     expect(profile.eval?.viewport).toEqual({ width: 1440, height: 900 });

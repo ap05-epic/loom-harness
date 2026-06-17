@@ -17,6 +17,8 @@ export type ExploreAppOptions = {
   auth?: FormLogin;
   /** Reuse a saved auth state (the SSO bootstrap) instead of a form login. */
   storageStatePath?: string;
+  /** Path to a JSON array of Playwright cookies (an SSO session), applied fresh each run. */
+  cookiesPath?: string;
   /**
    * Secret values the chooser may reference by name: a fill `value` of `$user` is replaced with
    * `secrets.user` here, in the driver — so credentials/FA codes are typed into the page but never
@@ -42,6 +44,7 @@ export async function exploreApp(options: ExploreAppOptions): Promise<ExploreRes
     executablePath: options.executablePath,
     viewport: options.viewport,
     storageStatePath: options.storageStatePath,
+    cookiesPath: options.cookiesPath,
   });
   await session.open();
   try {

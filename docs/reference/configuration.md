@@ -22,14 +22,15 @@ A profile directory (in the data dir, outside any git tree) contains:
 
 ### Pipeline blocks (consumed by `loom map`/`run`/`resume`)
 
-| Key                    | Required for `run` | Meaning                                                                               |
-| ---------------------- | ------------------ | ------------------------------------------------------------------------------------- |
-| `source.strutsConfig`  | yes                | Path to `struts-config.xml`, relative to the profile dir or absolute (the MAP input). |
-| `app.baseUrl`          | yes                | Base URL of the running legacy app — the "A" baseline the pipeline captures.          |
-| `app.storageStatePath` | —                  | Saved auth state (cookies/localStorage) for SSO-gated apps.                           |
-| `target.bRepo`         | —                  | Output dir for rebuilds, relative to the data dir or absolute (default: `b-repo`).    |
-| `eval.threshold`       | —                  | Max acceptable visual diff %% (default 1; `--threshold` overrides).                   |
-| `eval.viewport`        | —                  | `{ width, height }` for capture (default 1280×1024).                                  |
+| Key                    | Required for `run` | Meaning                                                                                                                                                                                                     |
+| ---------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `source.strutsConfig`  | yes                | Path to `struts-config.xml`, relative to the profile dir or absolute (the MAP input).                                                                                                                       |
+| `app.baseUrl`          | yes                | Base URL of the running legacy app — the "A" baseline the pipeline captures.                                                                                                                                |
+| `app.storageStatePath` | —                  | Saved Playwright auth state (cookies + localStorage) for SSO-gated apps.                                                                                                                                    |
+| `app.cookiesPath`      | —                  | Path to a JSON array of Playwright cookies (an SSO session exported from a browser), read **fresh each run** — refresh the file when the session expires; no rebuild. Layered on top of `storageStatePath`. |
+| `target.bRepo`         | —                  | Output dir for rebuilds, relative to the data dir or absolute (default: `b-repo`).                                                                                                                          |
+| `eval.threshold`       | —                  | Max acceptable visual diff %% (default 1; `--threshold` overrides).                                                                                                                                         |
+| `eval.viewport`        | —                  | `{ width, height }` for capture (default 1280×1024).                                                                                                                                                        |
 
 Derived paths under the data dir: `loom.db`, `codeatlas.db`, `baseline/`.
 

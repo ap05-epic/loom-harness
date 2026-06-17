@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import axe from 'axe-core';
 import { chromium, type Browser, type BrowserContext, type Frame, type Page } from 'playwright';
 
@@ -208,6 +209,11 @@ export type CrawlSessionOptions = SessionOptions & {
   viewport?: Viewport;
   /** Reuse a saved auth state (the SSO bootstrap) for the whole session. */
   storageStatePath?: string;
+  /**
+   * Path to a JSON array of Playwright cookies (an exported SSO session), applied on `open()`. Read
+   * fresh each run, so refreshing the file is all that's needed when the session expires.
+   */
+  cookiesPath?: string;
 };
 
 /**
@@ -228,7 +234,19 @@ export class CrawlSession {
       viewport: this.options.viewport ?? DEFAULT_VIEWPORT,
       storageState: this.options.storageStatePath,
     });
+    if (this.options.cookiesPath) {
+      // A raw cookie array (e.g. an SSO session exported from a real browser), read fresh each run.
+      const cookies = JSON.parse(readFileSync(this.options.cookiesPath, 'utf8')) as Parameters<
+        BrowserContext['addCookies']
+      >[0];
+      await this.context.addCookies(cookies);
+    }
     this.page = await this.context.newPage();
+  }
+
+  /** The cookies currently in the session context (tests / diagnostics). */
+  async cookies(): Promise<Array<{ name: string; value: string }>> {
+    return (await this.context?.cookies()) ?? [];
   }
 
   private active(): Page {
