@@ -214,6 +214,27 @@ describe('CrawlSession frame-aware interaction', () => {
   );
 
   test.runIf(liveOk)(
+    'unfilledTextboxes counts empty fillable inputs (used to know when a form is complete)',
+    async () => {
+      const html =
+        '<!doctype html><html><body><input name="a"><input name="b"><button>Go</button></body></html>';
+      const session = new CrawlSession();
+      await session.open();
+      try {
+        await session.navigate(`data:text/html,${encodeURIComponent(html)}`, 'domcontentloaded');
+        expect(await session.unfilledTextboxes()).toBe(2); // both empty
+        const cands = await session.enumerateCandidates(); // tags elements so fillCandidate can target
+        const box = cands.find((c) => c.kind === 'textbox')!;
+        await session.fillCandidate(box.ref, 'x');
+        expect(await session.unfilledTextboxes()).toBe(1); // one left
+      } finally {
+        await session.close();
+      }
+    },
+    30_000,
+  );
+
+  test.runIf(liveOk)(
     'diagnose() reports per-frame control counts and text (debugging 0-candidate pages)',
     async () => {
       const html =

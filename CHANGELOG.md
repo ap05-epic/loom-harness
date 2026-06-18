@@ -6,6 +6,12 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.16 — 2026-06-18
+
+`loom explore` now submits the FA number itself — it no longer relies on the model to click Submit before it wanders off.
+
+- **Deterministic form auto-submit.** The model would type the FA number into the box but then click a column header instead of Submit, which wiped the value — so the FA search never fired and the walk never left `overlayAction.do`. Now, the moment a credential/FA fill (`$user`/`$pass`/`$fa`) leaves no other empty input, the explorer clicks the form's Submit itself. Login submits after the password; the FA search submits right after its one box — reliably, every time, before anything can clear it. New `CrawlSession.unfilledTextboxes()` detects form completion; a Submit/Search/Login/Go control fires it.
+
 ## v1.3.15 — 2026-06-18
 
 `loom explore` now enters the FA number to load each advisor's data, instead of wandering empty column headers.

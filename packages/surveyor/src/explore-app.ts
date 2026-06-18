@@ -14,6 +14,9 @@ import {
   type ExploreStep,
 } from './explorer.js';
 
+/** A control that submits a form (login / FA search) — used to fire a completed form deterministically. */
+const SUBMIT_LABEL = /\b(submit|search|go|login|log ?in|sign ?in|find|ok|enter|continue)\b/i;
+
 /** Known SSO / identity-provider hosts — a redirect here means our saved session has expired. */
 const SSO_HOSTS =
   /login\.microsoftonline\.com|login\.live\.com|login\.windows\.net|\.okta\.com|accounts\.google\.com|auth0\.com|oauth2-proxy/i;
@@ -132,9 +135,20 @@ export async function exploreApp(options: ExploreAppOptions): Promise<ExploreRes
       },
       candidates: () => session.enumerateCandidates(),
       activate: async (action) => {
-        if (action.kind === 'fill')
+        if (action.kind === 'fill') {
           await session.fillCandidate(action.ref, resolveValue(action.value));
-        else await session.clickCandidate(action.ref);
+          // The model types into the FA Number / login box but is prone to clicking elsewhere before
+          // submitting, which wipes the value (the live BAA bug). So once a SECRET fill ($user/$pass/
+          // $fa) leaves no other empty box, the form is complete — fire its Submit ourselves rather
+          // than trust the model to remember. Login submits after the password; FA search after its
+          // one box.
+          if (action.value.startsWith('$') && (await session.unfilledTextboxes()) === 0) {
+            const submit = (await session.enumerateCandidates()).find((c) =>
+              SUBMIT_LABEL.test(c.label),
+            );
+            if (submit) await session.clickCandidate(submit.ref);
+          }
+        } else await session.clickCandidate(action.ref);
         return snapshot();
       },
     };

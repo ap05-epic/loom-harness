@@ -144,6 +144,38 @@ describe('exploreApp (live AI-explorer)', () => {
   );
 
   test.runIf(liveOk)(
+    'auto-submits after the last field of a secret form (the FA gateway fires itself)',
+    async () => {
+      // The FA search: one box + Submit. The chooser ONLY fills $fa and NEVER clicks Submit — the
+      // driver must submit on its own, or (the live BAA bug) the value is wiped before it's sent.
+      const html =
+        '<!doctype html><html><body><input name="fa">' +
+        "<button onclick=\"document.body.innerHTML='<h1>Loaded '+document.querySelector('input').value+'</h1>'\">Submit</button>" +
+        '</body></html>';
+      const startUrl = `data:text/html,${encodeURIComponent(html)}`;
+      let filled = false;
+      const chooser: Chooser = async (ctx) => {
+        const box = ctx.candidates.find((c) => c.kind === 'textbox');
+        if (box && !filled) {
+          filled = true;
+          return { kind: 'fill', ref: box.ref, value: '$fa' };
+        }
+        return null; // never clicks Submit — the driver must do it
+      };
+      const result = await exploreApp({
+        startUrl,
+        chooser,
+        secrets: { fa: 'AB10' },
+        maxStates: 5,
+        maxVisits: 5,
+      });
+      const texts = result.states.flatMap((s) => collectText(s.dom));
+      expect(texts.some((t) => t.includes('Loaded AB10'))).toBe(true); // auto-submit fired with the real FA
+    },
+    30_000,
+  );
+
+  test.runIf(liveOk)(
     'emits a diagnosis when the start screen surfaces no controls (the BAA 0-actions case)',
     async () => {
       const html =

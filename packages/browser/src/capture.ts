@@ -410,6 +410,34 @@ export class CrawlSession {
     await this.settle();
   }
 
+  /**
+   * Count the empty fillable text inputs across all frames — lets the explorer know when a form is
+   * complete (no empty box left) so it can submit a login / FA-search gateway itself, instead of
+   * relying on the model to remember to click Submit before navigating away.
+   */
+  async unfilledTextboxes(): Promise<number> {
+    let total = 0;
+    for (const frame of this.active().frames()) {
+      try {
+        total += await frame.evaluate(() => {
+          const FILLABLE = ['text', 'email', 'password', 'search', 'tel', 'url', 'number', ''];
+          const fields = Array.from(document.querySelectorAll('input, textarea')) as Array<
+            HTMLInputElement | HTMLTextAreaElement
+          >;
+          return fields.filter((f) => {
+            const fillable =
+              f.tagName === 'TEXTAREA' ||
+              FILLABLE.includes((f.getAttribute('type') ?? '').toLowerCase());
+            return fillable && !f.value;
+          }).length;
+        });
+      } catch {
+        // cross-origin / detached frame
+      }
+    }
+    return total;
+  }
+
   /** Type into (or, for a <select>, choose) a fillable candidate, by its frame-prefixed ref. */
   async fillCandidate(ref: string, value: string): Promise<void> {
     const { frame, selector } = this.resolveRef(ref);
