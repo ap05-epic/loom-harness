@@ -3,7 +3,14 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { Profile } from '@loom/core';
 import { describe, expect, test } from 'vitest';
-import { describeStep, exploreOptionsFrom, formatDiagnosis, writeExploreShots } from './explore.js';
+import {
+  describeStep,
+  exploreOptionsFrom,
+  exploreScreenEvent,
+  exploreStepEvent,
+  formatDiagnosis,
+  writeExploreShots,
+} from './explore.js';
 
 function profile(overrides: Partial<Profile> = {}): Profile {
   return {
@@ -118,6 +125,44 @@ describe('describeStep', () => {
   });
   test('omits the cost suffix when no meta is given', () => {
     expect(describeStep(step)).toBe('clicked "Production" → new screen (5)');
+  });
+});
+
+describe('explore event builders (durable telemetry for the live UI)', () => {
+  const step = {
+    action: { kind: 'click' as const, ref: 'c1' },
+    label: 'Production',
+    discovered: 5,
+    isNew: true,
+    key: 'abc123',
+    url: 'http://app/x',
+    candidates: ['A', 'B'],
+  };
+  test('exploreStepEvent carries the move + running tokens + screen key/url', () => {
+    const e = exploreStepEvent(step, {
+      tokens: 1200,
+      inputTokens: 1000,
+      outputTokens: 200,
+      elapsedMs: 5000,
+    });
+    expect(e.type).toBe('explore.step');
+    expect(e.payload).toMatchObject({
+      action: 'click',
+      label: 'Production',
+      isNew: true,
+      discovered: 5,
+      key: 'abc123',
+      url: 'http://app/x',
+      tokens: 1200,
+      inputTokens: 1000,
+      outputTokens: 200,
+      elapsedMs: 5000,
+    });
+  });
+  test('exploreScreenEvent identifies a newly discovered screen by key + index', () => {
+    const e = exploreScreenEvent(step);
+    expect(e.type).toBe('explore.screen');
+    expect(e.payload).toEqual({ key: 'abc123', url: 'http://app/x', index: 5 });
   });
 });
 

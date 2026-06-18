@@ -76,6 +76,10 @@ export type ExploreStep = {
   isNew: boolean;
   /** Labels of the controls the page offered this step — so a stuck walk shows what was actionable. */
   candidates?: string[];
+  /** Screen key the step landed on (for durable per-screen telemetry / the live UI). */
+  key?: string;
+  /** URL the step landed on. */
+  url?: string;
 };
 
 export type ExploreOptions = {
@@ -277,6 +281,8 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
       discovered: states.length,
       isNew: states.length > before,
       candidates: offered,
+      key: curKey,
+      url: cur.url,
     });
   }
 

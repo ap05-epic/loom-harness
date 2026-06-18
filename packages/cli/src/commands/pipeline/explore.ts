@@ -1,7 +1,15 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { LlmGateway } from '@loom/agents';
-import type { Profile } from '@loom/core';
+import {
+  EventLog,
+  MIGRATIONS,
+  openDb,
+  runMigrations,
+  TaskStore,
+  type Profile,
+  type SqliteDatabase,
+} from '@loom/core';
 import { llmChooser } from '@loom/conductor';
 import {
   exploreApp,
@@ -11,9 +19,51 @@ import {
   type SessionDiagnosis,
 } from '@loom/surveyor';
 import { configError } from '../../errors.js';
-import { gatewayFromProfile, trackUsage } from '../../pipeline-config.js';
+import { gatewayFromProfile, resolveLoomDb, trackUsage } from '../../pipeline-config.js';
 import { defineCommand } from '../../registry.js';
 import { renderTable } from '../../ui/table.js';
+
+/** Open + migrate loom.db at the resolved path (creating parent dirs) — mirrors `run.ts`. */
+function openHarnessDb(dbPath: string): SqliteDatabase {
+  mkdirSync(dirname(dbPath), { recursive: true });
+  const db = openDb(dbPath);
+  runMigrations(db, MIGRATIONS);
+  return db;
+}
+
+/** The durable event for one explore step — appended to the event log so `loom ui` can watch live. */
+export function exploreStepEvent(
+  s: ExploreStep,
+  meta: { tokens: number; inputTokens: number; outputTokens: number; elapsedMs: number },
+): { type: string; payload: Record<string, unknown> } {
+  return {
+    type: 'explore.step',
+    payload: {
+      action: s.action.kind,
+      label: s.label ?? null,
+      isNew: s.isNew,
+      discovered: s.discovered,
+      key: s.key ?? null,
+      url: s.url ?? null,
+      candidates: s.candidates ?? [],
+      tokens: meta.tokens,
+      inputTokens: meta.inputTokens,
+      outputTokens: meta.outputTokens,
+      elapsedMs: meta.elapsedMs,
+    },
+  };
+}
+
+/** The durable event for a newly-discovered screen (only emitted when a step lands on a new key). */
+export function exploreScreenEvent(s: ExploreStep): {
+  type: string;
+  payload: Record<string, unknown>;
+} {
+  return {
+    type: 'explore.screen',
+    payload: { key: s.key ?? null, url: s.url ?? null, index: s.discovered },
+  };
+}
 
 type ExploreData = {
   startUrl: string;
@@ -159,14 +209,57 @@ export const exploreCommand = defineCommand({
     const usage = trackUsage(gatewayFromProfile(profile));
     const options = exploreOptionsFrom(profile, max, usage.gateway);
     const startedAt = Date.now();
+
+    // Durable telemetry → loom.db so `loom ui` (a separate process) can watch this crawl live. WAL +
+    // busy_timeout (set by openDb) make the cross-process writer/reader safe. Only when a data dir is set.
+    let db: SqliteDatabase | undefined;
+    let events: EventLog | undefined;
+    let runId: string | undefined;
+    if (profile.dataDir) {
+      db = openHarnessDb(resolveLoomDb(profile.dataDir));
+      const store = new TaskStore(db);
+      const run = store.createRun({ project: profile.project, harnessVersion: ctx.version });
+      store.setRunStage(run.id, 'explore');
+      runId = run.id;
+      events = new EventLog(db);
+      events.append({
+        type: 'explore.started',
+        runId,
+        payload: { startUrl: options.startUrl, maxStates: max ?? null },
+      });
+    }
+
     options.onStep = (s) => {
       const { inputTokens, outputTokens } = usage.total();
-      ctx.sink.info(
-        describeStep(s, { tokens: inputTokens + outputTokens, elapsedMs: Date.now() - startedAt }),
-      );
+      const tokens = inputTokens + outputTokens;
+      const elapsedMs = Date.now() - startedAt;
+      ctx.sink.info(describeStep(s, { tokens, elapsedMs }));
+      events?.append({
+        ...exploreStepEvent(s, { tokens, inputTokens, outputTokens, elapsedMs }),
+        runId,
+      });
+      if (s.isNew && s.key) events?.append({ ...exploreScreenEvent(s), runId });
     };
-    options.onDiagnostic = (d) => ctx.sink.info(formatDiagnosis(d)); // why "0 actions" happened
-    const result = await exploreApp(options);
+    options.onDiagnostic = (d) => {
+      ctx.sink.info(formatDiagnosis(d)); // why "0 actions" happened
+      events?.append({ type: 'explore.diagnostic', runId, payload: d });
+    };
+
+    let result;
+    try {
+      result = await exploreApp(options);
+    } catch (error) {
+      if (db && runId) {
+        events?.append({
+          type: 'explore.completed',
+          runId,
+          payload: { error: error instanceof Error ? error.message : String(error) },
+        });
+        new TaskStore(db).finishRun(runId, 'failed');
+        db.close();
+      }
+      throw error;
+    }
     const { inputTokens, outputTokens } = usage.total();
 
     // Persist the discovered states into the UI atlas + save a PNG per screen when a data dir is set.
@@ -183,6 +276,23 @@ export const exploreCommand = defineCommand({
       }
       shotsDir = join(profile.dataDir, 'explore-shots');
       shots = writeExploreShots(result.states, shotsDir);
+    }
+
+    if (db && runId) {
+      events?.append({
+        type: 'explore.completed',
+        runId,
+        payload: {
+          visited: result.visited,
+          screens: result.states.length,
+          truncated: result.truncated,
+          inputTokens,
+          outputTokens,
+          elapsedMs: Date.now() - startedAt,
+        },
+      });
+      new TaskStore(db).finishRun(runId, 'completed');
+      db.close();
     }
 
     return {

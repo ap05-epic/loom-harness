@@ -6,6 +6,12 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.19 — 2026-06-18
+
+`loom explore` now records its whole run to the database — the foundation for watching a crawl **live in the web UI** (cockpit arc, R9 Thrust A.1).
+
+- **Durable explore telemetry.** A crawl was only ever a CLI stderr stream; the dashboard couldn't see it. `loom explore` now opens `loom.db`, creates a session run, and appends an event for every moment — `explore.started`, `explore.step` (action, label, screen key/url, running tokens, elapsed), `explore.screen` (each newly discovered screen), `explore.diagnostic`, `explore.completed` — then marks the run finished. Cross-process-safe (WAL), so `loom ui` (a separate process) can read it as it happens. The CLI experience is unchanged; this just makes the run _observable_. (Next: the read-model + `/api/explore` endpoint + the React live-crawl view.)
+
 ## v1.3.18 — 2026-06-18
 
 `loom explore` now shows the **token cost climbing live** — every step prints the running total + elapsed, so you always see it's working and never just a spinner.

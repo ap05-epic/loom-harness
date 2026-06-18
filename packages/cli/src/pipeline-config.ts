@@ -36,7 +36,7 @@ function underDir(base: string, p: string): string {
 }
 
 /** Prefer <data-dir>/loom.db; fall back to a legacy harness.db if that's the only one present. */
-function resolveLoomDb(dataDir: string): string {
+export function resolveLoomDb(dataDir: string): string {
   const loomDb = join(dataDir, 'loom.db');
   const legacy = join(dataDir, 'harness.db');
   if (!existsSync(loomDb) && existsSync(legacy)) return legacy;
