@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import axe from 'axe-core';
 import { chromium, type Browser, type BrowserContext, type Frame, type Page } from 'playwright';
+import { normalizeCookies } from './cookies.js';
 
 export type Viewport = { width: number; height: number };
 
@@ -236,10 +237,12 @@ export class CrawlSession {
     });
     if (this.options.cookiesPath) {
       // A raw cookie array (e.g. an SSO session exported from a real browser), read fresh each run.
+      // Hand-exported cookies often carry a full URL/path in `domain`; normalize to a bare host so
+      // Playwright accepts the batch (one malformed domain would otherwise reject all of them).
       const cookies = JSON.parse(readFileSync(this.options.cookiesPath, 'utf8')) as Parameters<
         BrowserContext['addCookies']
       >[0];
-      await this.context.addCookies(cookies);
+      await this.context.addCookies(normalizeCookies(cookies));
     }
     this.page = await this.context.newPage();
   }

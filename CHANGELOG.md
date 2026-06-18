@@ -6,6 +6,12 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.8 — 2026-06-17
+
+`loom explore` now applies cookies whose `domain` accidentally carries a path or full URL — the common hand-export case.
+
+- **Cookie-domain normalization.** Cookies copied by hand from a browser's DevTools often mash the host and path together into the `domain` field (e.g. `host.example.net/proxy/8080/BAA/loginAction.do`). Playwright's `addCookies` requires a bare host and **rejects the whole batch** if any one cookie's domain is malformed — so a single bad cookie kept your entire saved session (SSO cookie included) from applying, and the app stayed logged out. `CrawlSession` now strips any scheme and path from each cookie's `domain` before loading (`host.example.net/proxy/...` → `host.example.net`; a leading dot for domain-wide cookies is preserved), so refreshing `app.cookiesPath` just works.
+
 ## v1.3.7 — 2026-06-17
 
 `loom explore` now waits for late-loading menus (BAA's `#pmenu`).
@@ -45,7 +51,7 @@ _Nothing yet._
 
 ## v1.3.1 — 2026-06-17
 
-`loom explore` now completes **multi-step logins**. The first live BAA run reached the form login (on `localhost`, no SSO — the explorer hits Tomcat directly, so the Microsoft SSO that guards the *external* devpod URL is irrelevant) but stopped after one action: the LLM chooser is stateless per step, so it couldn't see it had already typed the username, repeated the same action, and the dedup guard backed it out before it filled the password and submitted.
+`loom explore` now completes **multi-step logins**. The first live BAA run reached the form login (on `localhost`, no SSO — the explorer hits Tomcat directly, so the Microsoft SSO that guards the _external_ devpod URL is irrelevant) but stopped after one action: the LLM chooser is stateless per step, so it couldn't see it had already typed the username, repeated the same action, and the dedup guard backed it out before it filled the password and submitted.
 
 - **Per-screen action history.** `ChooserContext` now carries `taken` — the actions already performed on the current screen; the explore loop accumulates it per `screenKey`, and the LLM-chooser prompt lists _"Already done on THIS screen … do the NEXT step, don't repeat."_ So the model fills the username, then the password, then submits — and the same applies to any multi-field screen (e.g. the FA Quick Search). Pure addition; click-only and single-field flows are unchanged.
 

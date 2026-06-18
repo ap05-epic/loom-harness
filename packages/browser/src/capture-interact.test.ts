@@ -180,17 +180,19 @@ describe('CrawlSession frame-aware interaction', () => {
   );
 
   test.runIf(liveOk)(
-    'loads cookies from cookiesPath into the session (SSO session reuse)',
+    'loads cookies from cookiesPath into the session, normalizing a host/path domain (SSO reuse)',
     async () => {
       const dir = mkdtempSync(join(tmpdir(), 'loom-cookies-'));
       const file = join(dir, 'cookies.json');
+      // The `domain` carries a path (the F12-copy case) — Playwright's addCookies rejects the whole
+      // batch unless it's normalized to a bare host, so this also proves the normalization end-to-end.
       writeFileSync(
         file,
         JSON.stringify([
           {
             name: 'sess',
             value: 'abc123',
-            domain: 'example.com',
+            domain: 'example.com/proxy/8080/BAA/loginAction.do',
             path: '/',
             secure: true,
             httpOnly: true,
