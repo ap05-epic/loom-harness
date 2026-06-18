@@ -89,7 +89,20 @@ function enumerateInteractive(): Array<{ ref: string; label: string; kind: strin
     const role = el.getAttribute('role');
     const href = el.getAttribute('href');
     if (tag === 'BUTTON' || tag === 'SUMMARY') return true;
-    if (tag === 'A' && (!href || /^javascript:/i.test(href))) return true;
+    if (tag === 'A') {
+      if (!href || /^javascript:/i.test(href)) return true; // menu / JS anchors
+      if (/^(mailto:|tel:|#)/i.test(href)) return false; // not a page to crawl
+      // In-app link — relative (no scheme), or absolute same-origin: the explorer should crawl these
+      // too, not only menu buttons. External / other-scheme links are left out.
+      if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
+        try {
+          return new URL(href).origin === location.origin;
+        } catch {
+          return false;
+        }
+      }
+      return true;
+    }
     if (
       tag === 'INPUT' &&
       ['submit', 'button', 'image'].includes((el.getAttribute('type') ?? '').toLowerCase())

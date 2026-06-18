@@ -6,6 +6,13 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.17 — 2026-06-18
+
+`loom explore` now crawls the in-app links on each page too — not just the menu/tab controls.
+
+- **In-app links are crawled.** The explorer walked menu buttons and JS controls but deliberately skipped real `<a href>` links (they were meant for a separate link-crawler that doesn't run during `explore`), so the links on each data page — e.g. the 23 on an advisor view — went unfollowed. `enumerateInteractive` now also offers **relative / same-origin** links as things to click; external, `mailto:`, `tel:`, and in-page (`#`) anchors are left out.
+- **Less redundant FA re-entry; never log out.** Once an advisor's data is loaded, the chooser is told not to re-enter the FA number (it kept re-typing `$fa` into the header box) and to spend its steps on the tabs and links instead — and to **never** click a log-out / sign-out link, which would end the session mid-crawl.
+
 ## v1.3.16 — 2026-06-18
 
 `loom explore` now submits the FA number itself — it no longer relies on the model to click Submit before it wanders off.

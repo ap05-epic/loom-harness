@@ -214,6 +214,34 @@ describe('CrawlSession frame-aware interaction', () => {
   );
 
   test.runIf(liveOk)(
+    'enumerates in-app <a href> links so the explorer crawls them too (not just menu controls)',
+    async () => {
+      const html =
+        '<!doctype html><html><body>' +
+        '<a href="/next">Go Next</a>' + // relative in-app link → crawl it
+        '<a href="report.do">Report</a>' + // relative in-app link → crawl it
+        '<a href="https://other.example.com/x">External</a>' + // off-site → skip
+        '<a href="mailto:x@y.com">Mail</a>' + // not a page → skip
+        '<a href="#frag">Anchor</a>' + // in-page anchor → skip
+        '</body></html>';
+      const session = new CrawlSession();
+      await session.open();
+      try {
+        await session.navigate(`data:text/html,${encodeURIComponent(html)}`, 'domcontentloaded');
+        const labels = (await session.enumerateCandidates()).map((c) => c.label);
+        expect(labels).toContain('Go Next');
+        expect(labels).toContain('Report');
+        expect(labels).not.toContain('External');
+        expect(labels).not.toContain('Mail');
+        expect(labels).not.toContain('Anchor');
+      } finally {
+        await session.close();
+      }
+    },
+    30_000,
+  );
+
+  test.runIf(liveOk)(
     'unfilledTextboxes counts empty fillable inputs (used to know when a form is complete)',
     async () => {
       const html =

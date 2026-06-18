@@ -53,15 +53,16 @@ export function buildChoosePrompt(ctx: ChooserContext, secretRefs: string[] = []
         'box, fill it with $fa and click Submit to load that advisor — do this whenever you reach a ' +
         'page that has an FA Number box whose data you have not loaded yet (an empty grid of column ' +
         'headers with no rows means the FA number still needs to be entered). Once the data loads, ' +
-        'click the tabs/columns (e.g. NNM, Production, Pricing, QNR) to map each view; you need not ' +
-        're-enter the FA number while moving among the tabs of a view you already loaded. If a search ' +
-        'opened a list of RESULTS (a search overlay or a results table), CLICK the matching result to ' +
-        'open it. ' +
-        'Otherwise click a control you have NOT clicked yet that likely reveals a screen NOT yet seen ' +
-        '(menus, tabs, "view"/"detail"/"open"); do not re-click a home/menu you already used or ' +
-        're-open a screen already found. You MAY submit LOGIN and SEARCH forms to navigate. NEVER ' +
-        'submit a form or click a control that creates, updates, deletes, saves, pays, sends, or ' +
-        'confirms business data.',
+        'click the tabs/columns (e.g. NNM, Production, Pricing, QNR) AND the in-app links on the page ' +
+        'to map each view. Once an advisor is loaded, do NOT re-enter the FA number (the session list ' +
+        'shows you already did) — spend your steps on the tabs and links instead. If a search opened ' +
+        'a list of RESULTS (a search overlay or a results table), CLICK the matching result to open ' +
+        'it. ' +
+        'Otherwise click a control or LINK you have NOT used yet that likely reveals a screen NOT yet ' +
+        'seen (menus, tabs, links, "view"/"detail"/"open"); do not re-click a home/menu you already ' +
+        'used or re-open a screen already found. You MAY submit LOGIN and SEARCH forms to navigate. ' +
+        'NEVER log out / sign out (it ends the session), and NEVER submit a form or click a control ' +
+        'that creates, updates, deletes, saves, pays, sends, or confirms business data.',
     },
     {
       role: 'user',

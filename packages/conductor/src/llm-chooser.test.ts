@@ -73,6 +73,8 @@ describe('buildChoosePrompt', () => {
     expect(sysLower).toContain('login'); // the login strategy
     expect(sysLower).toContain('quick search'); // the FA-search strategy
     expect(sysLower).toContain('result'); // steer it to SELECT a search result (the overlay→detail step)
+    expect(sysLower).toContain('link'); // also crawl in-app links, not just menu controls
+    expect(sysLower).toMatch(/log ?out|sign ?out/); // don't end the session
     expect(system).toContain('$user'); // secret placeholders offered by name…
     expect(system).toContain('$fa');
     expect(user).toContain('c1: Accounts'); // a clickable control
