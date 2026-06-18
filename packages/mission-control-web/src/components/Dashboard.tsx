@@ -1,6 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
-import { fetchState } from '../api';
+import type { ReactNode } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { answerQuestion, decideGate, fetchState } from '../api';
+import { CostPanel } from './CostPanel';
+import { EvalPanel } from './EvalPanel';
+import { Inbox } from './Inbox';
 import { KanbanBoard } from './KanbanBoard';
+import { LiveFleet } from './LiveFleet';
 import { RunHeader } from './RunHeader';
 
 /** A live status pill — so the operator always knows the dashboard is connected and fresh, never a blind spinner. */
@@ -31,13 +36,35 @@ function LiveIndicator({
   );
 }
 
-/** The main dashboard: polls /api/state every 2s and renders the run header + kanban board. */
+/** A titled section wrapper. */
+function Panel({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="card p-3">
+      <h3 className="mb-2 font-medium">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+/** The main dashboard: polls /api/state every 2s and renders the rebuild board, live fleet, inbox, and cost/eval. */
 export function Dashboard() {
+  const qc = useQueryClient();
   const { data, isError, isFetching } = useQuery({
     queryKey: ['state'],
     queryFn: () => fetchState(),
     refetchInterval: 2000,
   });
+  const refresh = () => qc.invalidateQueries({ queryKey: ['state'] });
+  const gateMut = useMutation({
+    mutationFn: ({ id, decision }: { id: string; decision: 'approve' | 'reject' }) =>
+      decideGate(id, decision),
+    onSuccess: refresh,
+  });
+  const answerMut = useMutation({
+    mutationFn: ({ id, answer }: { id: string; answer: string }) => answerQuestion(id, answer),
+    onSuccess: refresh,
+  });
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
@@ -46,7 +73,35 @@ export function Dashboard() {
         </div>
         <LiveIndicator isError={isError} isFetching={isFetching} hasData={Boolean(data)} />
       </div>
+
       <KanbanBoard screens={data?.screens ?? []} />
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="flex flex-col gap-4 lg:col-span-2">
+          <Panel title="Live fleet">
+            <LiveFleet workers={data?.liveNow ?? []} />
+          </Panel>
+          <Panel title="Inbox">
+            <Inbox
+              gates={data?.gates ?? []}
+              questions={data?.questions ?? []}
+              onDecideGate={(id, decision) => gateMut.mutate({ id, decision })}
+              onAnswerQuestion={(id, answer) => answerMut.mutate({ id, answer })}
+            />
+          </Panel>
+        </div>
+        <div className="flex flex-col gap-4">
+          <CostPanel
+            cost={data?.cost ?? { inputTokens: 0, outputTokens: 0, totalDurationMs: 0, spans: 0 }}
+            costByModel={data?.costByModel ?? []}
+          />
+          <EvalPanel
+            analytics={
+              data?.evalAnalytics ?? { evaluated: 0, passed: 0, passRate: 0, failureReasons: [] }
+            }
+          />
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'vitest';
-import { columnsFromScreens, fmtTokens, stateTone, WP_STATES, type Screen } from './board';
+import {
+  columnsFromScreens,
+  elapsedLabel,
+  fmtTokens,
+  stateTone,
+  WP_STATES,
+  type Screen,
+} from './board';
 
 const screen = (over: Partial<Screen> & Pick<Screen, 'wpId' | 'state'>): Screen => ({
   screenKey: over.wpId,
@@ -51,5 +58,13 @@ describe('board model', () => {
     expect(fmtTokens(1500)).toBe('1.5k');
     expect(fmtTokens(12000)).toBe('12k');
     expect(fmtTokens(2_300_000)).toBe('2.3M');
+  });
+
+  test('elapsedLabel formats since-start durations (pure, injected now)', () => {
+    const at = '2026-06-18T00:00:00.000Z';
+    expect(elapsedLabel(at, Date.parse('2026-06-18T00:00:05Z'))).toBe('5s');
+    expect(elapsedLabel(at, Date.parse('2026-06-18T00:01:05Z'))).toBe('1m 5s');
+    expect(elapsedLabel(at, Date.parse('2026-06-18T01:30:00Z'))).toBe('1h 30m');
+    expect(elapsedLabel(null, 0)).toBe('—');
   });
 });

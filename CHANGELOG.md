@@ -6,6 +6,15 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.25 — 2026-06-18
+
+The React Mission Control becomes a real cockpit — watch the fleet and drive the inbox from the browser (R9 Thrust B.2).
+
+- **Live fleet.** A card per active worker: screen · phase · attempt · **elapsed** · **tokens so far** — so you can see exactly what's running and how much it's costing, right now.
+- **Inbox you can act on.** Open ship/skill/plan gates with **Approve / Reject**, and answer the agent's blocked-screen questions inline. These POST to `/api/gates/:id` and `/api/questions/:id` (TanStack Query mutations that refresh the board on success) — the **only** writes the UI makes, same as the vanilla dashboard.
+- **Cost + evaluation analytics.** A per-model **token bar chart** (Recharts) with a breakdown, total token/span counts, and an **eval pass-rate + failure-reason Pareto** — so "where did the tokens go" and "which layer fails most" are visible at a glance.
+- All over the existing endpoints (no backend change); tested with Vitest + Testing Library (jsdom). The Live Crawl headline view + orchestrator/sub-agent fleet land next (B.3–B.5) — see [docs/cockpit.md](docs/cockpit.md).
+
 ## v1.3.24 — 2026-06-18
 
 The first slice of the **React Mission Control** — a real single-page cockpit, served by the harness, proving the whole toolchain end-to-end (R9 Thrust B.1).

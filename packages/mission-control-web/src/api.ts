@@ -58,3 +58,22 @@ const q = (project?: string): string => (project ? `?project=${encodeURIComponen
 
 export const fetchState = (project?: string): Promise<DashboardState> =>
   getJson<DashboardState>(`/api/state${q(project)}`);
+
+/** POST a JSON body to a harness endpoint (the only writes Mission Control performs). */
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${path} → ${res.status}`);
+  return (await res.json()) as T;
+}
+
+/** Approve or reject an open gate (ship/skill/plan/deviation). */
+export const decideGate = (id: string, decision: 'approve' | 'reject', note?: string) =>
+  postJson<{ status: string }>(`/api/gates/${encodeURIComponent(id)}`, { decision, note });
+
+/** Answer an open agent question, unblocking its screen. */
+export const answerQuestion = (id: string, answer: string) =>
+  postJson<{ status: string }>(`/api/questions/${encodeURIComponent(id)}`, { answer });

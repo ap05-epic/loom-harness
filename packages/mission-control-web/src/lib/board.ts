@@ -79,3 +79,15 @@ export function fmtTokens(n: number): string {
 function trim1(n: number): string {
   return n.toFixed(1).replace(/\.0$/, '');
 }
+
+/** A short elapsed-since label for a worker, e.g. "5s", "1m 5s", "1h 30m" (pure; `now` injected). */
+export function elapsedLabel(startedAt: string | null, now: number): string {
+  if (!startedAt) return '—';
+  const started = Date.parse(startedAt);
+  if (Number.isNaN(started)) return '—';
+  const s = Math.max(0, Math.floor((now - started) / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}

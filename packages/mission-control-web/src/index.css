@@ -55,3 +55,35 @@ body {
 .mono {
   font-family: var(--font-mono);
 }
+
+/* Compact controls for the inbox + future actions. */
+.btn {
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  background: var(--surface-raised);
+  color: var(--text);
+  cursor: pointer;
+}
+.btn:hover {
+  border-color: var(--accent);
+}
+.btn-ok {
+  color: var(--pass);
+}
+.btn-no {
+  color: var(--fail);
+}
+.field {
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+}
+.field:focus {
+  outline: none;
+  border-color: var(--focus-ring);
+}
