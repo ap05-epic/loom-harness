@@ -252,6 +252,21 @@ describe('explore', () => {
     expect(result.visited).toBe(3); // fill user, fill pass, click submit — no repeats
   });
 
+  test('feeds the chooser a growing session history (so a persistent control is not re-used)', async () => {
+    // The live looping bug: a Quick-Search box lives in a persistent frame, so it reappears on every
+    // screen and the per-screen `taken` never sees it — the model re-searches forever. A GLOBAL
+    // history lets the chooser see what it already did anywhere this session.
+    const driver = new FakeMenuApp();
+    const seenLengths: number[] = [];
+    const recording: Chooser = async (ctx) => {
+      seenLengths.push((ctx.history ?? []).length);
+      return heuristicChooser(ctx);
+    };
+    await explore({ driver, chooser: recording, maxStates: 10, maxVisits: 10 });
+    expect(seenLengths[0]).toBe(0); // first decision: nothing done yet
+    expect(Math.max(...seenLengths)).toBeGreaterThanOrEqual(1); // later decisions see prior actions
+  });
+
   test('reports each step via onStep (live progress + diagnostics)', async () => {
     const driver = new FakeMenuApp();
     const steps: Array<{ kind: string; label?: string; isNew: boolean }> = [];

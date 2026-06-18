@@ -35,6 +35,9 @@ export interface ExploreDriver {
   activate(action: ExploreAction): Promise<ExploreState>;
 }
 
+/** An action the explorer performed, with the activated control's label — the session log entry. */
+export type TakenStep = { action: ExploreAction; label?: string };
+
 export type ChooserContext = {
   url: string;
   dom: DomSnapshot;
@@ -49,6 +52,14 @@ export type ChooserContext = {
    * username, then submit.
    */
   taken?: ExploreAction[];
+  /**
+   * Everything done SO FAR this session (across ALL screens), oldest first, each with the control's
+   * label. Per-screen `taken` resets on every navigation, so a control that lives in a persistent
+   * frame (a global Quick-Search / FA box, a menu) reappears on each screen and the model re-uses it
+   * forever — re-searching, re-opening the same menu. This global view lets the chooser see it has
+   * already searched / already opened that menu and pick something new instead of looping.
+   */
+  history?: TakenStep[];
 };
 
 /** Picks the next action (click a control / fill a field) on the current page, or `null` to backtrack. */
@@ -192,6 +203,8 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
   const tried = new Set<string>();
   /** Actions taken per screen — fed back to the chooser so it can progress on multi-step screens. */
   const takenByScreen = new Map<string, ExploreAction[]>();
+  /** Everything done this session (across screens) — feeds the chooser so it doesn't re-loop. */
+  const history: TakenStep[] = [];
   const actionKey = (a: ExploreAction): string =>
     a.kind === 'fill' ? `fill:${a.ref}=${a.value}` : `click:${a.ref}`;
   const edge = (key: string, a: ExploreAction): string => `${key}|${actionKey(a)}`;
@@ -218,7 +231,14 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
     );
     const taken = takenByScreen.get(curKey) ?? [];
     const action = offer.length
-      ? await chooser({ url: cur.url, dom: cur.dom, candidates: offer, visitedKeys: seen, taken })
+      ? await chooser({
+          url: cur.url,
+          dom: cur.dom,
+          candidates: offer,
+          visitedKeys: seen,
+          taken,
+          history,
+        })
       : null;
 
     // Backtrack on null, or on a repeat of an action already taken here (the runaway-fill guard).
@@ -233,6 +253,7 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
     if (!takenByScreen.has(curKey)) takenByScreen.set(curKey, []);
     takenByScreen.get(curKey)!.push(action);
     const label = cands.find((c) => c.ref === action.ref)?.label;
+    history.push({ action, label });
     const before = states.length;
     cur = await driver.activate(action);
     visited += 1;

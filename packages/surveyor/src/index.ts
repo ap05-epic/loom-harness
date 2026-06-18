@@ -22,6 +22,7 @@ export {
   type ExploreResult,
   type ExploreState,
   type ExploreStep,
+  type TakenStep,
 } from './explorer.js';
 export { exploreApp, type ExploreAppOptions } from './explore-app.js';
 export type { SessionDiagnosis } from '@loom/browser';

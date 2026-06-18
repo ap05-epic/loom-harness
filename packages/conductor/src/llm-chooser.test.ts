@@ -79,6 +79,24 @@ describe('buildChoosePrompt', () => {
     expect(user).toContain('1 screens'); // visited count surfaced
   });
 
+  test('surfaces the whole-session history so it stops re-searching / re-clicking (anti-loop)', () => {
+    const withHistory: ChooserContext = {
+      ...ctx,
+      history: [
+        { action: { kind: 'fill', ref: 'c9', value: '$fa' }, label: 'Quick Search' },
+        { action: { kind: 'click', ref: 'c8' }, label: 'Business Analysis Home' },
+      ],
+    };
+    const msgs = buildChoosePrompt(withHistory, ['user', 'pass', 'fa']);
+    const system = (msgs.find((m) => m.role === 'system')!.content as string).toLowerCase();
+    const user = msgs.find((m) => m.role === 'user')!.content as string;
+    expect(user).toMatch(/this session/i); // the session-scoped done-list is shown
+    expect(user).toContain('Quick Search'); // the FA fill recalled by its LABEL (refs differ per screen)
+    expect(user).toContain('$fa'); // recorded as the placeholder, never a real value
+    expect(user).toContain('Business Analysis Home'); // the menu it already opened
+    expect(system).toMatch(/once per session|persist/i); // FA search framed as a one-time action
+  });
+
   test('surfaces the actions already taken on this screen so the model does the next step', () => {
     const withTaken: ChooserContext = {
       ...ctx,

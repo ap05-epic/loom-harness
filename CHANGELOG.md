@@ -6,6 +6,12 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.10 — 2026-06-18
+
+`loom explore` stops looping — it remembers what it already did across the whole session, not just the current screen.
+
+- **Whole-session memory for the explorer.** A persistent control — a global Quick-Search / FA box, a "Home" menu that lives in a frame shared by every screen — reappears on each new screen, and the per-screen action history reset every navigation, so the model kept re-running the FA search and re-clicking the same menu instead of going deeper (the live BAA "it keeps looping" symptom). The chooser now receives a **session-wide history** (labelled: `filled "Quick Search"=$fa`, `clicked "Business Analysis Home"`) and is told to do the FA search **once** and prefer controls it hasn't used toward screens not yet seen. So each step is spent discovering a new screen instead of re-searching. Secrets are still recorded only as their `$name` placeholder.
+
 ## v1.3.9 — 2026-06-17
 
 `loom explore` now explains a "0 actions" start instead of failing silently.

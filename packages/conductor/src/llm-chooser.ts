@@ -21,31 +21,47 @@ export function buildChoosePrompt(ctx: ChooserContext, secretRefs: string[] = []
     (ctx.taken ?? [])
       .map((a) => (a.kind === 'fill' ? `filled ${a.ref} (${a.value})` : `clicked ${a.ref}`))
       .join(', ') || '(nothing yet)';
+  // Whole-session log, keyed by LABEL (refs differ per screen) — newest entries matter most, so keep
+  // the last 40 to bound the prompt.
+  const session =
+    (ctx.history ?? [])
+      .slice(-40)
+      .map((h) =>
+        h.action.kind === 'fill'
+          ? `filled "${h.label || h.action.ref}"=${h.action.value}`
+          : `clicked "${h.label || h.action.ref}"`,
+      )
+      .join('; ') || '(nothing yet)';
   return [
     {
       role: 'system',
       content:
         'You are the Explorer mapping a legacy menu-driven app to discover every distinct screen. ' +
-        "You receive the CURRENT screen's fillable fields and clickable controls (across all frames) " +
-        'and how many screens are already found. Reply with STRICT JSON only, no prose:\n' +
+        "You receive the CURRENT screen's fillable fields and clickable controls (across all frames), " +
+        'how many screens are already found, and everything you have ALREADY done. Reply with STRICT ' +
+        'JSON only, no prose:\n' +
         '  {"action":"fill","ref":"<ref>","value":"<text or $secret>"}  to type into a field, or\n' +
         '  {"action":"click","ref":"<ref>"}  to click a control, or\n' +
         '  {"action":null}  to go back.\n' +
         'Secret placeholders you may use as a fill value (the real value is substituted for you and ' +
         `is NEVER shown to you): ${secrets}. $user = login username, $pass = login password, ` +
         '$fa = the FA code for Quick Search.\n' +
-        'Strategy: do the NEXT step you have not done yet — never repeat an action listed under ' +
-        '"Already done" below (a filled field looks identical to an empty one, so trust that list). ' +
-        'On a LOGIN screen, fill $user and $pass then click the submit/login control. If a ' +
-        'Quick Search / FA box exists and you have not searched yet, fill $fa and submit. Otherwise ' +
-        'click a control likely to reveal a screen NOT yet seen (menus, tabs, "view"/"detail"/"open"). ' +
-        'You MAY submit LOGIN and SEARCH forms to navigate. NEVER submit a form or click a control that ' +
-        'creates, updates, deletes, saves, pays, sends, or confirms business data.',
+        'Strategy: do the NEXT useful step. NEVER repeat anything listed under "Already done on THIS ' +
+        'screen" or "Already done this session" — a filled field looks identical to an empty one, so ' +
+        'trust those lists. On a LOGIN screen, fill $user and $pass then click submit/login. Fill $fa ' +
+        'into a Quick Search / FA box ONCE per session to set the working context — if the session ' +
+        'list already shows you filled $fa, do NOT fill it again; it persists, so navigate instead. ' +
+        'Otherwise click a control you have NOT clicked yet that likely reveals a screen NOT yet seen ' +
+        '(menus, tabs, "view"/"detail"/"open"); do not re-click a home/menu you already used or ' +
+        're-open a screen already found. You MAY submit LOGIN and SEARCH forms to navigate. NEVER ' +
+        'submit a form or click a control that creates, updates, deletes, saves, pays, sends, or ' +
+        'confirms business data.',
     },
     {
       role: 'user',
       content:
         `Discovered so far: ${ctx.visitedKeys.size} screens.\n` +
+        `Already done this session (do not repeat): ${session}.\n` +
         `Already done on THIS screen: ${done}.\n\n` +
         `Fillable fields:\n${fmt(fillable)}\n\nClickable controls:\n${fmt(clickable)}`,
     },
