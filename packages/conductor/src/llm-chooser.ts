@@ -48,11 +48,15 @@ export function buildChoosePrompt(ctx: ChooserContext, secretRefs: string[] = []
         '$fa = the FA code for Quick Search.\n' +
         'Strategy: do the NEXT useful step. NEVER repeat anything listed under "Already done on THIS ' +
         'screen" or "Already done this session" — a filled field looks identical to an empty one, so ' +
-        'trust those lists. On a LOGIN screen, fill $user and $pass then click submit/login. Fill $fa ' +
-        'into a Quick Search / FA box ONCE per session to set the working context — if the session ' +
-        'list already shows you filled $fa, do NOT fill it again; it persists, so navigate instead. ' +
-        'If a search opened a list of RESULTS (a search overlay or a results table of matches), CLICK ' +
-        'the matching result row/link to open it — do NOT search again. ' +
+        'trust those lists. On a LOGIN screen, fill $user and $pass then click submit/login. Entering ' +
+        'the FA number is the GATEWAY to the data: when the page has an "FA Number" or Quick Search ' +
+        'box, fill it with $fa and click Submit to load that advisor — do this whenever you reach a ' +
+        'page that has an FA Number box whose data you have not loaded yet (an empty grid of column ' +
+        'headers with no rows means the FA number still needs to be entered). Once the data loads, ' +
+        'click the tabs/columns (e.g. NNM, Production, Pricing, QNR) to map each view; you need not ' +
+        're-enter the FA number while moving among the tabs of a view you already loaded. If a search ' +
+        'opened a list of RESULTS (a search overlay or a results table), CLICK the matching result to ' +
+        'open it. ' +
         'Otherwise click a control you have NOT clicked yet that likely reveals a screen NOT yet seen ' +
         '(menus, tabs, "view"/"detail"/"open"); do not re-click a home/menu you already used or ' +
         're-open a screen already found. You MAY submit LOGIN and SEARCH forms to navigate. NEVER ' +

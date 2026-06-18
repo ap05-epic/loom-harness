@@ -262,7 +262,11 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
     takenByScreen.get(curKey)!.push(action);
     const label = cands.find((c) => c.ref === action.ref)?.label;
     history.push({ action, label });
-    const offered = cands.map((c) => c.label).filter((l): l is string => Boolean(l));
+    // Flag fillable inputs so a stuck step's log shows whether (e.g.) an "FA Number" box was even
+    // detected as something we could type into — vs. only clickable headers.
+    const offered = cands
+      .map((c) => (c.kind === 'textbox' ? `${c.label || c.ref} [textbox]` : c.label))
+      .filter((l): l is string => Boolean(l));
     const before = states.length;
     cur = await driver.activate(action);
     visited += 1;

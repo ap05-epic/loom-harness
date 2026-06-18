@@ -6,6 +6,13 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.15 — 2026-06-18
+
+`loom explore` now enters the FA number to load each advisor's data, instead of wandering empty column headers.
+
+- **FA entry is the gateway, not a one-time search.** v1.3.10's anti-loop ("fill `$fa` once per session, then never again") over-corrected: it stopped the explorer from typing the FA number into the **FA Number box on the data page** (`overlayAction.do`) — the box that actually loads each advisor's views — so it clicked column headers forever and never reached `dispatcherAction.do`. The chooser is now told that entering the FA number is the **gateway to the data**: fill the FA Number / Quick Search box with `$fa` and submit whenever the page has one whose data isn't loaded (an empty grid of headers means it still needs entering), then explore the loaded tabs/columns. The session history still prevents pointless exact repeats.
+- **Textbox marker in the stuck-step log.** Candidates that are fillable now show as `… [textbox]`, so a stalled step reveals whether an input (e.g. the FA Number box) was even detected as typeable — vs. only clickable headers.
+
 ## v1.3.14 — 2026-06-18
 
 `loom explore` now shows what a stuck screen offered, and is steered to pick a search result.

@@ -300,6 +300,24 @@ describe('explore', () => {
     expect(offered[0]).toEqual(expect.arrayContaining(['Open A', 'Open B']));
   });
 
+  test('flags fillable textboxes in the reported candidates (so a stuck input shows as fillable)', async () => {
+    // On BAA's overlay the "FA Number" box must be recognizable as fillable in the log, so a stall
+    // there shows whether the input is even detected (vs. only clickable column headers).
+    const driver = new FakeFormApp();
+    const offered: string[][] = [];
+    await explore({
+      driver,
+      chooser: scripted([
+        { kind: 'fill', ref: 'q', value: '$user' },
+        { kind: 'click', ref: 'go' },
+      ]),
+      maxStates: 10,
+      maxVisits: 10,
+      onStep: (s) => offered.push(s.candidates ?? []),
+    });
+    expect(offered[0]).toContain('Search [textbox]'); // the input is flagged fillable
+  });
+
   test('reports each step via onStep (live progress + diagnostics)', async () => {
     const driver = new FakeMenuApp();
     const steps: Array<{ kind: string; label?: string; isNew: boolean }> = [];

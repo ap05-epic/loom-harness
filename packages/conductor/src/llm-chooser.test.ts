@@ -95,7 +95,7 @@ describe('buildChoosePrompt', () => {
     expect(user).toContain('Quick Search'); // the FA fill recalled by its LABEL (refs differ per screen)
     expect(user).toContain('$fa'); // recorded as the placeholder, never a real value
     expect(user).toContain('Business Analysis Home'); // the menu it already opened
-    expect(system).toMatch(/once per session|persist/i); // FA search framed as a one-time action
+    expect(system).toMatch(/gateway|fa number/i); // entering the FA number is the gateway to the data
   });
 
   test('surfaces the actions already taken on this screen so the model does the next step', () => {
