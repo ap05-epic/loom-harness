@@ -6,6 +6,17 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.4.0 — 2026-06-18
+
+**The cockpit is complete** — a real React Mission Control you can watch and drive end-to-end (R9 Thrust B capstone). This release rounds out the dashboard (B.4) and marks the close of the R9 cockpit arc (Thrusts A–E).
+
+- **Screen drill-down.** Click any screen card (kanban or live fleet) to open its **inspector**: the attempt timeline (role · status · tokens · failure reason) and the best eval — so "what is this sub-agent doing, and why did it fail" is one click away (`/api/wp/:id`).
+- **Capabilities inventory.** A panel listing the harness's built-in tools, the skills it has learned (tier · status), and any attached external MCP servers (`/api/inventory`).
+- **Project switcher.** When the harness knows more than one project, a selector in the top bar scopes every view — board, fleet, inbox, cost/eval, Live Crawl, and inventory — to the chosen project (`/api/projects` + `?project=`).
+- **The R9 cockpit, end to end:** run header + **kanban board** (B.1) · **live fleet** + actionable **inbox** + **cost/eval charts** (B.2) · the **Live Crawl** tab with a live token-burn line (B.3) · **drill-down + inventory + project switcher** (B.4) — all over the existing JSON endpoints, themed with the `@loom/tokens` brass palette, tested with Vitest + Testing Library (jsdom). Azure/OpenAI is the sole live connector and the explore setup is conversational (Thrust E, v1.3.23).
+- **The vanilla HTML dashboard is kept as a pod-safe fallback** (served when the React bundle is absent), not retired — `loom ui` always works, built or not.
+- **Deferred, by design:** in-browser **launch** controls (start `map`/`crawl`/`explore`/`run` from a button) remain out — spawning processes from an HTTP endpoint is the one piece with real security surface on a locked-down pod, and `loom chat` / the CLI already launch runs. It's a clean opt-in for later. See [docs/cockpit.md](docs/cockpit.md).
+
 ## v1.3.26 — 2026-06-18
 
 The **Live Crawl** view — watch `loom explore` map an app in real time, never a blind spinner (R9 Thrust B.3).

@@ -39,12 +39,15 @@ HTML dashboard — so `loom ui` always works, built or not.
 
 ## Status
 
-| Phase   | What                                                                                                                                | Ships      |
-| ------- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| **B.1** | Scaffold + toolchain; server serves the SPA (vanilla fallback); **run header + kanban board**; live status pill                     | v1.3.24 ✅ |
-| **B.2** | **Live fleet** (screen · phase · elapsed · tokens) · **inbox** (approve/reject + answer) · **cost** + **eval** analytics (Recharts) | v1.3.25 ✅ |
-| **B.3** | **Live Crawl** tab: current URL · move feed · thumbnail grid · stats strip · live token-burn line                                   | v1.3.26 ✅ |
-| B.4/5   | Orchestrator/sub-agent fleet · WP drill-down · inventory · project switcher · scoped launch actions; retire vanilla; cut v1.4.0     | next       |
+| Phase   | What                                                                                                                                                                                                                                         | Ships      |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| **B.1** | Scaffold + toolchain; server serves the SPA (vanilla fallback); **run header + kanban board**; live status pill                                                                                                                              | v1.3.24 ✅ |
+| **B.2** | **Live fleet** (screen · phase · elapsed · tokens) · **inbox** (approve/reject + answer) · **cost** + **eval** analytics (Recharts)                                                                                                          | v1.3.25 ✅ |
+| **B.3** | **Live Crawl** tab: current URL · move feed · thumbnail grid · stats strip · live token-burn line                                                                                                                                            | v1.3.26 ✅ |
+| **B.4** | **WP drill-down** (click a card → attempts + eval) · **capabilities inventory** · **project switcher** — the cockpit capstone                                                                                                                | v1.4.0 ✅  |
+| B.5     | _Deferred:_ in-browser **launch** controls (spawn `map`/`crawl`/`explore`/`run`). Out for now — process-spawn over HTTP is the one piece with real security surface on the pod, and `loom chat` / the CLI already launch runs. Opt-in later. | —          |
+
+> The vanilla HTML dashboard is **kept as a pod-safe fallback** (served when the React bundle is absent), not retired — `loom ui` always works.
 
 ## Run it
 

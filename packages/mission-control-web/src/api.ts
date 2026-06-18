@@ -103,6 +103,46 @@ export const fetchExplore = (project?: string): Promise<ExploreState> =>
 export const exploreShotUrl = (key: string): string =>
   `/api/explore-shot/${encodeURIComponent(key)}.png`;
 
+/** The projects the harness knows about (∪ the active one). */
+export type ProjectList = { active: string | null; projects: string[] };
+export const fetchProjects = (): Promise<ProjectList> => getJson<ProjectList>('/api/projects');
+
+/** One work package's drill-down — mirrors @loom/mission-control's WpDetail. */
+export type WpDetail = {
+  wpId: string;
+  screenKey: string | null;
+  state: string;
+  attempts: Array<{
+    n: number;
+    role: string;
+    status: string;
+    inputTokens: number;
+    outputTokens: number;
+    failureReason: string | null;
+  }>;
+  bestEval: { visualPct: number | null; passed: boolean } | null;
+};
+export const fetchWpDetail = (wpId: string): Promise<WpDetail> =>
+  getJson<WpDetail>(`/api/wp/${encodeURIComponent(wpId)}`);
+
+/** The harness's capability inventory — mirrors @loom/mission-control's Inventory. */
+export type Inventory = {
+  tools: Array<{ name: string; category: string; description: string }>;
+  mcpExternal: Array<{ name: string; description: string }>;
+  skills: Array<{
+    name: string;
+    description: string;
+    tier: string;
+    status: string;
+    useCount: number;
+    successCount: number;
+    source: 'db' | 'file';
+  }>;
+  digit: { home: string; skills: unknown[]; agents: unknown[]; mcp: unknown[] };
+};
+export const fetchInventory = (project?: string): Promise<Inventory> =>
+  getJson<Inventory>(`/api/inventory${q(project)}`);
+
 /** POST a JSON body to a harness endpoint (the only writes Mission Control performs). */
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(path, {

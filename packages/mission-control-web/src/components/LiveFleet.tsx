@@ -4,7 +4,13 @@ import { elapsedLabel, fmtTokens, stateTone, type Tone } from '../lib/board';
 const toneVar = (t: Tone): string => (t === 'muted' ? 'var(--text-muted)' : `var(--${t})`);
 
 /** The live fleet: a card per active worker (screen · phase · attempt · elapsed · tokens). */
-export function LiveFleet({ workers }: { workers: LiveWorker[] }) {
+export function LiveFleet({
+  workers,
+  onSelect,
+}: {
+  workers: LiveWorker[];
+  onSelect?: (wpId: string) => void;
+}) {
   if (workers.length === 0) {
     return <p className="muted text-sm">No workers running right now.</p>;
   }
@@ -16,9 +22,10 @@ export function LiveFleet({ workers }: { workers: LiveWorker[] }) {
         return (
           <div
             key={w.wpId}
-            className="card-raised p-3"
+            className={`card-raised p-3${onSelect ? ' cursor-pointer' : ''}`}
             style={{ borderLeft: `3px solid ${toneVar(tone)}` }}
             data-wp={w.wpId}
+            {...(onSelect ? { role: 'button', tabIndex: 0, onClick: () => onSelect(w.wpId) } : {})}
           >
             <div className="flex items-center justify-between">
               <span className="mono truncate text-sm" title={w.screenKey ?? w.wpId}>

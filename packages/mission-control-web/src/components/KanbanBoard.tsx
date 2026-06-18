@@ -5,13 +5,22 @@ function toneVar(t: Tone): string {
   return t === 'muted' ? 'var(--text-muted)' : `var(--${t})`;
 }
 
-function ScreenCard({ s, tone }: { s: Screen; tone: Tone }) {
+function ScreenCard({
+  s,
+  tone,
+  onSelect,
+}: {
+  s: Screen;
+  tone: Tone;
+  onSelect?: (wpId: string) => void;
+}) {
   const label = s.screenKey ?? s.wpId;
   return (
     <div
-      className="card-raised px-2 py-1.5"
+      className={`card-raised px-2 py-1.5${onSelect ? ' cursor-pointer' : ''}`}
       style={{ borderLeft: `3px solid ${toneVar(tone)}` }}
       data-wp={s.wpId}
+      {...(onSelect ? { role: 'button', tabIndex: 0, onClick: () => onSelect(s.wpId) } : {})}
     >
       <div className="mono truncate text-sm" title={label}>
         {label}
@@ -25,7 +34,13 @@ function ScreenCard({ s, tone }: { s: Screen; tone: Tone }) {
 }
 
 /** The kanban board: a column per pipeline state, screens as cards that move across as they progress. */
-export function KanbanBoard({ screens }: { screens: Screen[] }) {
+export function KanbanBoard({
+  screens,
+  onSelect,
+}: {
+  screens: Screen[];
+  onSelect?: (wpId: string) => void;
+}) {
   const columns = columnsFromScreens(screens);
   return (
     <div className="flex gap-3 overflow-x-auto pb-2">
@@ -42,7 +57,7 @@ export function KanbanBoard({ screens }: { screens: Screen[] }) {
           </div>
           <div className="flex flex-col gap-2 p-2">
             {c.screens.map((s) => (
-              <ScreenCard key={s.wpId} s={s} tone={c.tone} />
+              <ScreenCard key={s.wpId} s={s} tone={c.tone} onSelect={onSelect} />
             ))}
           </div>
         </div>

@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Dashboard } from './components/Dashboard';
 import { ExploreView } from './components/ExploreView';
+import { ProjectSwitcher } from './components/ProjectSwitcher';
+import { ProjectProvider } from './project';
 
 const client = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 1000 } },
@@ -63,6 +65,9 @@ function TopBar({ view, onView }: { view: View; onView: (v: View) => void }) {
           Live Crawl
         </NavButton>
       </nav>
+      <div className="ml-auto">
+        <ProjectSwitcher />
+      </div>
     </header>
   );
 }
@@ -71,12 +76,14 @@ export function App() {
   const [view, setView] = useState<View>('dashboard');
   return (
     <QueryClientProvider client={client}>
-      <div className="min-h-full">
-        <TopBar view={view} onView={setView} />
-        <main className="mx-auto max-w-[1400px] px-4 py-4">
-          {view === 'dashboard' ? <Dashboard /> : <ExploreView />}
-        </main>
-      </div>
+      <ProjectProvider>
+        <div className="min-h-full">
+          <TopBar view={view} onView={setView} />
+          <main className="mx-auto max-w-[1400px] px-4 py-4">
+            {view === 'dashboard' ? <Dashboard /> : <ExploreView />}
+          </main>
+        </div>
+      </ProjectProvider>
     </QueryClientProvider>
   );
 }

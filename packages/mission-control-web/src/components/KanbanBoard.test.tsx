@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, test } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, test, vi } from 'vitest';
 import { KanbanBoard } from './KanbanBoard';
 
 describe('KanbanBoard', () => {
@@ -22,5 +22,19 @@ describe('KanbanBoard', () => {
     render(<KanbanBoard screens={[]} />);
     expect(screen.getByText(/pending/i)).toBeInTheDocument();
     expect(screen.getByText(/shipped/i)).toBeInTheDocument();
+  });
+
+  test('clicking a screen card invokes onSelect with its wpId', () => {
+    const onSelect = vi.fn();
+    render(
+      <KanbanBoard
+        screens={[
+          { wpId: 'wp7', screenKey: 'login', state: 'building', diffPercent: null, attempts: 1 },
+        ]}
+        onSelect={onSelect}
+      />,
+    );
+    fireEvent.click(screen.getByText('login'));
+    expect(onSelect).toHaveBeenCalledWith('wp7');
   });
 });

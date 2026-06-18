@@ -1,12 +1,15 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { answerQuestion, decideGate, fetchState } from '../api';
+import { useProject } from '../project';
 import { CostPanel } from './CostPanel';
 import { EvalPanel } from './EvalPanel';
 import { Inbox } from './Inbox';
+import { InventoryPanel } from './InventoryPanel';
 import { KanbanBoard } from './KanbanBoard';
 import { LiveFleet } from './LiveFleet';
 import { RunHeader } from './RunHeader';
+import { WpInspector } from './WpInspector';
 
 /** A live status pill — so the operator always knows the dashboard is connected and fresh, never a blind spinner. */
 function LiveIndicator({
@@ -46,12 +49,14 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/** The main dashboard: polls /api/state every 2s and renders the rebuild board, live fleet, inbox, and cost/eval. */
+/** The main dashboard: polls /api/state every 2s and renders the rebuild board, fleet, inbox, cost/eval, and capabilities. */
 export function Dashboard() {
   const qc = useQueryClient();
+  const { project } = useProject();
+  const [selectedWp, setSelectedWp] = useState<string | null>(null);
   const { data, isError, isFetching } = useQuery({
-    queryKey: ['state'],
-    queryFn: () => fetchState(),
+    queryKey: ['state', project],
+    queryFn: () => fetchState(project),
     refetchInterval: 2000,
   });
   const refresh = () => qc.invalidateQueries({ queryKey: ['state'] });
@@ -74,12 +79,14 @@ export function Dashboard() {
         <LiveIndicator isError={isError} isFetching={isFetching} hasData={Boolean(data)} />
       </div>
 
-      <KanbanBoard screens={data?.screens ?? []} />
+      <KanbanBoard screens={data?.screens ?? []} onSelect={setSelectedWp} />
+
+      {selectedWp && <WpInspector wpId={selectedWp} onClose={() => setSelectedWp(null)} />}
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="flex flex-col gap-4 lg:col-span-2">
           <Panel title="Live fleet">
-            <LiveFleet workers={data?.liveNow ?? []} />
+            <LiveFleet workers={data?.liveNow ?? []} onSelect={setSelectedWp} />
           </Panel>
           <Panel title="Inbox">
             <Inbox
@@ -102,6 +109,8 @@ export function Dashboard() {
           />
         </div>
       </div>
+
+      <InventoryPanel />
     </div>
   );
 }
