@@ -1,0 +1,57 @@
+@import 'tailwindcss';
+
+/*
+ * Loom brand tokens — mirrors @loom/tokens SEMANTIC.dark (the Mission Control canvas is dark:
+ * "woven light on dark", a warm brass Thread on a cool dark Ink canvas). Kept in sync with
+ * packages/tokens/src/index.ts.
+ */
+:root,
+[data-theme='dark'] {
+  --bg: #14161f;
+  --surface: #1a1d28;
+  --surface-raised: #232735;
+  --border: #323748;
+  --text: #e8eaef;
+  --text-muted: #8a91a1;
+  --accent: #e2a74a;
+  --accent-strong: #d6942e;
+  --focus-ring: #e8bb6e;
+  --pass: #46b17a;
+  --fail: #e0533d;
+  --info: #5b8def;
+  --gate: #e2a74a;
+  --agent: #9a7cf0;
+  --font-sans: Inter, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Brand surfaces, reused across components (Tailwind handles layout; these carry the palette). */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.card-raised {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.muted {
+  color: var(--text-muted);
+}
+.mono {
+  font-family: var(--font-mono);
+}

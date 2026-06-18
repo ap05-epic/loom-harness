@@ -17,4 +17,9 @@ export {
   type DigitInventory,
 } from './inventory.js';
 export { dashboardHtml } from './ui.js';
-export { startMissionControl, type MissionControl, type MissionControlOptions } from './server.js';
+export {
+  startMissionControl,
+  defaultWebDistDir,
+  type MissionControl,
+  type MissionControlOptions,
+} from './server.js';

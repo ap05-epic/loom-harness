@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { isAbsolute, join } from 'node:path';
 import { openDb, type Profile } from '@loom/core';
-import { startMissionControl, type McpInfo } from '@loom/mission-control';
+import { defaultWebDistDir, startMissionControl, type McpInfo } from '@loom/mission-control';
 import { requireExistingDb } from '../../db-path.js';
 import { defineCommand } from '../../registry.js';
 import type { CliContext } from '../../context.js';
@@ -63,6 +63,8 @@ export const uiCommand = defineCommand({
       digitHome: ctx.env.DIGIT_HOME ?? ctx.env.COPILOT_HOME,
       // Lets the Live Crawl view fetch per-screen thumbnails from where `loom explore` saved them.
       exploreShotsDir: profile?.dataDir ? join(profile.dataDir, 'explore-shots') : undefined,
+      // Serve the built React SPA when present; the server falls back to the vanilla dashboard.
+      webDistDir: defaultWebDistDir(),
     });
     ctx.sink.line(`Mission Control → ${mc.url}  (Ctrl-C to stop)`);
     if (input.options.open) openBrowser(mc.url);

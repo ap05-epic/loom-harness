@@ -242,3 +242,43 @@ describe('Mission Control — live crawl endpoints', () => {
     expect(missing.status).toBe(404);
   });
 });
+
+describe('React SPA serving', () => {
+  test('serves the built React SPA at / and its assets when the web bundle is present', async () => {
+    const webDist = join(dir, 'web-dist');
+    mkdirSync(join(webDist, 'assets'), { recursive: true });
+    writeFileSync(
+      join(webDist, 'index.html'),
+      '<!doctype html><html><body><div id="root"></div><script src="./assets/app.js"></script></body></html>',
+    );
+    writeFileSync(join(webDist, 'assets', 'app.js'), 'console.log("loom spa");');
+
+    mc = await startMissionControl({ db, webDistDir: webDist });
+
+    const root = await fetch(`${mc.url}/`);
+    expect(root.headers.get('content-type')).toContain('text/html');
+    expect(await root.text()).toContain('id="root"'); // the SPA shell, not vanilla
+
+    const asset = await fetch(`${mc.url}/assets/app.js`);
+    expect(asset.status).toBe(200);
+    expect(asset.headers.get('content-type')).toContain('javascript');
+    expect(await asset.text()).toContain('loom spa');
+
+    // path traversal out of the bundle is refused
+    expect((await fetch(`${mc.url}/assets/../../secret`)).status).toBe(404);
+  });
+
+  test('falls back to the vanilla dashboard when the SPA is not built', async () => {
+    mc = await startMissionControl({ db, webDistDir: join(dir, 'does-not-exist') });
+    const html = await (await fetch(`${mc.url}/`)).text();
+    expect(html).toContain('Mission Control'); // vanilla dashboardHtml
+    expect(html).not.toContain('id="root"'); // …and not the SPA shell
+  });
+
+  test('with no webDistDir option, serves vanilla (the documented default)', async () => {
+    mc = await startMissionControl({ db });
+    const html = await (await fetch(`${mc.url}/`)).text();
+    expect(html).toContain('Mission Control');
+    expect(html).not.toContain('id="root"');
+  });
+});

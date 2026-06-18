@@ -1,7 +1,8 @@
-import { createReadStream, existsSync } from 'node:fs';
+import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { relative, resolve } from 'node:path';
+import { dirname, extname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { applyGateDecision, EventLog, QuestionStore, type SqliteDatabase } from '@loom/core';
 import { dashboardState, exploreState, listProjects, wpDetail } from './read-model.js';
 import { inventory, type McpInfo } from './inventory.js';
@@ -25,7 +26,55 @@ export type MissionControlOptions = {
   externalMcp?: McpInfo[];
   /** `<data-dir>/explore-shots` — lets the Live Crawl view fetch per-screen thumbnails. */
   exploreShotsDir?: string;
+  /**
+   * The built React SPA's `dist/` dir. When it contains an `index.html`, Mission Control serves the
+   * React app (and its assets) instead of the vanilla HTML dashboard. Omit (or point at an unbuilt
+   * dir) to serve vanilla — the pod-safe fallback. The CLI passes {@link defaultWebDistDir}.
+   */
+  webDistDir?: string;
 };
+
+/** The built React bundle's location, relative to this compiled module (the sibling
+ * `@loom/mission-control-web` package's `dist/`). */
+export function defaultWebDistDir(): string {
+  return resolve(dirname(fileURLToPath(import.meta.url)), '../../mission-control-web/dist');
+}
+
+const MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
+  '.map': 'application/json; charset=utf-8',
+};
+
+/** Serve one static file from the built SPA, confined to its dist dir. Returns false (→ fall through
+ * to 404) when the path escapes, isn't a real file, or no bundle is configured. */
+function serveStatic(webDist: string | undefined, pathname: string, res: ServerResponse): boolean {
+  if (!webDist) return false;
+  const root = resolve(webDist);
+  const rel = pathname.replace(/^\/+/, '');
+  if (!rel) return false;
+  const file = resolve(root, rel);
+  if (relative(root, file).startsWith('..')) return false;
+  try {
+    if (!statSync(file).isFile()) return false;
+  } catch {
+    return false;
+  }
+  res.writeHead(200, {
+    'content-type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream',
+    'cache-control': 'no-cache',
+  });
+  createReadStream(file).pipe(res);
+  return true;
+}
 
 /** Serve one explore-shot PNG, confined to the shots dir (the route regex blocks slashes; this
  * rejects any `..` escape as defense-in-depth, mirroring the protected-paths guard). */
@@ -73,6 +122,13 @@ async function handle(
   const method = req.method ?? 'GET';
 
   if (method === 'GET' && pathname === '/') {
+    // Serve the built React SPA when present; otherwise the vanilla dashboard (pod-safe fallback).
+    const indexFile = opts.webDistDir ? join(opts.webDistDir, 'index.html') : undefined;
+    if (indexFile && existsSync(indexFile)) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      createReadStream(indexFile).pipe(res);
+      return;
+    }
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     res.end(dashboardHtml());
     return;
@@ -173,6 +229,9 @@ async function handle(
     sendJson(res, 200, questions.answer(qMatch[1]!, body.answer));
     return;
   }
+
+  // Built SPA assets (index-*.js / .css / favicon …). Confined to the bundle; falls through to 404.
+  if (method === 'GET' && serveStatic(opts.webDistDir, pathname, res)) return;
 
   sendJson(res, 404, { error: 'not found' });
 }

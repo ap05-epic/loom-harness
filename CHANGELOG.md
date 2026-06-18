@@ -6,6 +6,14 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.24 — 2026-06-18
+
+The first slice of the **React Mission Control** — a real single-page cockpit, served by the harness, proving the whole toolchain end-to-end (R9 Thrust B.1).
+
+- **New `@loom/mission-control-web`** — a Vite + React + TypeScript SPA (TanStack Query for ~2s polling, Tailwind v4 themed with the `@loom/tokens` brass palette, Lucide icons). It ships as part of `pnpm build` (`tsc -b` then `vite build` → `dist/`, pure JS, pod-safe) and its components are tested with Vitest + Testing Library (jsdom) as their own project.
+- **`loom ui` serves the SPA, with a pod-safe fallback.** The server (`@loom/mission-control`) serves the built React bundle at `/` (and its assets, path-confined) when present, and **falls back to the original vanilla HTML dashboard** when the bundle is absent — so `loom ui` always works. New `defaultWebDistDir()` + a `webDistDir` option; the vanilla page remains the documented default when no bundle is configured.
+- **This release's UI:** the run header (project · run · status · stage · version), the **kanban board** (a column per pipeline state, screen cards that move across as they progress — no screen ever dropped), and a live status pill so you always know the dashboard is connected and fresh — never a blind spinner. The live fleet, inbox, cost/eval charts, Live Crawl view, and launch controls land in B.2–B.5; see [docs/cockpit.md](docs/cockpit.md).
+
 ## v1.3.23 — 2026-06-18
 
 The Azure/OpenAI link + key is now Loom's **one and only** connection point, and the painful explore setup is now conversational (R9 Thrust E).
