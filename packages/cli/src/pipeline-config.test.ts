@@ -1,8 +1,32 @@
 import { join, resolve } from 'node:path';
-import { OpenAiDriver } from '@loom/agents';
+import { OpenAiDriver, type LlmGateway } from '@loom/agents';
 import type { Profile } from '@loom/core';
 import { describe, expect, test } from 'vitest';
-import { describeProvider, gatewayFromProfile, resolvePipelineConfig } from './pipeline-config.js';
+import {
+  describeProvider,
+  gatewayFromProfile,
+  resolvePipelineConfig,
+  trackUsage,
+} from './pipeline-config.js';
+
+describe('trackUsage', () => {
+  test('accumulates token usage across complete() calls without changing the response', async () => {
+    const gw: LlmGateway = {
+      complete: async () => ({
+        content: 'ok',
+        toolCalls: [],
+        usage: { inputTokens: 10, outputTokens: 3 },
+        finishReason: 'stop',
+      }),
+    };
+    const t = trackUsage(gw);
+    expect(t.total()).toEqual({ inputTokens: 0, outputTokens: 0 });
+    const res = await t.gateway.complete({ model: 'm', messages: [] });
+    expect(res.content).toBe('ok'); // response flows through unchanged
+    await t.gateway.complete({ model: 'm', messages: [] });
+    expect(t.total()).toEqual({ inputTokens: 20, outputTokens: 6 }); // summed across both calls
+  });
+});
 
 function profile(overrides: Partial<Profile> = {}): Profile {
   return {

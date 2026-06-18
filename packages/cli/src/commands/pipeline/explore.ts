@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { LlmGateway } from '@loom/agents';
 import type { Profile } from '@loom/core';
 import { llmChooser } from '@loom/conductor';
 import {
@@ -10,7 +11,7 @@ import {
   type SessionDiagnosis,
 } from '@loom/surveyor';
 import { configError } from '../../errors.js';
-import { gatewayFromProfile } from '../../pipeline-config.js';
+import { gatewayFromProfile, trackUsage } from '../../pipeline-config.js';
 import { defineCommand } from '../../registry.js';
 import { renderTable } from '../../ui/table.js';
 
@@ -24,6 +25,10 @@ type ExploreData = {
   /** Where per-screen PNG screenshots were written, and how many — the visual map. */
   shotsDir?: string;
   shots?: number;
+  /** What the crawl cost: LLM tokens spent + wall-clock. */
+  inputTokens: number;
+  outputTokens: number;
+  elapsedMs: number;
 };
 
 /**
@@ -49,6 +54,7 @@ export function writeExploreShots(
 export function exploreOptionsFrom(
   profile: Profile,
   maxStatesOverride?: number,
+  gateway: LlmGateway = gatewayFromProfile(profile),
 ): ExploreAppOptions {
   const baseUrl = profile.app?.baseUrl;
   if (!baseUrl) {
@@ -80,7 +86,7 @@ export function exploreOptionsFrom(
   return {
     startUrl,
     secrets,
-    chooser: llmChooser(gatewayFromProfile(profile), profile.llm.model, Object.keys(secrets)),
+    chooser: llmChooser(gateway, profile.llm.model, Object.keys(secrets)),
     storageStatePath: profile.app?.storageStatePath,
     cookiesPath: profile.app?.cookiesPath,
     // Legacy homes (BAA) load their menu/content in stages over several seconds — wait for the page
@@ -112,18 +118,30 @@ export function formatDiagnosis(d: SessionDiagnosis): string {
   return lines.join('\n');
 }
 
-/** A one-line, human-readable description of a step — secrets stay as their `$name` placeholder. */
-function describeStep(s: ExploreStep): string {
+/**
+ * A one-line, human-readable description of a step — secrets stay as their `$name` placeholder. When
+ * `meta` is given, it appends a running token total + elapsed so you can SEE the cost climbing live
+ * (and that it isn't wedged). e.g. `clicked "Production" → new screen (5)  [12.3k tok · 47s]`.
+ */
+export function describeStep(s: ExploreStep, meta?: { tokens: number; elapsedMs: number }): string {
   const target = s.label ? `"${s.label}"` : s.action.ref;
   const what =
     s.action.kind === 'fill' ? `typed ${s.action.value} into ${target}` : `clicked ${target}`;
-  if (s.isNew) return `${what} → new screen (${s.discovered})`;
+  const suffix = meta
+    ? `  [${formatTokens(meta.tokens)} tok · ${Math.round(meta.elapsedMs / 1000)}s]`
+    : '';
+  if (s.isNew) return `${what} → new screen (${s.discovered})${suffix}`;
   // No new screen — show what the page actually offered, so a stuck walk (e.g. a search-results
   // overlay whose rows we couldn't act on) is debuggable: you can see if the result rows are even there.
   const offered = s.candidates?.length
     ? ` — page offers: ${s.candidates.slice(0, 20).join(' | ')}`
     : '';
-  return `${what} (no new screen)${offered}`;
+  return `${what} (no new screen)${suffix}${offered}`;
+}
+
+/** Compact token count: 1234 → "1.2k", 950 → "950". */
+function formatTokens(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
 
 export const exploreCommand = defineCommand({
@@ -136,10 +154,20 @@ export const exploreCommand = defineCommand({
   async run(ctx, input) {
     const profile = ctx.requireProfile();
     const max = input.options.maxStates !== undefined ? Number(input.options.maxStates) : undefined;
-    const options = exploreOptionsFrom(profile, max);
-    options.onStep = (s) => ctx.sink.info(describeStep(s)); // live progress to stderr
+    // Wrap the gateway so every step's live line shows the running token total + elapsed — so you
+    // always see the cost climbing and know it isn't silently stuck.
+    const usage = trackUsage(gatewayFromProfile(profile));
+    const options = exploreOptionsFrom(profile, max, usage.gateway);
+    const startedAt = Date.now();
+    options.onStep = (s) => {
+      const { inputTokens, outputTokens } = usage.total();
+      ctx.sink.info(
+        describeStep(s, { tokens: inputTokens + outputTokens, elapsedMs: Date.now() - startedAt }),
+      );
+    };
     options.onDiagnostic = (d) => ctx.sink.info(formatDiagnosis(d)); // why "0 actions" happened
     const result = await exploreApp(options);
+    const { inputTokens, outputTokens } = usage.total();
 
     // Persist the discovered states into the UI atlas + save a PNG per screen when a data dir is set.
     let atlasPath: string | undefined;
@@ -164,6 +192,9 @@ export const exploreCommand = defineCommand({
       states: result.states.map((s) => ({ key: s.key, url: s.url, links: s.links.length })),
       ...(atlasPath ? { atlasPath } : {}),
       ...(shots > 0 && shotsDir ? { shotsDir, shots } : {}),
+      inputTokens,
+      outputTokens,
+      elapsedMs: Date.now() - startedAt,
     } satisfies ExploreData;
   },
   render(data, ctx) {
@@ -184,5 +215,9 @@ export const exploreCommand = defineCommand({
     );
     if (d.atlasPath) ctx.sink.line(`ingested into ${d.atlasPath}`);
     if (d.shotsDir) ctx.sink.line(`saved ${d.shots} screenshot(s) to ${d.shotsDir}`);
+    ctx.sink.line(
+      `spent ${formatTokens(d.inputTokens + d.outputTokens)} tokens ` +
+        `(${formatTokens(d.inputTokens)} in + ${formatTokens(d.outputTokens)} out) in ${Math.round(d.elapsedMs / 1000)}s`,
+    );
   },
 });

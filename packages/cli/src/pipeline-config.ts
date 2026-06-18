@@ -127,6 +127,29 @@ export function gatewayFromProfile(profile: Profile): LlmGateway {
   return new OpenAiDriver({ baseUrl: base, apiKey: key });
 }
 
+/**
+ * Wrap a gateway so it accumulates token usage across every `complete()` call. Lets a long-running
+ * driver (e.g. `loom explore`) surface a live running token total — so the operator sees exactly how
+ * many tokens are being spent — without threading usage through the chooser/loop. The response is
+ * passed through unchanged.
+ */
+export function trackUsage(gateway: LlmGateway): {
+  gateway: LlmGateway;
+  total: () => { inputTokens: number; outputTokens: number };
+} {
+  let inputTokens = 0;
+  let outputTokens = 0;
+  const tracked: LlmGateway = {
+    complete: async (request) => {
+      const res = await gateway.complete(request);
+      inputTokens += res.usage?.inputTokens ?? 0;
+      outputTokens += res.usage?.outputTokens ?? 0;
+      return res;
+    },
+  };
+  return { gateway: tracked, total: () => ({ inputTokens, outputTokens }) };
+}
+
 /** How the active LLM is reached + whether the model is the user's to choose. */
 export type ProviderInfo = {
   driver: 'openai' | 'copilot' | 'anthropic';

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { Profile } from '@loom/core';
 import { describe, expect, test } from 'vitest';
-import { exploreOptionsFrom, formatDiagnosis, writeExploreShots } from './explore.js';
+import { describeStep, exploreOptionsFrom, formatDiagnosis, writeExploreShots } from './explore.js';
 
 function profile(overrides: Partial<Profile> = {}): Profile {
   return {
@@ -100,6 +100,24 @@ describe('formatDiagnosis', () => {
     expect(text).toContain('cands=0'); // per-frame control count
     expect(text).toContain('menu'); // the named child frame
     expect(text).toContain('Loading the workspace'); // a text snippet to read over OCR
+  });
+});
+
+describe('describeStep', () => {
+  const step = {
+    action: { kind: 'click' as const, ref: 'c1' },
+    label: 'Production',
+    discovered: 5,
+    isNew: true,
+  };
+  test('appends a running token total + elapsed when given usage meta (live cost visibility)', () => {
+    const line = describeStep(step, { tokens: 12340, elapsedMs: 47000 });
+    expect(line).toContain('clicked "Production" → new screen (5)');
+    expect(line).toContain('12.3k tok'); // compact running token total
+    expect(line).toContain('47s'); // elapsed
+  });
+  test('omits the cost suffix when no meta is given', () => {
+    expect(describeStep(step)).toBe('clicked "Production" → new screen (5)');
   });
 });
 

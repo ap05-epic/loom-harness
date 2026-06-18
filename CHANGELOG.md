@@ -6,6 +6,12 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.18 — 2026-06-18
+
+`loom explore` now shows the **token cost climbing live** — every step prints the running total + elapsed, so you always see it's working and never just a spinner.
+
+- **Live token + time telemetry.** The explore chooser was throwing the gateway's token usage away. A new `trackUsage(gateway)` wrapper accumulates it, and each live step line now ends with a running cost — `clicked "Production" → new screen (5)  [12.3k tok · 47s]` — and the final summary prints `spent 18.4k tokens (15.1k in + 3.3k out) in 92s`. So at a glance you can see the crawl is advancing and exactly what it's spending. (First step of the cockpit arc — the same token signal feeds the upcoming live web view.)
+
 ## v1.3.17 — 2026-06-18
 
 `loom explore` now crawls the in-app links on each page too — not just the menu/tab controls.
