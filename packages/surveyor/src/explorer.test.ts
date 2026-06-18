@@ -252,6 +252,30 @@ describe('explore', () => {
     expect(result.visited).toBe(3); // fill user, fill pass, click submit — no repeats
   });
 
+  test('skips already-mapped screens when seeded with knownScreens (incremental mapping)', async () => {
+    // First run maps everything; grab Screen A's key. A second run that already knows that key must
+    // NOT re-record Screen A (no re-mapping / no wasted ingest), but still finds the new Screen B.
+    const first = await explore({
+      driver: new FakeMenuApp(),
+      chooser: heuristicChooser,
+      maxStates: 10,
+      maxVisits: 10,
+    });
+    const saKey = first.states.find((s) => collectText(s.dom).includes('Screen A'))?.key;
+    expect(saKey).toBeTruthy();
+
+    const second = await explore({
+      driver: new FakeMenuApp(),
+      chooser: heuristicChooser,
+      maxStates: 10,
+      maxVisits: 10,
+      knownScreens: [saKey!],
+    });
+    const texts = second.states.flatMap((s) => collectText(s.dom));
+    expect(texts).not.toContain('Screen A'); // already mapped → skipped
+    expect(texts).toContain('Screen B'); // still discovered
+  });
+
   test('feeds the chooser a growing session history (so a persistent control is not re-used)', async () => {
     // The live looping bug: a Quick-Search box lives in a persistent frame, so it reappears on every
     // screen and the per-screen `taken` never sees it — the model re-searches forever. A GLOBAL

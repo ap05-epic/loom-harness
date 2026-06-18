@@ -62,6 +62,8 @@ export type ExploreAppOptions = {
   maxVisits?: number;
   executablePath?: string;
   viewport?: Viewport;
+  /** Screen keys already mapped in a prior run — skipped, for incremental/resumable mapping. */
+  knownScreens?: Iterable<string>;
   /** Called after each action — live progress / diagnostics. */
   onStep?: (step: ExploreStep) => void;
   /**
@@ -182,6 +184,7 @@ export async function exploreApp(options: ExploreAppOptions): Promise<ExploreRes
       chooser: options.chooser ?? heuristicChooser,
       maxStates: options.maxStates,
       maxVisits: options.maxVisits,
+      knownScreens: options.knownScreens,
       onStep: options.onStep,
     });
   } finally {

@@ -79,6 +79,8 @@ type ExploreData = {
   inputTokens: number;
   outputTokens: number;
   elapsedMs: number;
+  /** Screens already in the atlas from prior runs (skipped this run — incremental mapping). */
+  alreadyMapped?: number;
 };
 
 /**
@@ -210,6 +212,20 @@ export const exploreCommand = defineCommand({
     const options = exploreOptionsFrom(profile, max, usage.gateway);
     const startedAt = Date.now();
 
+    // Incremental mapping: skip screens already in the UI atlas from prior runs, so each run adds
+    // only NEW screens (resumable, token-efficient — don't re-map what's known).
+    let alreadyMapped = 0;
+    if (profile.dataDir) {
+      const atlas = openUiAtlas(join(profile.dataDir, 'uiatlas.db'));
+      try {
+        const keys = atlas.states().map((st) => st.key);
+        alreadyMapped = keys.length;
+        if (keys.length) options.knownScreens = keys;
+      } finally {
+        atlas.close();
+      }
+    }
+
     // Durable telemetry → loom.db so `loom ui` (a separate process) can watch this crawl live. WAL +
     // busy_timeout (set by openDb) make the cross-process writer/reader safe. Only when a data dir is set.
     let db: SqliteDatabase | undefined;
@@ -305,6 +321,7 @@ export const exploreCommand = defineCommand({
       inputTokens,
       outputTokens,
       elapsedMs: Date.now() - startedAt,
+      ...(alreadyMapped ? { alreadyMapped } : {}),
     } satisfies ExploreData;
   },
   render(data, ctx) {
@@ -321,7 +338,9 @@ export const exploreCommand = defineCommand({
     );
     ctx.sink.line('');
     ctx.sink.line(
-      `${d.states.length} screen(s) from ${d.visited} action(s)${d.truncated ? ' (truncated — raise --max-states)' : ''}`,
+      `${d.states.length} new screen(s) from ${d.visited} action(s)` +
+        (d.alreadyMapped ? ` (${d.alreadyMapped} already mapped — skipped)` : '') +
+        (d.truncated ? ' (truncated — raise --max-states)' : ''),
     );
     if (d.atlasPath) ctx.sink.line(`ingested into ${d.atlasPath}`);
     if (d.shotsDir) ctx.sink.line(`saved ${d.shots} screenshot(s) to ${d.shotsDir}`);

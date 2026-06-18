@@ -91,6 +91,12 @@ export type ExploreOptions = {
   maxVisits?: number;
   /** Called after each action — for live progress lines / diagnostics. */
   onStep?: (step: ExploreStep) => void;
+  /**
+   * Screen keys already mapped in a prior run (from the UI atlas). Seeded into the `seen` set so the
+   * explorer doesn't re-record them — resumable, token-efficient mapping that adds only new screens
+   * each run, and steers the chooser (via `visitedKeys`) toward the genuinely unseen.
+   */
+  knownScreens?: Iterable<string>;
 };
 
 export type ExploreResult = {
@@ -205,7 +211,8 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
   const { driver, chooser } = opts;
 
   const states: UiState[] = [];
-  const seen = new Set<string>();
+  // Seed with screens mapped in prior runs so they aren't re-recorded (incremental, resumable mapping).
+  const seen = new Set<string>(opts.knownScreens ?? []);
   const tried = new Set<string>();
   /** Actions taken per screen — fed back to the chooser so it can progress on multi-step screens. */
   const takenByScreen = new Map<string, ExploreAction[]>();

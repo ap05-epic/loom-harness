@@ -6,6 +6,12 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.21 — 2026-06-18
+
+`loom explore` no longer re-maps what it already knows — each run adds only **new** screens (R9 Thrust D).
+
+- **Incremental, resumable mapping.** At start, `loom explore` loads the screen keys already in `uiatlas.db` from prior runs and seeds the explorer's seen-set, so it doesn't re-record them — and the chooser is steered (via its visited-keys) toward genuinely unseen screens. The summary reports `12 new screen(s) … (84 already mapped — skipped)`. So you can map a huge app over several runs without paying tokens to re-walk the same screens each time, and pick up where you left off. New `ExploreOptions.knownScreens`, fed from `UiAtlasStore.states()`.
+
 ## v1.3.20 — 2026-06-18
 
 **You can now watch a `loom explore` crawl live in the browser** — current page, every move, screens streaming in with thumbnails, and tokens ticking up (R9 Thrust A.2).
