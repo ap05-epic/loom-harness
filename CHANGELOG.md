@@ -6,6 +6,12 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.12 — 2026-06-18
+
+`loom atlas` now works in the zero-config `~/.loom` home — no more "no atlas path" after `loom map`.
+
+- **Atlas commands honor the profile's data dir.** `loom atlas repomap` / `slice` / `find` resolved the atlas only from the `--data-dir` flag, so in the zero-config `~/.loom` home (where `loom map` writes `codeatlas.db` via the profile's data dir) they failed with _"no atlas path"_. They now fall back to the profile's resolved data dir, exactly like `loom map` — so `loom map` then `loom atlas repomap` just works with no flags.
+
 ## v1.3.11 — 2026-06-18
 
 `loom explore` now saves a screenshot of every screen it maps — the visual map you can actually look at.

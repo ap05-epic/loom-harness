@@ -18,12 +18,17 @@ import type { CliContext } from '../../context.js';
 const ATLAS_OPT = { flags: '--atlas <path>', describe: 'path to codeatlas.db (else --data-dir)' };
 
 function resolveAtlasPath(ctx: CliContext, optAtlas: unknown): string {
-  const path =
-    typeof optAtlas === 'string' && optAtlas
-      ? optAtlas
-      : ctx.flags.dataDir
-        ? join(ctx.flags.dataDir, 'codeatlas.db')
-        : undefined;
+  let path: string | undefined;
+  if (typeof optAtlas === 'string' && optAtlas) {
+    path = optAtlas;
+  } else if (ctx.flags.dataDir) {
+    path = join(ctx.flags.dataDir, 'codeatlas.db');
+  } else {
+    // No --atlas / --data-dir: fall back to the profile's resolved data dir (the zero-config
+    // ~/.loom home or a LOOM_DATA_DIR), where `loom map` actually writes codeatlas.db.
+    const dataDir = ctx.requireProfile().dataDir;
+    if (dataDir) path = join(dataDir, 'codeatlas.db');
+  }
   if (!path) throw usageError('no atlas path', 'pass --atlas <path> or --data-dir');
   if (!existsSync(path)) throw notFoundError('atlas', path, 'run `loom map` first');
   return path;

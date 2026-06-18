@@ -80,6 +80,32 @@ describe('loom atlas (reads a built atlas)', () => {
     for (const key of ['login', 'list', 'wizard', 'popup', 'logout']) expect(map).toContain(key);
   });
 
+  test('atlas repomap falls back to the profile data dir when no --atlas/--data-dir (the ~/.loom home)', async () => {
+    // The zero-config home: `loom map` wrote codeatlas.db into the profile's data dir, and the user
+    // runs `loom atlas repomap` with no flags. The data dir comes from env (LOOM_DATA_DIR), which
+    // populates profile.dataDir but NOT ctx.flags.dataDir — so the atlas command must fall back to
+    // the profile, exactly like `map` does.
+    const atlas = await builtAtlas();
+    const dataDir = dirname(atlas);
+    const profileDir = mkdtempSync(join(tmpdir(), 'cli-atlas-profile-'));
+    writeFileSync(
+      join(profileDir, 'harness.config.yaml'),
+      [
+        'project: fixture',
+        'llm:',
+        '  driver: openai',
+        '  model: mock',
+        '  baseUrlEnv: LLM_BASE_URL',
+        '  apiKeyEnv: LLM_API_KEY',
+        '',
+      ].join('\n'),
+    );
+    const env = { HARNESS_PROFILE: profileDir, LOOM_DATA_DIR: dataDir };
+    const { stdout, exitCode } = await run(['atlas', 'repomap', '--json'], env);
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(stdout.trim()).data.repoMap as string).toContain('login');
+  });
+
   test('atlas slice details one screen’s forms and taglibs', async () => {
     const atlas = await builtAtlas();
     const { stdout, exitCode } = await run(['atlas', 'slice', 'login', '--atlas', atlas, '--json']);
