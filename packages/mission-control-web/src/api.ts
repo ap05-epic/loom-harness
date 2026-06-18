@@ -59,6 +59,50 @@ const q = (project?: string): string => (project ? `?project=${encodeURIComponen
 export const fetchState = (project?: string): Promise<DashboardState> =>
   getJson<DashboardState>(`/api/state${q(project)}`);
 
+/** The live state of a `loom explore` crawl — mirrors @loom/mission-control's ExploreState. */
+export type ExploreState = {
+  run: {
+    id: string;
+    project: string;
+    status: string;
+    stage: string | null;
+    startedAt: string;
+    finishedAt: string | null;
+  } | null;
+  current: {
+    url: string | null;
+    lastAction: string | null;
+    lastLabel: string | null;
+    lastEventTs: string | null;
+  };
+  screens: Array<{ key: string; url: string | null; index: number }>;
+  moves: Array<{
+    ts: string;
+    action: string;
+    label: string | null;
+    isNew: boolean;
+    discovered: number;
+  }>;
+  totals: {
+    screens: number;
+    steps: number;
+    inputTokens: number;
+    outputTokens: number;
+    tokens: number;
+    elapsedMs: number;
+    tokensPerSec: number;
+    truncated: boolean;
+    done: boolean;
+  };
+};
+
+export const fetchExplore = (project?: string): Promise<ExploreState> =>
+  getJson<ExploreState>(`/api/explore${q(project)}`);
+
+/** URL of a discovered screen's thumbnail (served path-confined by the harness). */
+export const exploreShotUrl = (key: string): string =>
+  `/api/explore-shot/${encodeURIComponent(key)}.png`;
+
 /** POST a JSON body to a harness endpoint (the only writes Mission Control performs). */
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(path, {

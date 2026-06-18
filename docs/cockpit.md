@@ -43,7 +43,7 @@ HTML dashboard — so `loom ui` always works, built or not.
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------- |
 | **B.1** | Scaffold + toolchain; server serves the SPA (vanilla fallback); **run header + kanban board**; live status pill                     | v1.3.24 ✅ |
 | **B.2** | **Live fleet** (screen · phase · elapsed · tokens) · **inbox** (approve/reject + answer) · **cost** + **eval** analytics (Recharts) | v1.3.25 ✅ |
-| B.3     | **Live Crawl** headline: current URL · move feed · thumbnail grid · token-burn chart                                                | next       |
+| **B.3** | **Live Crawl** tab: current URL · move feed · thumbnail grid · stats strip · live token-burn line                                   | v1.3.26 ✅ |
 | B.4/5   | Orchestrator/sub-agent fleet · WP drill-down · inventory · project switcher · scoped launch actions; retire vanilla; cut v1.4.0     | next       |
 
 ## Run it

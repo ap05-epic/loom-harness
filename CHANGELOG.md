@@ -6,6 +6,14 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.26 — 2026-06-18
+
+The **Live Crawl** view — watch `loom explore` map an app in real time, never a blind spinner (R9 Thrust B.3).
+
+- **A new "Live Crawl" tab** in Mission Control (switch from "Dashboard" in the top bar). It polls `/api/explore` every 2s and shows, live: the **current URL**, a **stats strip** (screens · steps · tokens · elapsed · tokens/sec), a **move feed** (every click/fill the model makes, newest first, with a `+new` badge when a move discovered a screen), and a **thumbnail grid** of discovered screens (`/api/explore-shot/<key>.png`).
+- **A live token-burn line** (Recharts) accumulated client-side across polls — you literally watch the tokens climb. The server reports only the running total, so the SPA keeps a capped, de-duplicated series (`appendSample`).
+- The exact view the painful first BAA crawl was missing: now a long crawl is a live picture — where the explorer is, every move, and the cost — instead of a CLI stderr stream. New components `LiveCrawl` / `ExploreView` + a `series` helper, all tested (Vitest + Testing Library). See [docs/cockpit.md](docs/cockpit.md).
+
 ## v1.3.25 — 2026-06-18
 
 The React Mission Control becomes a real cockpit — watch the fleet and drive the inbox from the browser (R9 Thrust B.2).
