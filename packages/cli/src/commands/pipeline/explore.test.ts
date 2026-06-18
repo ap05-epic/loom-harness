@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import type { Profile } from '@loom/core';
 import { describe, expect, test } from 'vitest';
-import { exploreOptionsFrom } from './explore.js';
+import { exploreOptionsFrom, formatDiagnosis } from './explore.js';
 
 function profile(overrides: Partial<Profile> = {}): Profile {
   return {
@@ -73,5 +73,30 @@ describe('exploreOptionsFrom', () => {
   test('works without auth — no login, the model just explores', () => {
     const opts = exploreOptionsFrom(profile({ app: { baseUrl: 'http://app/' } }));
     expect(opts.secrets).toEqual({});
+  });
+});
+
+describe('formatDiagnosis', () => {
+  test('renders the url, title, frame count, per-frame control counts and text snippet', () => {
+    const text = formatDiagnosis({
+      url: 'http://app/BAA/loginAction.do',
+      title: 'BAA',
+      frames: [
+        {
+          index: 0,
+          name: '',
+          url: 'http://app/BAA/loginAction.do',
+          candidates: 0,
+          text: 'Loading the workspace',
+        },
+        { index: 1, name: 'menu', url: 'http://app/BAA/qpmenu.do', candidates: 0, text: '' },
+      ],
+    });
+    expect(text).toContain('loginAction.do'); // the page URL
+    expect(text).toContain('BAA'); // the title
+    expect(text).toContain('2 frame'); // frame count
+    expect(text).toContain('cands=0'); // per-frame control count
+    expect(text).toContain('menu'); // the named child frame
+    expect(text).toContain('Loading the workspace'); // a text snippet to read over OCR
   });
 });

@@ -1,7 +1,13 @@
 import { join } from 'node:path';
 import type { Profile } from '@loom/core';
 import { llmChooser } from '@loom/conductor';
-import { exploreApp, openUiAtlas, type ExploreAppOptions, type ExploreStep } from '@loom/surveyor';
+import {
+  exploreApp,
+  openUiAtlas,
+  type ExploreAppOptions,
+  type ExploreStep,
+  type SessionDiagnosis,
+} from '@loom/surveyor';
 import { configError } from '../../errors.js';
 import { gatewayFromProfile } from '../../pipeline-config.js';
 import { defineCommand } from '../../registry.js';
@@ -65,6 +71,24 @@ export function exploreOptionsFrom(
   };
 }
 
+/**
+ * A compact, OCR-friendly readout of a start page that surfaced no controls — so "0 actions" turns
+ * into an answer: is the page blank, a login form, or a logged-in home whose frames never hydrated?
+ */
+export function formatDiagnosis(d: SessionDiagnosis): string {
+  const lines = [
+    'no controls found on the start page — what actually loaded:',
+    `  url:   ${d.url}`,
+    `  title: ${JSON.stringify(d.title)}`,
+    `  ${d.frames.length} frame(s):`,
+  ];
+  for (const f of d.frames) {
+    lines.push(`  [${f.index}] ${f.name || '(main)'} cands=${f.candidates} url=${f.url}`);
+    if (f.text) lines.push(`       text: ${f.text}`);
+  }
+  return lines.join('\n');
+}
+
 /** A one-line, human-readable description of a step — secrets stay as their `$name` placeholder. */
 function describeStep(s: ExploreStep): string {
   const target = s.label ? `"${s.label}"` : s.action.ref;
@@ -85,6 +109,7 @@ export const exploreCommand = defineCommand({
     const max = input.options.maxStates !== undefined ? Number(input.options.maxStates) : undefined;
     const options = exploreOptionsFrom(profile, max);
     options.onStep = (s) => ctx.sink.info(describeStep(s)); // live progress to stderr
+    options.onDiagnostic = (d) => ctx.sink.info(formatDiagnosis(d)); // why "0 actions" happened
     const result = await exploreApp(options);
 
     // Persist the discovered states into the UI atlas when a data dir is configured.

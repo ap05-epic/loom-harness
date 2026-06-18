@@ -24,6 +24,7 @@ export {
   type ExploreStep,
 } from './explorer.js';
 export { exploreApp, type ExploreAppOptions } from './explore-app.js';
+export type { SessionDiagnosis } from '@loom/browser';
 export { extractForms, type FormSpec, type FieldSpec } from './forms.js';
 export {
   openUiAtlas,

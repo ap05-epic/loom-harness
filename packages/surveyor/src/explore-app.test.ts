@@ -1,4 +1,4 @@
-import { canLaunchBrowser, type DomSnapshot } from '@loom/browser';
+import { canLaunchBrowser, type DomSnapshot, type SessionDiagnosis } from '@loom/browser';
 import { describe, expect, test } from 'vitest';
 import { exploreApp, isAuthProvider } from './explore-app.js';
 import type { Chooser } from './explorer.js';
@@ -113,6 +113,32 @@ describe('exploreApp (live AI-explorer)', () => {
       const texts = result.states.flatMap((s) => collectText(s.dom));
       expect(texts.some((t) => t.includes('IN alice'))).toBe(true); // the REAL value was typed
       expect(texts.some((t) => t.includes('$user'))).toBe(false); // the placeholder never hit the page
+    },
+    30_000,
+  );
+
+  test.runIf(liveOk)(
+    'emits a diagnosis when the start screen surfaces no controls (the BAA 0-actions case)',
+    async () => {
+      const html =
+        '<!doctype html><html><head><title>Empty</title></head><body>' +
+        '<p>nothing to click here</p></body></html>';
+      const startUrl = `data:text/html,${encodeURIComponent(html)}`;
+      let diagnosis: SessionDiagnosis | undefined;
+      await exploreApp({
+        startUrl,
+        chooser: async () => null,
+        hydrateMs: 500,
+        maxStates: 1,
+        maxVisits: 1,
+        onDiagnostic: (d) => {
+          diagnosis = d;
+        },
+      });
+      expect(diagnosis).toBeDefined();
+      expect(diagnosis!.title).toBe('Empty');
+      expect(diagnosis!.frames[0]!.candidates).toBe(0);
+      expect(diagnosis!.frames[0]!.text).toContain('nothing to click');
     },
     30_000,
   );

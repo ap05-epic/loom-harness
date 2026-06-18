@@ -135,6 +135,13 @@ function enumerateInteractive(): Array<{ ref: string; label: string; kind: strin
   return out;
 }
 
+/** A per-frame readout of the current page — what loaded, surfaced when no controls are found. */
+export type SessionDiagnosis = {
+  url: string;
+  title: string;
+  frames: Array<{ index: number; name: string; url: string; candidates: number; text: string }>;
+};
+
 /** True for the transient "the page navigated out from under an evaluate/read" Playwright errors. */
 function isContextDestroyed(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -338,6 +345,41 @@ export class CrawlSession {
       }
     }
     return out;
+  }
+
+  /**
+   * A text readout of every frame on the current page — its URL, how many controls it surfaces, and
+   * a snippet of its text. When `loom explore` finds nothing to do (0 candidates), this is what turns
+   * a silent "0 actions" into a debuggable answer: is the page blank, a login form, or a logged-in
+   * home whose content frames didn't hydrate? Bodyless / cross-origin frames simply report 0 + ''.
+   */
+  async diagnose(): Promise<SessionDiagnosis> {
+    const page = this.active();
+    const title = await page.title().catch(() => '');
+    const frames = page.frames();
+    const out: SessionDiagnosis['frames'] = [];
+    for (let i = 0; i < frames.length; i++) {
+      const frame = frames[i]!;
+      let candidates = 0;
+      let text = '';
+      try {
+        candidates = (await frame.evaluate(enumerateInteractive)).length;
+      } catch {
+        // bodyless frameset shell, or a cross-origin / navigating frame
+      }
+      try {
+        text = await frame.evaluate(() =>
+          ((document.body ?? document.documentElement)?.textContent ?? '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 160),
+        );
+      } catch {
+        // cross-origin frame
+      }
+      out.push({ index: i, name: frame.name(), url: frame.url(), candidates, text });
+    }
+    return { url: page.url(), title, frames: out };
   }
 
   /** Resolve a frame-prefixed candidate ref to its frame + selector (bare ref ⇒ main frame). */

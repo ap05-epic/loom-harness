@@ -1,4 +1,9 @@
-import { CrawlSession, type DomSnapshot, type Viewport } from '@loom/browser';
+import {
+  CrawlSession,
+  type DomSnapshot,
+  type SessionDiagnosis,
+  type Viewport,
+} from '@loom/browser';
 import type { FormLogin } from './crawl-app.js';
 import {
   explore,
@@ -54,6 +59,11 @@ export type ExploreAppOptions = {
   viewport?: Viewport;
   /** Called after each action — live progress / diagnostics. */
   onStep?: (step: ExploreStep) => void;
+  /**
+   * Called with a per-frame readout of the start page when it surfaces NO controls — so a blank /
+   * not-logged-in / late-hydrating start (BAA's "0 actions" symptom) is debuggable instead of silent.
+   */
+  onDiagnostic?: (diagnosis: SessionDiagnosis) => void;
 };
 
 /**
@@ -124,6 +134,19 @@ export async function exploreApp(options: ExploreAppOptions): Promise<ExploreRes
         `saved session expired — the app redirected to a sign-in provider (${hostOf(landed)}). ` +
           'Refresh your cookies (app.cookiesPath) and run again.',
       );
+    }
+
+    // If the start page surfaces no controls at all (even after the hydration window), report what
+    // DID load — blank? a login form? a logged-in home whose content frames never hydrated? — so the
+    // silent "0 actions" becomes a debuggable answer.
+    if (options.onDiagnostic) {
+      const deadline = Date.now() + hydrateMs;
+      let count = (await session.enumerateCandidates()).length;
+      while (count === 0 && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        count = (await session.enumerateCandidates()).length;
+      }
+      if (count === 0) options.onDiagnostic(await session.diagnose());
     }
 
     return await explore({

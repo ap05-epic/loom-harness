@@ -10,5 +10,6 @@ export {
   type CrawlSessionOptions,
   type Viewport,
   type DomSnapshot,
+  type SessionDiagnosis,
 } from './capture.js';
 export { normalizeCookieDomain, normalizeCookies } from './cookies.js';

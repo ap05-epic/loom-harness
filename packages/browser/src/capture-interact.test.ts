@@ -212,4 +212,26 @@ describe('CrawlSession frame-aware interaction', () => {
     },
     30_000,
   );
+
+  test.runIf(liveOk)(
+    'diagnose() reports per-frame control counts and text (debugging 0-candidate pages)',
+    async () => {
+      const html =
+        '<!doctype html><html><head><title>Probe</title></head><body>' +
+        '<p>Hello world</p><button>Go</button></body></html>';
+      const session = new CrawlSession();
+      await session.open();
+      try {
+        await session.navigate(`data:text/html,${encodeURIComponent(html)}`, 'domcontentloaded');
+        const d = await session.diagnose();
+        expect(d.title).toBe('Probe');
+        expect(d.frames.length).toBeGreaterThanOrEqual(1);
+        expect(d.frames[0]!.candidates).toBeGreaterThanOrEqual(1); // the <button>
+        expect(d.frames[0]!.text).toContain('Hello world');
+      } finally {
+        await session.close();
+      }
+    },
+    30_000,
+  );
 });

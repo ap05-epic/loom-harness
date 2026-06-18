@@ -6,6 +6,12 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.9 — 2026-06-17
+
+`loom explore` now explains a "0 actions" start instead of failing silently.
+
+- **Start-page diagnosis.** When the start screen surfaces no controls at all (the BAA "1 screen, 0 actions" symptom), `loom explore` now prints what _actually_ loaded — the page URL + title, and for every frame its URL, control count, and a short text snippet. So a blank page, a login form, or a logged-in home whose content frames never hydrated are immediately distinguishable, instead of an opaque empty result. New `CrawlSession.diagnose()` + `exploreApp`'s `onDiagnostic` callback, fired only when the start is empty (normal runs are unaffected).
+
 ## v1.3.8 — 2026-06-17
 
 `loom explore` now applies cookies whose `domain` accidentally carries a path or full URL — the common hand-export case.
