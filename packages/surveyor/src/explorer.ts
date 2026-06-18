@@ -15,8 +15,8 @@ import type { UiState } from './crawl.js';
 /** One interactive control on a page. `ref` is opaque to the loop; the driver knows how to click it. */
 export type Candidate = { ref: string; label: string; kind: string; selector?: string };
 
-/** A captured page: its URL and normalized DOM. */
-export type ExploreState = { url: string; dom: DomSnapshot };
+/** A captured page: its URL, normalized DOM, and (optionally) a PNG screenshot of the render. */
+export type ExploreState = { url: string; dom: DomSnapshot; screenshot?: Buffer };
 
 /** One step the explorer can take from a screen: click a control, or type a value into a field. */
 export type ExploreAction =
@@ -212,7 +212,13 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
     const key = screenKey({ url: s.url, dom: s.dom });
     if (!seen.has(key)) {
       seen.add(key);
-      states.push({ key, url: s.url, dom: s.dom, links: extractLinks(s.dom, s.url) });
+      states.push({
+        key,
+        url: s.url,
+        dom: s.dom,
+        links: extractLinks(s.dom, s.url),
+        ...(s.screenshot ? { screenshot: s.screenshot } : {}),
+      });
     }
     return key;
   };

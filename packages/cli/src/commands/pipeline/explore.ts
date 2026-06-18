@@ -1,3 +1,4 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Profile } from '@loom/core';
 import { llmChooser } from '@loom/conductor';
@@ -20,7 +21,25 @@ type ExploreData = {
   states: Array<{ key: string; url: string; links: number }>;
   /** Where the discovered states were persisted (the UI atlas), if a data dir is set. */
   atlasPath?: string;
+  /** Where per-screen PNG screenshots were written, and how many — the visual map. */
+  shotsDir?: string;
+  shots?: number;
 };
+
+/**
+ * Write each captured screen's PNG into `dir`, named by its screen key, so the operator can open the
+ * mapped views as images (and the rebuild's visual-parity layer has a baseline). Returns the count.
+ */
+export function writeExploreShots(
+  states: Array<{ key: string; screenshot?: Buffer }>,
+  dir: string,
+): number {
+  const withShots = states.filter((s) => s.screenshot);
+  if (withShots.length === 0) return 0;
+  mkdirSync(dir, { recursive: true });
+  for (const s of withShots) writeFileSync(join(dir, `${s.key}.png`), s.screenshot!);
+  return withShots.length;
+}
 
 /**
  * Build the AI-explorer's options from the profile. Secrets (login + FA code) are read from env by
@@ -66,6 +85,8 @@ export function exploreOptionsFrom(
     cookiesPath: profile.app?.cookiesPath,
     // Legacy homes (BAA) load their menu via AJAX after settle — wait for controls by default.
     hydrateMs: c.hydrateMs ?? 12_000,
+    // Save a PNG of every screen — the visual map, and the baseline the rebuild's parity test needs.
+    captureScreenshots: true,
     maxStates: maxStatesOverride ?? c.maxStates,
     viewport: profile.eval?.viewport,
   };
@@ -112,8 +133,10 @@ export const exploreCommand = defineCommand({
     options.onDiagnostic = (d) => ctx.sink.info(formatDiagnosis(d)); // why "0 actions" happened
     const result = await exploreApp(options);
 
-    // Persist the discovered states into the UI atlas when a data dir is configured.
+    // Persist the discovered states into the UI atlas + save a PNG per screen when a data dir is set.
     let atlasPath: string | undefined;
+    let shotsDir: string | undefined;
+    let shots = 0;
     if (profile.dataDir) {
       atlasPath = join(profile.dataDir, 'uiatlas.db');
       const atlas = openUiAtlas(atlasPath);
@@ -122,6 +145,8 @@ export const exploreCommand = defineCommand({
       } finally {
         atlas.close();
       }
+      shotsDir = join(profile.dataDir, 'explore-shots');
+      shots = writeExploreShots(result.states, shotsDir);
     }
 
     return {
@@ -130,6 +155,7 @@ export const exploreCommand = defineCommand({
       truncated: result.truncated,
       states: result.states.map((s) => ({ key: s.key, url: s.url, links: s.links.length })),
       ...(atlasPath ? { atlasPath } : {}),
+      ...(shots > 0 && shotsDir ? { shotsDir, shots } : {}),
     } satisfies ExploreData;
   },
   render(data, ctx) {
@@ -149,5 +175,6 @@ export const exploreCommand = defineCommand({
       `${d.states.length} screen(s) from ${d.visited} action(s)${d.truncated ? ' (truncated — raise --max-states)' : ''}`,
     );
     if (d.atlasPath) ctx.sink.line(`ingested into ${d.atlasPath}`);
+    if (d.shotsDir) ctx.sink.line(`saved ${d.shots} screenshot(s) to ${d.shotsDir}`);
   },
 });

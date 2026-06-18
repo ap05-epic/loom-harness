@@ -53,6 +53,8 @@ export type ExploreAppOptions = {
   secrets?: Record<string, string>;
   /** ms to wait for late-AJAX controls (BAA's `#pmenu`) to appear before reading a page (default 0). */
   hydrateMs?: number;
+  /** Capture a PNG screenshot of each discovered screen (the visual map / parity baseline). */
+  captureScreenshots?: boolean;
   maxStates?: number;
   maxVisits?: number;
   executablePath?: string;
@@ -93,7 +95,11 @@ export async function exploreApp(options: ExploreAppOptions): Promise<ExploreRes
     // Combine all frames so the explorer's screen identity tracks the CONTENT (BAA's screens live in
     // frameset child frames), not the static shell — and so a bodyless frameset doc doesn't crash.
     const hydrateMs = options.hydrateMs ?? 0;
-    const snapshot = async (): Promise<{ url: string; dom: DomSnapshot }> => {
+    const snapshot = async (): Promise<{
+      url: string;
+      dom: DomSnapshot;
+      screenshot?: Buffer;
+    }> => {
       // Some legacy homes load their menu via AJAX after the page settles (BAA's #pmenu) — give the
       // page a bounded chance to surface interactive controls before we read it. Breaks early as soon
       // as anything is clickable/fillable, so non-hydrating pages pay nothing.
@@ -101,7 +107,9 @@ export async function exploreApp(options: ExploreAppOptions): Promise<ExploreRes
       while (Date.now() < deadline && (await session.enumerateCandidates()).length === 0) {
         await new Promise((resolve) => setTimeout(resolve, 500));
       }
-      return { url: session.currentUrl(), dom: await session.captureCombined() };
+      const dom = await session.captureCombined();
+      const screenshot = options.captureScreenshots ? await session.screenshot() : undefined;
+      return { url: session.currentUrl(), dom, ...(screenshot ? { screenshot } : {}) };
     };
     // The ONLY place a `$secret` placeholder becomes a real value — downstream of the chooser.
     const secrets = options.secrets ?? {};

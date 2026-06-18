@@ -6,6 +6,12 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.11 — 2026-06-18
+
+`loom explore` now saves a screenshot of every screen it maps — the visual map you can actually look at.
+
+- **Screenshots in the explorer.** Until now `loom explore` captured each screen's structure (DOM) but no image, so you couldn't _see_ what it mapped and the visual-parity layer had no baseline. It now saves a PNG of every discovered screen to `<data-dir>/explore-shots/<key>.png` (and prints the folder). Open that folder to see the post-login home, the FA-search view, and every screen the walk reached — the visual record the React rebuild is checked against. `UiState` gains an optional `screenshot`; capture is on for `loom explore`, off by default elsewhere so nothing else pays for it.
+
 ## v1.3.10 — 2026-06-18
 
 `loom explore` stops looping — it remembers what it already did across the whole session, not just the current screen.

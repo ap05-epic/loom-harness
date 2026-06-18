@@ -1,7 +1,9 @@
-import { resolve } from 'node:path';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import type { Profile } from '@loom/core';
 import { describe, expect, test } from 'vitest';
-import { exploreOptionsFrom, formatDiagnosis } from './explore.js';
+import { exploreOptionsFrom, formatDiagnosis, writeExploreShots } from './explore.js';
 
 function profile(overrides: Partial<Profile> = {}): Profile {
   return {
@@ -98,5 +100,27 @@ describe('formatDiagnosis', () => {
     expect(text).toContain('cands=0'); // per-frame control count
     expect(text).toContain('menu'); // the named child frame
     expect(text).toContain('Loading the workspace'); // a text snippet to read over OCR
+  });
+});
+
+describe('writeExploreShots', () => {
+  test('writes one PNG per screen that has a screenshot, named by its key', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'loom-shots-'));
+    try {
+      const n = writeExploreShots(
+        [
+          { key: 'aaa', screenshot: Buffer.from('A') },
+          { key: 'bbb', screenshot: Buffer.from('B') },
+          { key: 'ccc' }, // no screenshot — skipped
+        ],
+        dir,
+      );
+      expect(n).toBe(2);
+      expect(existsSync(join(dir, 'aaa.png'))).toBe(true);
+      expect(existsSync(join(dir, 'bbb.png'))).toBe(true);
+      expect(existsSync(join(dir, 'ccc.png'))).toBe(false); // a state without a shot writes nothing
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

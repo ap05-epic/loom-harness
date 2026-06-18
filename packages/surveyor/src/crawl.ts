@@ -13,6 +13,8 @@ export type UiState = {
   dom: DomSnapshot;
   /** Same-origin navigation targets discovered on this state. */
   links: string[];
+  /** A PNG of the rendered screen (the visual map / parity baseline), when captured. */
+  screenshot?: Buffer;
 };
 
 export type UiAtlas = {

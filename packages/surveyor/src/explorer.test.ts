@@ -267,6 +267,24 @@ describe('explore', () => {
     expect(Math.max(...seenLengths)).toBeGreaterThanOrEqual(1); // later decisions see prior actions
   });
 
+  test('attaches a per-screen screenshot when the driver provides one (the visual map)', async () => {
+    const shot = Buffer.from('PNG-BYTES');
+    const screen = { url: 'http://app/', dom: body([el('h1', {}, 'Home')]), screenshot: shot };
+    const driver: ExploreDriver = {
+      start: async () => screen,
+      reset: async () => screen,
+      candidates: async () => [], // no actions — just record the start state with its screenshot
+      activate: async () => screen,
+    };
+    const result = await explore({
+      driver,
+      chooser: async () => null,
+      maxStates: 5,
+      maxVisits: 5,
+    });
+    expect(result.states[0]!.screenshot).toEqual(shot); // the image rides through to the Ui atlas
+  });
+
   test('reports each step via onStep (live progress + diagnostics)', async () => {
     const driver = new FakeMenuApp();
     const steps: Array<{ kind: string; label?: string; isNew: boolean }> = [];
