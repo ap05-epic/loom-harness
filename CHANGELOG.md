@@ -6,6 +6,12 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.20 — 2026-06-18
+
+**You can now watch a `loom explore` crawl live in the browser** — current page, every move, screens streaming in with thumbnails, and tokens ticking up (R9 Thrust A.2).
+
+- **Live Crawl in Mission Control.** New `exploreState()` read-model + `GET /api/explore` (the crawl's current URL, move feed, discovered screens, and running token/elapsed/tokens-per-sec totals) + `GET /api/explore-shot/<key>.png` (per-screen thumbnails, path-confined). The dashboard (`loom ui`) gains a **"Live crawl"** section that polls every 2s: you see where the explorer is, every click/fill as it happens, a thumbnail grid of mapped screens, and the live token burn — no more blind spinner. Built on the durable events from v1.3.19; cross-process-safe over WAL. (This is the live view in the current dashboard; the full React Mission Control is next.)
+
 ## v1.3.19 — 2026-06-18
 
 `loom explore` now records its whole run to the database — the foundation for watching a crawl **live in the web UI** (cockpit arc, R9 Thrust A.1).

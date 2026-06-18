@@ -1,7 +1,8 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  EventLog,
   GateStore,
   MIGRATIONS,
   openDb,
@@ -209,5 +210,35 @@ describe('Mission Control server', () => {
       run: { project: string } | null;
     };
     expect(claimsState.run?.project).toBe('claims');
+  });
+});
+
+describe('Mission Control — live crawl endpoints', () => {
+  test('GET /api/explore returns the crawl; /api/explore-shot serves a PNG and 404s the rest', async () => {
+    const tasks = new TaskStore(db);
+    const run = tasks.createRun({ project: 'fixture' });
+    tasks.setRunStage(run.id, 'explore');
+    new EventLog(db).append({
+      type: 'explore.started',
+      runId: run.id,
+      payload: { startUrl: 'http://app/' },
+    });
+    const shotsDir = join(dir, 'explore-shots');
+    mkdirSync(shotsDir, { recursive: true });
+    writeFileSync(join(shotsDir, 'abc.png'), Buffer.from('PNGDATA'));
+
+    mc = await startMissionControl({ db, exploreShotsDir: shotsDir });
+
+    const state = (await (await fetch(`${mc.url}/api/explore`)).json()) as {
+      run: { id: string } | null;
+    };
+    expect(state.run?.id).toBe(run.id);
+
+    const shot = await fetch(`${mc.url}/api/explore-shot/abc.png`);
+    expect(shot.status).toBe(200);
+    expect(shot.headers.get('content-type')).toBe('image/png');
+
+    const missing = await fetch(`${mc.url}/api/explore-shot/nope.png`);
+    expect(missing.status).toBe(404);
   });
 });

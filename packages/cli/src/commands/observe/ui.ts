@@ -61,6 +61,8 @@ export const uiCommand = defineCommand({
       skillsDir: skillsDir || undefined,
       externalMcp,
       digitHome: ctx.env.DIGIT_HOME ?? ctx.env.COPILOT_HOME,
+      // Lets the Live Crawl view fetch per-screen thumbnails from where `loom explore` saved them.
+      exploreShotsDir: profile?.dataDir ? join(profile.dataDir, 'explore-shots') : undefined,
     });
     ctx.sink.line(`Mission Control → ${mc.url}  (Ctrl-C to stop)`);
     if (input.options.open) openBrowser(mc.url);

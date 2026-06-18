@@ -193,6 +193,168 @@ export function dashboardState(
   };
 }
 
+/** The live state of a `loom explore` crawl — what the "Live Crawl" view renders (separate from the
+ * rebuild-pipeline `dashboardState`). Assembled purely from the `explore.*` event stream. */
+export type ExploreState = {
+  run: {
+    id: string;
+    project: string;
+    status: string;
+    stage: string | null;
+    startedAt: string;
+    finishedAt: string | null;
+  } | null;
+  /** Where the crawl is right now — from the newest step. */
+  current: {
+    url: string | null;
+    lastAction: string | null;
+    lastLabel: string | null;
+    lastEventTs: string | null;
+  };
+  /** Every screen discovered so far (newest last). */
+  screens: Array<{ key: string; url: string | null; index: number }>;
+  /** Recent moves for the live ticker (newest last, capped). */
+  moves: Array<{
+    ts: string;
+    action: string;
+    label: string | null;
+    isNew: boolean;
+    discovered: number;
+  }>;
+  totals: {
+    screens: number;
+    steps: number;
+    inputTokens: number;
+    outputTokens: number;
+    tokens: number;
+    elapsedMs: number;
+    tokensPerSec: number;
+    truncated: boolean;
+    done: boolean;
+  };
+};
+
+type StepPayload = {
+  action?: string;
+  label?: string | null;
+  isNew?: boolean;
+  discovered?: number;
+  url?: string | null;
+  inputTokens?: number;
+  outputTokens?: number;
+  elapsedMs?: number;
+};
+type ScreenPayload = { key?: string; url?: string | null; index?: number };
+type CompletedPayload = {
+  inputTokens?: number;
+  outputTokens?: number;
+  elapsedMs?: number;
+  truncated?: boolean;
+};
+
+function emptyExploreState(): ExploreState {
+  return {
+    run: null,
+    current: { url: null, lastAction: null, lastLabel: null, lastEventTs: null },
+    screens: [],
+    moves: [],
+    totals: {
+      screens: 0,
+      steps: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      tokens: 0,
+      elapsedMs: 0,
+      tokensPerSec: 0,
+      truncated: false,
+      done: false,
+    },
+  };
+}
+
+/**
+ * Assemble the live state of an explore crawl: the latest `loom explore` session run (stage
+ * `explore`), or a given `runId`. Token totals + elapsed come straight off the events' running
+ * payloads (no span math). Read-only.
+ */
+export function exploreState(
+  db: SqliteDatabase,
+  runId?: string,
+  opts: { moveLimit?: number; project?: string } = {},
+): ExploreState {
+  const tasks = new TaskStore(db);
+  let id = runId;
+  if (!id) {
+    const row = db
+      .prepare(
+        `SELECT id FROM runs WHERE stage = 'explore'${opts.project ? ' AND project = ?' : ''} ORDER BY rowid DESC LIMIT 1`,
+      )
+      .get(...(opts.project ? [opts.project] : [])) as { id: string } | undefined;
+    id = row?.id;
+  }
+  if (!id) return emptyExploreState();
+  const run = tasks.getRun(id);
+  const events = new EventLog(db).tailFrom(0, 20000, { runId: id });
+  const steps = events.filter((e) => e.type === 'explore.step');
+  const screenEvents = events.filter((e) => e.type === 'explore.screen');
+  const completed = events.find((e) => e.type === 'explore.completed');
+
+  const lastStep = steps[steps.length - 1];
+  const lastP = (lastStep?.payload ?? {}) as StepPayload;
+  const compP = (completed?.payload ?? {}) as CompletedPayload;
+  const inputTokens = compP.inputTokens ?? lastP.inputTokens ?? 0;
+  const outputTokens = compP.outputTokens ?? lastP.outputTokens ?? 0;
+  const tokens = inputTokens + outputTokens;
+  const elapsedMs = compP.elapsedMs ?? lastP.elapsedMs ?? 0;
+
+  const screens = screenEvents.map((e) => {
+    const p = e.payload as ScreenPayload;
+    return { key: p.key ?? '', url: p.url ?? null, index: p.index ?? 0 };
+  });
+  const moves = steps.slice(-(opts.moveLimit ?? 30)).map((e) => {
+    const p = e.payload as StepPayload;
+    return {
+      ts: e.ts,
+      action: p.action ?? '',
+      label: p.label ?? null,
+      isNew: Boolean(p.isNew),
+      discovered: p.discovered ?? 0,
+    };
+  });
+
+  return {
+    run: run
+      ? {
+          id: run.id,
+          project: run.project,
+          status: run.status,
+          stage: run.stage,
+          startedAt: run.startedAt,
+          finishedAt: run.finishedAt,
+        }
+      : null,
+    current: {
+      url: lastP.url ?? null,
+      lastAction: lastP.action ?? null,
+      lastLabel: lastP.label ?? null,
+      lastEventTs: lastStep?.ts ?? null,
+    },
+    screens,
+    moves,
+    totals: {
+      screens: screens.length,
+      steps: steps.length,
+      inputTokens,
+      outputTokens,
+      tokens,
+      elapsedMs,
+      tokensPerSec: elapsedMs > 0 ? tokens / (elapsedMs / 1000) : 0,
+      truncated: Boolean(compP.truncated),
+      done: Boolean(completed),
+    },
+  };
+}
+
 /** One work package's drill-down: its attempt timeline + best eval (the §7b WP detail view). */
 export type WpDetail = {
   wpId: string;

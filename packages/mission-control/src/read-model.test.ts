@@ -13,7 +13,7 @@ import {
   type SqliteDatabase,
 } from '@loom/core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { dashboardState, wpDetail } from './read-model.js';
+import { dashboardState, exploreState, wpDetail } from './read-model.js';
 
 let dir: string;
 let db: SqliteDatabase;
@@ -164,5 +164,96 @@ describe('dashboardState', () => {
     expect(d.attempts[1]!.status).toBe('passed');
     expect(d.bestEval).toEqual({ visualPct: 0.5, passed: true });
     expect(wpDetail(db, 'nope')).toBeNull();
+  });
+});
+
+describe('exploreState (the live crawl read-model)', () => {
+  function seedExplore(): string {
+    const tasks = new TaskStore(db);
+    const run = tasks.createRun({ project: 'fixture', harnessVersion: '1.0.0' });
+    tasks.setRunStage(run.id, 'explore');
+    const log = new EventLog(db);
+    log.append({
+      type: 'explore.started',
+      runId: run.id,
+      payload: { startUrl: 'http://app/login' },
+    });
+    log.append({
+      type: 'explore.step',
+      runId: run.id,
+      payload: {
+        action: 'fill',
+        label: 'user',
+        isNew: false,
+        discovered: 1,
+        url: 'http://app/login',
+        inputTokens: 100,
+        outputTokens: 20,
+        elapsedMs: 1000,
+      },
+    });
+    log.append({
+      type: 'explore.step',
+      runId: run.id,
+      payload: {
+        action: 'click',
+        label: 'Production',
+        isNew: true,
+        discovered: 2,
+        url: 'http://app/prod',
+        inputTokens: 300,
+        outputTokens: 60,
+        elapsedMs: 4000,
+      },
+    });
+    log.append({
+      type: 'explore.screen',
+      runId: run.id,
+      payload: { key: 'prodkey', url: 'http://app/prod', index: 2 },
+    });
+    return run.id;
+  }
+
+  test('assembles current position, moves, screens, and running tokens from the events', () => {
+    const runId = seedExplore();
+    const s = exploreState(db);
+    expect(s.run?.id).toBe(runId);
+    expect(s.totals.steps).toBe(2);
+    expect(s.totals.screens).toBe(1);
+    expect(s.totals.tokens).toBe(360); // 300+60 — the LATEST step's running total
+    expect(s.totals.tokensPerSec).toBeGreaterThan(0);
+    expect(s.totals.done).toBe(false);
+    expect(s.current.url).toBe('http://app/prod');
+    expect(s.current.lastLabel).toBe('Production');
+    expect(s.screens[0]).toEqual({ key: 'prodkey', url: 'http://app/prod', index: 2 });
+    expect(s.moves[s.moves.length - 1]?.label).toBe('Production');
+  });
+
+  test('done=true + totals come from explore.completed once the run finishes', () => {
+    const tasks = new TaskStore(db);
+    const run = tasks.createRun({ project: 'fixture' });
+    tasks.setRunStage(run.id, 'explore');
+    new EventLog(db).append({
+      type: 'explore.completed',
+      runId: run.id,
+      payload: {
+        visited: 5,
+        screens: 3,
+        truncated: true,
+        inputTokens: 1000,
+        outputTokens: 200,
+        elapsedMs: 9000,
+      },
+    });
+    tasks.finishRun(run.id, 'completed');
+    const s = exploreState(db);
+    expect(s.totals.done).toBe(true);
+    expect(s.totals.truncated).toBe(true);
+    expect(s.totals.tokens).toBe(1200);
+  });
+
+  test('returns an empty state when there is no explore run', () => {
+    expect(exploreState(db).run).toBeNull();
+    expect(exploreState(db).totals.tokens).toBe(0);
   });
 });

@@ -230,6 +230,7 @@ a:hover { text-decoration: underline; }
     </div>
     <nav>
       <div class="navgroup">Observe</div>
+      <a class="nav" data-sec="sec-crawl" href="#sec-crawl"><svg viewBox="0 0 16 16"><path d="M8 3.5C4.5 3.5 2 8 2 8s2.5 4.5 6 4.5S14 8 14 8 11.5 3.5 8 3.5z"/><circle cx="8" cy="8" r="1.8"/></svg><span class="navt">Live crawl</span><span class="navc" id="c-crawl">0</span></a>
       <a class="nav" data-sec="sec-live" href="#sec-live"><svg viewBox="0 0 16 16"><path d="M1.8 8H4l1.4-4 2.2 8 1.5-6 1 4 1-2h3.1"/></svg><span class="navt">Live now</span><span class="navc" id="c-live">0</span></a>
       <a class="nav" data-sec="sec-board" href="#sec-board"><svg viewBox="0 0 16 16"><path d="M2.5 3h3v10h-3zM6.5 3h3v6h-3zM10.5 3h3v8h-3z"/></svg><span class="navt">Board</span></a>
       <a class="nav" data-sec="sec-pipeline" href="#sec-pipeline"><svg viewBox="0 0 16 16"><path d="M3 13.2V7M8 13.2V3M13 13.2V9.4"/></svg><span class="navt">Pipeline</span><span class="navc" id="c-screens">0</span></a>
@@ -255,6 +256,7 @@ a:hover { text-decoration: underline; }
       <button class="toggle" id="theme" title="Toggle light / dark">&#9789;</button>
     </header>
     <main>
+      <section class="wide" id="sec-crawl"><h2><span class="hbar"></span>Live crawl <span class="dt">watch the explorer walk the legacy app</span></h2><div id="crawl"></div></section>
       <section class="wide" id="sec-live"><h2><span class="hbar"></span>Live now</h2><div id="live"></div></section>
       <section class="wide" id="sec-board"><h2><span class="hbar"></span>Board <span class="dt">what's queued, in flight, and done</span></h2><div id="board" class="board"></div></section>
       <section class="wide" id="sec-pipeline"><h2><span class="hbar"></span>Pipeline</h2>
@@ -379,6 +381,30 @@ function renderState(s) {
     '<div><time>' + h(e.ts.slice(11, 19)) + '</time> ' + h(e.type) + (e.wpId ? ' <span class="muted">' + h(e.wpId) + '</span>' : '') + '</div>').join('');
 }
 
+function renderExplore(s) {
+  const t = s.totals || {};
+  if ($('c-crawl')) $('c-crawl').textContent = t.screens || 0;
+  if (!s.run) { $('crawl').innerHTML = '<span class="muted">idle \\u2014 no crawl running. Run <code>loom explore</code> and watch it here.</span>'; return; }
+  const cur = s.current || {};
+  const head = '<div class="cost"><b>' + (t.tokens || 0).toLocaleString() + '</b> tokens'
+    + '<span class="sub"> \\u00b7 ' + (t.screens || 0) + ' screens \\u00b7 ' + (t.steps || 0) + ' moves \\u00b7 '
+    + Math.round(t.tokensPerSec || 0) + ' tok/s \\u00b7 ' + Math.round((t.elapsedMs || 0) / 1000) + 's'
+    + (t.done ? ' \\u00b7 done' : (s.run.startedAt ? ' \\u00b7 ' + elapsed(s.run.startedAt) : '')) + '</span></div>'
+    + '<div class="row" style="font-size:12px"><span class="muted">at</span>&nbsp;<span class="grow el">' + h(cur.url || '\\u2014') + '</span>' + (t.done ? '' : pill('crawling', '')) + '</div>';
+  const feed = '<div class="feed">' + (s.moves || []).slice().reverse().map((m) =>
+    '<div class="row" style="font-size:12px"><span class="muted">' + h((m.ts || '').slice(11, 19)) + '</span>&nbsp;'
+    + '<span class="grow el">' + h(m.action) + ' ' + h(m.label || '') + '</span>'
+    + (m.isNew ? '<span class="s-passed">new</span>' : '') + '</div>').join('') + '</div>';
+  const shots = (s.screens || []).length
+    ? '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-top:10px">'
+      + s.screens.slice().reverse().map((x) =>
+        '<a href="/api/explore-shot/' + encodeURIComponent(x.key) + '.png" target="_blank" title="' + h(x.url || x.key) + '">'
+        + '<img loading="lazy" style="width:100%;border:1px solid var(--border);border-radius:6px;display:block" src="/api/explore-shot/' + encodeURIComponent(x.key) + '.png"></a>').join('')
+      + '</div>'
+    : '';
+  $('crawl').innerHTML = head + feed + shots;
+}
+
 function renderBoard(s) {
   const cols = [
     { label: 'Queued', states: ['pending', 'planned'] },
@@ -439,6 +465,7 @@ async function refresh() {
   const sw = $('project-switch');
   const q = sw && sw.value ? '?project=' + encodeURIComponent(sw.value) : '';
   try { renderState(await (await fetch('/api/state' + q)).json()); } catch (e) {}
+  try { renderExplore(await (await fetch('/api/explore' + q)).json()); } catch (e) {}
   try { renderInventory(await (await fetch('/api/inventory' + q)).json()); } catch (e) {}
 }
 refresh();

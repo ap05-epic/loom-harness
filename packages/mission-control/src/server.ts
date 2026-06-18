@@ -1,7 +1,9 @@
+import { createReadStream, existsSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { relative, resolve } from 'node:path';
 import { applyGateDecision, EventLog, QuestionStore, type SqliteDatabase } from '@loom/core';
-import { dashboardState, listProjects, wpDetail } from './read-model.js';
+import { dashboardState, exploreState, listProjects, wpDetail } from './read-model.js';
 import { inventory, type McpInfo } from './inventory.js';
 import { dashboardHtml } from './ui.js';
 
@@ -21,7 +23,26 @@ export type MissionControlOptions = {
   digitHome?: string;
   /** External MCP servers from the profile, shown in the inventory. */
   externalMcp?: McpInfo[];
+  /** `<data-dir>/explore-shots` — lets the Live Crawl view fetch per-screen thumbnails. */
+  exploreShotsDir?: string;
 };
+
+/** Serve one explore-shot PNG, confined to the shots dir (the route regex blocks slashes; this
+ * rejects any `..` escape as defense-in-depth, mirroring the protected-paths guard). */
+function serveShot(opts: MissionControlOptions, key: string, res: ServerResponse): void {
+  if (!opts.exploreShotsDir) {
+    sendJson(res, 404, { error: 'no shots dir' });
+    return;
+  }
+  const root = resolve(opts.exploreShotsDir);
+  const file = resolve(root, `${key}.png`);
+  if (relative(root, file).startsWith('..') || !existsSync(file)) {
+    sendJson(res, 404, { error: 'not found' });
+    return;
+  }
+  res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-cache' });
+  createReadStream(file).pipe(res);
+}
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   const json = JSON.stringify(body);
@@ -102,6 +123,22 @@ async function handle(
     const runId = url.searchParams.get('run') ?? undefined;
     const events = new EventLog(db).tailFrom(since, 500, runId ? { runId } : undefined);
     sendJson(res, 200, { events });
+    return;
+  }
+
+  // The live `loom explore` crawl — current URL, move feed, screens, running tokens.
+  if (method === 'GET' && pathname === '/api/explore') {
+    const project = url.searchParams.get('project') ?? opts.project;
+    sendJson(
+      res,
+      200,
+      exploreState(db, url.searchParams.get('run') ?? undefined, project ? { project } : {}),
+    );
+    return;
+  }
+  const shotMatch = pathname.match(/^\/api\/explore-shot\/([A-Za-z0-9_.-]+)\.png$/);
+  if (method === 'GET' && shotMatch) {
+    serveShot(opts, shotMatch[1]!, res);
     return;
   }
 
