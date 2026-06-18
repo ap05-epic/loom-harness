@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { ChatMessage, LlmGateway } from '@loom/agents';
 import { MIGRATIONS, openDb, runMigrations } from '@loom/core';
@@ -9,11 +9,24 @@ import { describeProvider, gatewayFromProfile } from '../../pipeline-config.js';
 import { defineCommand } from '../../registry.js';
 import { makePalette } from '../../ui/colors.js';
 import { ChatView } from '../../ui/chat-view.js';
-import { agenticChatTurn, CHAT_SYSTEM_PROMPT } from './chat-agent.js';
+import { agenticChatTurn, CHAT_SYSTEM_PROMPT, packRecall } from './chat-agent.js';
 import { buildChatTools, type ChatSession } from './chat-tools.js';
 import { readStdin } from './ask.js';
 
 const MODES: readonly PermissionMode[] = ['ask', 'auto', 'allow-all', 'deny'];
+
+/** Walk up from `cwd` to find a `docs/` dir, so `read_doc` works when chat runs from the repo clone. */
+function resolveDocsDir(cwd: string): string | undefined {
+  let dir = cwd;
+  for (let i = 0; i < 6; i++) {
+    const docs = join(dir, 'docs');
+    if (existsSync(docs)) return docs;
+    const up = dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return undefined;
+}
 
 const HELP = [
   'commands: /exit · /help · /allow-all · /ask · /auto · /deny · /allow <tool>',
@@ -94,7 +107,14 @@ export const chatCommand = defineCommand({
     const db = openDb(!existsSync(loomDb) && existsSync(legacy) ? legacy : loomDb);
     runMigrations(db, MIGRATIONS);
 
-    const session: ChatSession = { db, gateway, profile: p, version: ctx.version };
+    const session: ChatSession = {
+      db,
+      gateway,
+      profile: p,
+      version: ctx.version,
+      root: ctx.cwd,
+      docsDir: resolveDocsDir(ctx.cwd),
+    };
     const tools = buildChatTools(session);
     const extra = input.options.system as string | undefined;
     const system = extra ? `${CHAT_SYSTEM_PROMPT}\n\n${extra}` : CHAT_SYSTEM_PROMPT;
@@ -109,6 +129,7 @@ export const chatCommand = defineCommand({
           model,
           history: baseHistory,
           input: prompt,
+          recall: packRecall(db, p.project, prompt),
           tools,
           policy,
           prompt: () => 'no',
@@ -164,6 +185,7 @@ export const chatCommand = defineCommand({
               model,
               history,
               input: text,
+              recall: packRecall(db, p.project, text),
               tools,
               policy,
               prompt,

@@ -55,4 +55,19 @@ Hermes' memory recall is notably fast and language-agnostic, and worth adopting 
 
 ---
 
+## 5. Hermes Agent → agentic `loom chat` capabilities + memory recall (MIT) → **in place (R9)**
+
+[Hermes Agent](https://github.com/nousresearch/hermes-agent) (MIT) is a strong, self-contained coding/ops agent. We didn't copy it (it's Python; Loom is strict TypeScript) — Loom already had the bones (the `AgentRunner` tool-loop, `MemoryStore`/`SkillStore`, the permission policy). We **reimplemented its proven patterns** onto that substrate:
+
+| Hermes pattern                               | Loom reimplementation (file)                                                                                                                                                  |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Code-aware tools (grep / read / list / exec) | `search_code` (ripgrep + JS fallback), `read_file`, `list_files`, `run_command` (`shell:false`, cwd-confined, gated `expensive`) — `cli/src/commands/lifecycle/chat-tools.ts` |
+| Self-knowledge / introspection               | `list_tools` / `list_commands` (`ALL_COMMANDS`) / `read_doc` (`docs/`) / `list_skills` (`SkillStore`) — same file                                                             |
+| Memory recall into the prompt                | `packRecall()` over `MemoryStore.recall` + `SkillStore.recall`, injected per turn as an ephemeral system message (base prompt stays cache-stable) — `chat-agent.ts`           |
+| Gated code execution                         | reuse Loom's `PermissionPolicy` at the `expensive` tier — every `run_command` is approved by the human                                                                        |
+
+The read tools run freely; only `run_command` touches the machine and is gated. File/exec paths are confined to the project root with the same `relative(root, …).startsWith('..')` guard as the protected-paths hook. The Hermes webui ([nesquena/hermes-webui](https://github.com/nesquena/hermes-webui)) informs the upcoming React Mission Control UX.
+
+---
+
 _This document is the institutional record of what we took and from where. When implementing a borrowed idea, add `// adapted from <repo> (<license>)` at the call site and keep this list current._

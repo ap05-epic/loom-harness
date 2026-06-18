@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
@@ -29,6 +29,7 @@ function session(over: Partial<ChatSession> = {}): ChatSession {
       llm: { driver: 'openai', model: 'm' },
     } as Profile,
     version: '9.9.9',
+    root: resolve('/p'),
     ...over,
   };
 }
@@ -133,5 +134,51 @@ describe('chat tools — conversational project setup', () => {
     const out = await run(session(), 'show_profile');
     expect(out).toMatch(/project: fixture/);
     expect(out).toMatch(/not runnable yet/i);
+  });
+});
+
+describe('chat tools — Hermes-grade code/file/exec + self-knowledge', () => {
+  function fsSession(): { s: ChatSession; dir: string } {
+    const dir = mkdtempSync(join(tmpdir(), 'chat-code-'));
+    writeFileSync(join(dir, 'hello.ts'), 'export const greeting = "hello world";\n');
+    return { s: session({ root: dir, docsDir: dir }), dir };
+  }
+
+  test('search_code finds a match; read_file reads it; both refuse to escape the root', async () => {
+    const { s, dir } = fsSession();
+    try {
+      expect(await run(s, 'search_code', { query: 'greeting' })).toContain('hello.ts');
+      expect(await run(s, 'read_file', { path: 'hello.ts' })).toContain('greeting');
+      expect(await run(s, 'read_file', { path: '../../../etc/passwd' })).toMatch(
+        /outside the project|not found/i,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('run_command runs a program with shell:false and is tagged expensive (always gated)', async () => {
+    const { s, dir } = fsSession();
+    try {
+      const out = await run(s, 'run_command', {
+        command: 'node',
+        args: ['-e', 'process.stdout.write("ok42")'],
+      });
+      expect(out).toContain('ok42');
+      // shell:false → metachars are a literal program name (ENOENT), never run through a shell.
+      expect(await run(s, 'run_command', { command: 'no-such-bin;rm', args: [] })).toMatch(
+        /failed to run/i,
+      );
+      const rc = buildChatTools(s).find((t) => t.def.name === 'run_command');
+      expect(rc?.risk).toBe('expensive');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('self-knowledge: list_tools includes the new tools; list_commands knows explore', async () => {
+    const s = session();
+    expect(await run(s, 'list_tools')).toMatch(/search_code/);
+    expect(await run(s, 'list_commands')).toMatch(/explore/);
   });
 });

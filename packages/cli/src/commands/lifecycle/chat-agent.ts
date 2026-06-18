@@ -1,4 +1,5 @@
 import { AgentRunner, type ChatMessage, type LlmGateway, type ToolDef } from '@loom/agents';
+import { MemoryStore, SkillStore, type SqliteDatabase } from '@loom/core';
 import {
   checkPermission,
   type PermissionPolicy,
@@ -6,6 +7,27 @@ import {
   type ToolRisk,
 } from '@loom/tools';
 import type { ChatTool } from './chat-tools.js';
+
+/**
+ * Recall the most relevant project facts + active skills for this turn and format them for the
+ * system prompt — context packing, not a tool (the agent shouldn't have to ask). Per-turn + cheap;
+ * injected as an ephemeral system message so the base prompt stays cache-stable.
+ */
+export function packRecall(db: SqliteDatabase, project: string, userText: string): string {
+  const terms = userText
+    .split(/\W+/)
+    .map((w) => w.toLowerCase())
+    .filter((w) => w.length >= 3);
+  if (terms.length === 0) return '';
+  const facts = new MemoryStore(db).recall(project, { terms, kind: 'project_fact', limit: 6 });
+  const skills = new SkillStore(db).recall(project, { terms, limit: 4 });
+  if (!facts.length && !skills.length) return '';
+  const parts = ['## Recalled project context (use if relevant)'];
+  if (facts.length) parts.push(`Facts:\n${facts.map((m) => `- ${m.title}: ${m.body}`).join('\n')}`);
+  if (skills.length)
+    parts.push(`Skills:\n${skills.map((k) => `- ${k.name}: ${k.description}`).join('\n')}`);
+  return parts.join('\n');
+}
 
 /** The agent's standing instructions — how to operate the harness for the user. */
 export const CHAT_SYSTEM_PROMPT = [
@@ -16,6 +38,17 @@ export const CHAT_SYSTEM_PROMPT = [
   'You can: set up the project (show_profile, configure_project); check status; map',
   'the legacy source; run the rebuild pipeline; and work the human inbox (approve/',
   "reject gates, answer the agent's questions).",
+  '',
+  'You can also explore THIS codebase + your own capabilities to answer questions',
+  'about how Loom works or where something lives:',
+  '- search_code / read_file / list_files — read the repo (read-only; never write).',
+  '- read_doc — read Loom’s own docs under docs/ (concepts, guides, decisions, reference).',
+  '- list_tools / list_commands / list_skills — your own tools, the CLI commands, the skills.',
+  '- run_command — run a shell command (curl, git, node, a build). This is the ONLY tool',
+  '  that affects the machine; the user approves every run. Say what you will run and why',
+  '  first, and prefer read-only commands. Everything else is read-only.',
+  'When asked "how does X work" or "where is Y", SEARCH and READ rather than guessing,',
+  'and cite file paths. If recalled project memory is provided, trust it.',
   '',
   'Guidelines:',
   '- Be concise and concrete. Prefer doing (calling a tool) over explaining.',
@@ -41,6 +74,8 @@ export type AgenticTurnOptions = {
   tools: ChatTool[];
   policy: PermissionPolicy;
   prompt: PermissionPrompt;
+  /** Per-turn recalled project memory/skills (from {@link packRecall}) — injected as a system message. */
+  recall?: string;
   /** Guard overrides (defaults are generous — the user is present and bounds the run). */
   guards?: { maxIterations?: number; maxTokens?: number; maxWallClockMs?: number };
   /** Fired as each tool starts/finishes, so the view can show live progress. */
@@ -83,7 +118,11 @@ export async function agenticChatTurn(
     },
   }));
 
-  const messages: ChatMessage[] = [...opts.history, { role: 'user', content: opts.input }];
+  const messages: ChatMessage[] = [
+    ...opts.history,
+    ...(opts.recall ? [{ role: 'system' as const, content: opts.recall }] : []),
+    { role: 'user', content: opts.input },
+  ];
   const result = await new AgentRunner(gateway).run({
     model: opts.model,
     messages,

@@ -43,7 +43,23 @@ loom chat                 # an agentic REPL: it maps/runs and works the inbox fo
 loom ask "…"              # a one-off question to the model (no tools)
 ```
 
-`loom chat` is a Claude-Code-style driver: you say what you want, it calls the right harness tools (`status`, `map`, `run`, `approve_gate`, `answer_question`, …), and after a run it surfaces the screens awaiting approval and the blocked-screen questions and helps you resolve them inline. Every expensive or state-changing action is gated by a [permission policy](agentic-chat.md) (`ask → auto → allow-all`), so the model can't silently spend tokens or change state. `loom ask` is the simpler escape hatch — a direct question with no tools.
+`loom chat` is a Claude-Code-style driver: you say what you want, it calls the right harness tools (`status`, `map`, `run`, `approve_gate`, `answer_question`, …), and after a run it surfaces the screens awaiting approval and the blocked-screen questions and helps you resolve them inline. It can also **read and reason about the codebase and itself** — `search_code` / `read_file` / `list_files` (grep + read, read-only), `read_doc` (these very docs), `list_tools` / `list_commands` / `list_skills` (its own capabilities), and `run_command` (run `curl` / `git` / a build — the **only** tool that touches the machine, so the user approves every call). Relevant **project memory + skills are recalled into each turn** automatically, so it remembers what was learned. Every expensive or state-changing action is gated by a [permission policy](agentic-chat.md) (`ask → auto → allow-all`), so the model can't silently spend tokens or change state. `loom ask` is the simpler escape hatch — a direct question with no tools.
+
+The agentic loop itself (the same `AgentRunner` the pipeline uses):
+
+```mermaid
+flowchart LR
+  you["you (prompt)"] --> recall["recall project<br/>memory + skills"]
+  recall --> llm["model"]
+  llm -->|"tool call"| gate{"permission<br/>gate"}
+  gate -->|"read → free"| exec["run tool"]
+  gate -->|"expensive → ask"| exec
+  gate -->|"denied"| llm
+  exec --> llm
+  llm -->|"final text"| you
+```
+
+> The capability tools and memory recall adopt patterns from [Hermes Agent](https://github.com/nousresearch/hermes-agent) (MIT), reimplemented onto Loom's own `AgentRunner` + permission policy — see [docs/research/adopted-patterns.md](../research/adopted-patterns.md).
 
 ## Where the model fits
 

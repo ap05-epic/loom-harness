@@ -1,4 +1,6 @@
-import { existsSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, readdirSync, readFileSync, rmSync, statSync, type Dirent } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
 import type { LlmGateway, ToolDef } from '@loom/agents';
 import { discoverLegacyWebapp, mapProject } from '@loom/cartographer';
 import { runPipeline } from '@loom/conductor';
@@ -10,6 +12,7 @@ import {
   QuestionStore,
   runMigrations,
   saveProfile,
+  SkillStore,
   TaskStore,
   type Profile,
   type ProfileConfig,
@@ -24,7 +27,301 @@ export type ChatSession = {
   gateway: LlmGateway;
   profile: Profile;
   version: string;
+  /** The directory the code/file/exec tools are confined to (the repo/project the user is in). */
+  root: string;
+  /** The repo `docs/` dir for `read_doc` (when chat runs from the clone), if present. */
+  docsDir?: string;
 };
+
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'coverage', '.loom', '.loom-data']);
+
+/** Resolve a path under `root`, or null if it escapes (the file/exec confinement guard). */
+function confine(root: string, p: string): string | null {
+  const abs = resolve(root, p);
+  return relative(root, abs).startsWith('..') ? null : abs;
+}
+
+/** Recursive substring grep — the fallback when ripgrep isn't installed. */
+function jsGrep(root: string, query: string, glob: string | undefined, limit: number): string[] {
+  const out: string[] = [];
+  const q = query.toLowerCase();
+  const needle = glob?.replace(/\*/g, '');
+  const walk = (dir: string): void => {
+    if (out.length >= limit) return;
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (out.length >= limit) return;
+      if (e.isDirectory()) {
+        if (!SKIP_DIRS.has(e.name)) walk(join(dir, e.name));
+        continue;
+      }
+      if (needle && !e.name.includes(needle)) continue;
+      const file = join(dir, e.name);
+      let text: string;
+      try {
+        if (statSync(file).size > 512 * 1024) continue;
+        text = readFileSync(file, 'utf8');
+      } catch {
+        continue;
+      }
+      const lines = text.split('\n');
+      for (let i = 0; i < lines.length && out.length < limit; i++) {
+        if (lines[i]!.toLowerCase().includes(q)) {
+          out.push(`${relative(root, file)}:${i + 1}: ${lines[i]!.trim().slice(0, 200)}`);
+        }
+      }
+    }
+  };
+  walk(root);
+  return out;
+}
+
+/**
+ * The Hermes-grade capability tools: search/read the codebase, run gated shell commands, and
+ * introspect Loom's own commands/docs/skills/tools. Adapted from Hermes Agent (MIT) patterns —
+ * reimplemented onto Loom's permission policy + ToolDef substrate. The seven read tools run freely;
+ * `run_command` is `expensive` so the user approves every shell call. `tools` is the live array
+ * (so `list_tools` can describe the whole set, itself included).
+ */
+function buildCodeTools(session: ChatSession, tools: ChatTool[]): ChatTool[] {
+  const { root, db } = session;
+  return [
+    tool(
+      'search_code',
+      'Search the codebase for a string/regex (ripgrep, with a fallback). Returns file:line matches. Use to find where something is.',
+      {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'the text or regex to search for' },
+          glob: { type: 'string', description: 'optional filename filter, e.g. "*.ts"' },
+          maxResults: { type: 'number', description: 'cap on matches (default 40)' },
+        },
+        required: ['query'],
+        additionalProperties: false,
+      },
+      'read',
+      async (a) => {
+        const { query, glob, maxResults } = a as {
+          query?: string;
+          glob?: string;
+          maxResults?: number;
+        };
+        if (!query) return 'search_code needs a "query".';
+        const limit = Math.min(maxResults ?? 40, 200);
+        const args = ['--line-number', '--no-heading', '--color=never', '-S', '-m', String(limit)];
+        if (glob) args.push('-g', glob);
+        args.push(query, '.');
+        const rg = spawnSync('rg', args, {
+          cwd: root,
+          encoding: 'utf8',
+          timeout: 10_000,
+          maxBuffer: 8 * 1024 * 1024,
+        });
+        if (rg.error && (rg.error as NodeJS.ErrnoException).code === 'ENOENT') {
+          const hits = jsGrep(root, query, glob, limit);
+          return hits.length ? hits.join('\n') : '(no matches)';
+        }
+        const lines = (rg.stdout || '').split('\n').filter(Boolean).slice(0, limit);
+        return lines.length ? lines.join('\n') : '(no matches)';
+      },
+    ),
+    tool(
+      'read_file',
+      'Read a file from the project (optionally a line window). Paths are relative to the project root.',
+      {
+        type: 'object',
+        properties: {
+          path: { type: 'string' },
+          startLine: { type: 'number' },
+          endLine: { type: 'number' },
+        },
+        required: ['path'],
+        additionalProperties: false,
+      },
+      'read',
+      async (a) => {
+        const { path, startLine, endLine } = a as {
+          path?: string;
+          startLine?: number;
+          endLine?: number;
+        };
+        if (!path) return 'read_file needs a "path".';
+        const file = confine(root, path);
+        if (!file || !existsSync(file)) return `Not found (or outside the project): ${path}`;
+        let text: string;
+        try {
+          text = readFileSync(file, 'utf8');
+        } catch (e) {
+          return `Could not read ${path}: ${String(e)}`;
+        }
+        const lines = text.split('\n');
+        const from = Math.max(1, startLine ?? 1);
+        const to = Math.min(lines.length, endLine ?? from + 399);
+        return lines
+          .slice(from - 1, to)
+          .map((l, i) => `${from + i}\t${l}`)
+          .join('\n')
+          .slice(0, 64 * 1024);
+      },
+    ),
+    tool(
+      'list_files',
+      'List files under a directory of the project (recursively, capped). Paths are relative to the project root.',
+      {
+        type: 'object',
+        properties: { dir: { type: 'string' }, glob: { type: 'string' } },
+        additionalProperties: false,
+      },
+      'read',
+      async (a) => {
+        const { dir, glob } = a as { dir?: string; glob?: string };
+        const base = confine(root, dir ?? '.');
+        if (!base || !existsSync(base)) return `Not found (or outside the project): ${dir ?? '.'}`;
+        const needle = glob?.replace(/\*/g, '');
+        const out: string[] = [];
+        const walk = (d: string): void => {
+          if (out.length >= 300) return;
+          let entries: Dirent[];
+          try {
+            entries = readdirSync(d, { withFileTypes: true });
+          } catch {
+            return;
+          }
+          for (const e of entries) {
+            if (out.length >= 300) return;
+            if (e.isDirectory()) {
+              if (!SKIP_DIRS.has(e.name)) walk(join(d, e.name));
+              continue;
+            }
+            if (needle && !e.name.includes(needle)) continue;
+            out.push(relative(root, join(d, e.name)));
+          }
+        };
+        walk(base);
+        return out.length ? out.join('\n') : '(no files)';
+      },
+    ),
+    tool(
+      'run_command',
+      'Run a shell command (e.g. curl, git, node, a build) in the project. NO implicit shell — pass the program + args array. The user approves every run.',
+      {
+        type: 'object',
+        properties: {
+          command: { type: 'string', description: 'the program, e.g. "git" or "curl"' },
+          args: { type: 'array', items: { type: 'string' }, description: 'argument list' },
+          cwd: { type: 'string', description: 'working dir, relative to the project root' },
+          timeoutMs: { type: 'number' },
+        },
+        required: ['command'],
+        additionalProperties: false,
+      },
+      'expensive',
+      async (a) => {
+        const { command, args, cwd, timeoutMs } = a as {
+          command?: string;
+          args?: string[];
+          cwd?: string;
+          timeoutMs?: number;
+        };
+        if (!command) return 'run_command needs a "command".';
+        const wd = confine(root, cwd ?? '.');
+        if (!wd) return 'cwd is outside the project.';
+        const argv = Array.isArray(args) ? args : [];
+        const r = spawnSync(command, argv, {
+          cwd: wd,
+          encoding: 'utf8',
+          shell: false,
+          timeout: Math.min(timeoutMs ?? 30_000, 120_000),
+          maxBuffer: 8 * 1024 * 1024,
+        });
+        if (r.error) return `Failed to run ${command}: ${(r.error as Error).message}`;
+        const body = ((r.stdout || '') + (r.stderr ? `\n[stderr]\n${r.stderr}` : '')).slice(
+          0,
+          32 * 1024,
+        );
+        return `$ ${command} ${argv.join(' ')}\n(exit ${r.status ?? 'null'})\n${body || '(no output)'}`;
+      },
+    ),
+    tool(
+      'list_commands',
+      "List Loom's own CLI commands (so you know what `loom …` can do).",
+      NO_ARGS,
+      'read',
+      async () => {
+        const mod = (await import('../index.js')) as {
+          ALL_COMMANDS: Array<{ name: string; describe: string }>;
+        };
+        return mod.ALL_COMMANDS.map((c) => `loom ${c.name} — ${c.describe}`).join('\n');
+      },
+    ),
+    tool(
+      'list_skills',
+      "List the project's reusable skills (optionally matching a query).",
+      {
+        type: 'object',
+        properties: { query: { type: 'string' } },
+        additionalProperties: false,
+      },
+      'read',
+      async (a) => {
+        const { query } = a as { query?: string };
+        const store = new SkillStore(db);
+        const project = session.profile.project;
+        const skills = query
+          ? store.recall(project, { terms: query.split(/\W+/).filter((w) => w.length >= 3) })
+          : store.list({ project, status: 'active' });
+        return skills.length
+          ? skills.map((s) => `${s.name} — ${s.description}`).join('\n')
+          : '(no skills)';
+      },
+    ),
+    tool(
+      'read_doc',
+      "Read Loom's own documentation under docs/ (no path lists the available docs).",
+      {
+        type: 'object',
+        properties: { path: { type: 'string' } },
+        additionalProperties: false,
+      },
+      'read',
+      async (a) => {
+        const { path } = a as { path?: string };
+        if (!session.docsDir || !existsSync(session.docsDir))
+          return 'docs are not available in this install.';
+        if (!path) {
+          const out: string[] = [];
+          const walk = (d: string, pre: string): void => {
+            for (const e of readdirSync(d, { withFileTypes: true })) {
+              if (e.isDirectory()) walk(join(d, e.name), `${pre}${e.name}/`);
+              else if (e.name.endsWith('.md')) out.push(`${pre}${e.name}`);
+            }
+          };
+          try {
+            walk(session.docsDir, '');
+          } catch {
+            // unreadable docs dir
+          }
+          return out.length ? `docs/:\n${out.join('\n')}` : '(no docs)';
+        }
+        const file = confine(session.docsDir, path.replace(/^docs\//, ''));
+        if (!file || !existsSync(file)) return `Doc not found: ${path}`;
+        try {
+          return readFileSync(file, 'utf8').slice(0, 48 * 1024);
+        } catch (e) {
+          return `Could not read ${path}: ${String(e)}`;
+        }
+      },
+    ),
+    tool('list_tools', 'List the tools you (the chat agent) can call.', NO_ARGS, 'read', async () =>
+      tools.map((t) => `${t.def.name} [${t.risk}] — ${t.def.description}`).join('\n'),
+    ),
+  ];
+}
 
 /** A harness tool the agent can call, plus its risk (for the permission policy). */
 export type ChatTool = { def: ToolDef; risk: ToolRisk };
@@ -66,7 +363,7 @@ function inboxLine(db: SqliteDatabase): string {
 export function buildChatTools(session: ChatSession): ChatTool[] {
   const { db } = session;
 
-  return [
+  const tools: ChatTool[] = [
     tool(
       'status',
       'Show the current run: status/stage, screens by state, token spend, and the open inbox.',
@@ -385,4 +682,8 @@ export function buildChatTools(session: ChatSession): ChatTool[] {
       },
     ),
   ];
+  // Append the Hermes-grade code/file/exec + self-knowledge tools (they reference `tools` so
+  // `list_tools` can describe the full set).
+  for (const t of buildCodeTools(session, tools)) tools.push(t);
+  return tools;
 }

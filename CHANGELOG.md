@@ -6,6 +6,14 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.22 — 2026-06-18
+
+`loom chat` is now a real coding/ops agent — it can read the codebase, run commands, know itself, and remember (R9 Thrust C; Hermes-grade).
+
+- **Codebase + self-knowledge tools.** Eight new tools on the existing agent loop + permission gate: `search_code` (ripgrep, with a JS fallback), `read_file`, `list_files` (read-only, confined to the project root), `run_command` (run `curl`/`git`/`node`/a build — **`shell:false`**, cwd-confined, timeout-capped, tagged `expensive` so **you approve every run**), and self-knowledge: `list_tools`, `list_commands`, `read_doc` (these docs), `list_skills`. So chat can finally answer "how does X work / where is Y" by searching and reading instead of guessing — the gap the old chat had.
+- **Memory recall into every turn.** `packRecall` pulls the most relevant project facts (`MemoryStore`) + active skills (`SkillStore`) for what you asked and injects them as an ephemeral system message (the base prompt stays cache-stable) — so the agent remembers what was learned without you re-explaining.
+- **Adopted from [Hermes Agent](https://github.com/nousresearch/hermes-agent) (MIT)**, reimplemented onto Loom's TS substrate + credited in `docs/research/adopted-patterns.md`. Docs updated (interaction-model + observability) with new Mermaid diagrams of the agentic-chat loop and the live-crawl data flow.
+
 ## v1.3.21 — 2026-06-18
 
 `loom explore` no longer re-maps what it already knows — each run adds only **new** screens (R9 Thrust D).
