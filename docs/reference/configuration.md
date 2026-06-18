@@ -9,16 +9,16 @@ A profile directory (in the data dir, outside any git tree) contains:
 
 ## `loom.config.yaml`
 
-| Key                | Required | Meaning                                                                                                            |
-| ------------------ | -------- | ------------------------------------------------------------------------------------------------------------------ |
-| `project`          | yes      | Project name.                                                                                                      |
-| `llm.driver`       | yes      | `openai` (direct OpenAI/Azure key — **default**) · `anthropic`. The `copilot` driver still parses but is disabled. |
-| `llm.model`        | yes      | Model id, e.g. `gpt-5.4` — fixed to this value by the key/endpoint.                                                |
-| `llm.baseUrlEnv`   | yes      | Name of the env var holding the endpoint base URL (must include the version path, e.g. `…/openai/v1`).             |
-| `llm.apiKeyEnv`    | yes      | Name of the env var holding the API key.                                                                           |
-| `llm.modelProfile` | —        | Overrides: `contextWindow`, `maxOutput`, `vision`.                                                                 |
+| Key                | Required | Meaning                                                                                                                                                                                      |
+| ------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `project`          | yes      | Project name.                                                                                                                                                                                |
+| `llm.driver`       | yes      | `openai` (direct OpenAI/Azure key — **default + sole live connector**). `anthropic` is gated off (opt in with `LOOM_ENABLE_ANTHROPIC=1`); the `copilot` driver still parses but is disabled. |
+| `llm.model`        | yes      | Model id, e.g. `gpt-5.4` — fixed to this value by the key/endpoint.                                                                                                                          |
+| `llm.baseUrlEnv`   | yes      | Name of the env var holding the endpoint base URL (must include the version path, e.g. `…/openai/v1`).                                                                                       |
+| `llm.apiKeyEnv`    | yes      | Name of the env var holding the API key.                                                                                                                                                     |
+| `llm.modelProfile` | —        | Overrides: `contextWindow`, `maxOutput`, `vision`.                                                                                                                                           |
 
-**Which provider am I using?** Run `loom models list` (or `doctor`). Loom is OpenAI/Azure-only: set `llm.driver: openai` with `LLM_BASE_URL` (…/openai/v1) + `LLM_API_KEY`; `loom init` writes that by default. (`anthropic` is available for portability; the `copilot` driver code still ships but is disabled.)
+**Which provider am I using?** Run `loom models list` (or `doctor`). The Azure/OpenAI link + key is Loom's sole live connector: set `llm.driver: openai` with `LLM_BASE_URL` (…/openai/v1) + `LLM_API_KEY`; `loom init` writes that by default. (`anthropic` ships for portability but is gated off unless `LOOM_ENABLE_ANTHROPIC=1`; the `copilot` driver code still ships but is disabled.)
 
 ### Pipeline blocks (consumed by `loom map`/`run`/`resume`)
 
@@ -42,6 +42,7 @@ Derived paths under the data dir: `loom.db`, `codeatlas.db`, `baseline/`.
 | `crawl.exclude`   | URL substrings never to follow — e.g. `['/logout']` (destructive links).                                                                                                                                                                                                                                                                               |
 | `crawl.maxStates` | Cap on distinct screens (`--max-states` overrides).                                                                                                                                                                                                                                                                                                    |
 | `crawl.faEnv`     | Env-var name holding the FA Quick-Search code the AI-explorer (`loom explore`) types as `$fa` (default `fa_numbers`); the value lives only in `.env`.                                                                                                                                                                                                  |
+| `crawl.hydrateMs` | ms to wait for late-AJAX controls (e.g. BAA's `#pmenu`) to appear before reading a page — raise it for apps whose menus load after the document.                                                                                                                                                                                                       |
 | `crawl.auth`      | Form-login bootstrap: `loginPath`, `usernameSelector`, `passwordSelector`, `submitSelector`, `waitForSelector?`, and **`usernameEnv`/`passwordEnv`** — the env-var names holding the credentials (never the file). `loom explore` reuses `usernameEnv`/`passwordEnv` as `$user`/`$pass` and ignores the selectors (the model finds the fields itself). |
 
 Remaining sections (`devUrl`, budgets, protected paths, masks) are documented with the subsystems that consume them.
@@ -51,6 +52,7 @@ Remaining sections (`devUrl`, budgets, protected paths, masks) are documented wi
 | Var                                       | Used for                                                                            |
 | ----------------------------------------- | ----------------------------------------------------------------------------------- |
 | `LLM_BASE_URL`, `LLM_API_KEY`             | The endpoint + key referenced by `baseUrlEnv`/`apiKeyEnv` (names are configurable). |
+| `LOOM_ENABLE_ANTHROPIC`                   | Set to `1` to un-gate the dormant Anthropic driver (off by default; portability).   |
 | `HARNESS_PROFILE`                         | Default profile directory.                                                          |
 | `LOOM_DATA_DIR`                           | Default data directory (state, atlases, artifacts).                                 |
 | `HARNESS_SQLITE_BACKEND`                  | Force `better-sqlite3` or `node:sqlite` (default: auto).                            |

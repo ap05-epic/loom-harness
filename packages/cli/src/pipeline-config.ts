@@ -93,6 +93,11 @@ export function resolvePipelineConfig(
   };
 }
 
+/** A truthy opt-in env flag (1/true/yes/on) — used to un-gate the dormant Anthropic path. */
+function optedIn(value: string | undefined): boolean {
+  return value != null && ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
+}
+
 /** Build the LLM gateway from a profile's llm config + resolved env. */
 export function gatewayFromProfile(profile: Profile): LlmGateway {
   const { driver, baseUrlEnv, apiKeyEnv } = profile.llm;
@@ -103,6 +108,15 @@ export function gatewayFromProfile(profile: Profile): LlmGateway {
     throw configError(
       'the copilot driver is disabled — Loom now uses the OpenAI/Azure key path only',
       'set llm.driver: openai with LLM_BASE_URL (…/openai/v1) + LLM_API_KEY (e.g. `loom init --driver openai`)',
+    );
+  }
+
+  // Azure/OpenAI is Loom's sole live connector. The Anthropic driver still ships (for portability
+  // outside the bank) but is dormant — un-gate it deliberately with LOOM_ENABLE_ANTHROPIC=1.
+  if (driver === 'anthropic' && !optedIn(profile.env.LOOM_ENABLE_ANTHROPIC)) {
+    throw configError(
+      'the anthropic driver is gated off — Loom connects only via the OpenAI/Azure link + key',
+      'set llm.driver: openai with LLM_BASE_URL (…/openai/v1) + LLM_API_KEY; or, for use outside the bank, set LOOM_ENABLE_ANTHROPIC=1 in .env to opt in',
     );
   }
 
@@ -173,6 +187,15 @@ export function describeProvider(profile: Profile): ProviderInfo {
       model,
       modelSelectable: false,
       note: 'The copilot driver is disabled; set llm.driver: openai with a key.',
+    };
+  }
+  if (driver === 'anthropic' && !optedIn(profile.env.LOOM_ENABLE_ANTHROPIC)) {
+    return {
+      driver,
+      auth: 'gated off — Loom connects only via the OpenAI/Azure link + key (set LOOM_ENABLE_ANTHROPIC=1 to opt in)',
+      model,
+      modelSelectable: false,
+      note: 'The anthropic path is dormant; Loom is OpenAI/Azure-only by default.',
     };
   }
   const keySet = Boolean(apiKeyEnv && profile.env[apiKeyEnv]);

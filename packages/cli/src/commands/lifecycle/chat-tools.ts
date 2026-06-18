@@ -423,6 +423,11 @@ export function buildChatTools(session: ChatSession): ChatTool[] {
           `app.baseUrl: ${p.app?.baseUrl ?? '(not set)'}`,
           `target.bRepo: ${p.target?.bRepo ?? 'b-repo (default)'}`,
           `eval.threshold: ${p.eval?.threshold ?? 1}%`,
+          // explore/crawl config — what `loom explore` needs to log itself in and walk the app
+          `crawl.startPath: ${p.crawl?.startPath ?? '(not set)'}`,
+          `crawl.faEnv: ${p.crawl?.faEnv ?? '(default fa_numbers)'}`,
+          `crawl.hydrateMs: ${p.crawl?.hydrateMs ?? '(none)'}`,
+          `app.cookiesPath: ${p.app?.cookiesPath ?? '(not set)'}`,
         ];
         const { cfg, problem } = resolveCfg(session);
         lines.push(
@@ -435,8 +440,9 @@ export function buildChatTools(session: ChatSession): ChatTool[] {
     tool(
       'configure_project',
       'Set up or update the project profile from what the user told you about their app. Collect ' +
-        'the values in conversation first, then call this. Writes loom.config.yaml — never secrets ' +
-        '(those go in .env).',
+        'the values in conversation first, then call this. Covers both the rebuild fields and the ' +
+        'explore/crawl fields (startPath, faEnv, hydrateMs) that make `loom explore` work without ' +
+        'hand-editing YAML. Writes loom.config.yaml — never secrets (those go in .env).',
       {
         type: 'object',
         properties: {
@@ -458,6 +464,25 @@ export function buildChatTools(session: ChatSession): ChatTool[] {
             type: 'string',
             description: 'saved SSO auth-state file, for login-gated apps',
           },
+          cookiesPath: {
+            type: 'string',
+            description: 'JSON file of browser cookies, reloaded each run (login-gated apps)',
+          },
+          startPath: {
+            type: 'string',
+            description:
+              'where `loom explore` starts crawling after auth (e.g. jsp/loginAction.do)',
+          },
+          faEnv: {
+            type: 'string',
+            description:
+              'env var holding the FA Quick-Search code the explorer types (default fa_numbers)',
+          },
+          hydrateMs: {
+            type: 'number',
+            description: 'ms to wait for late-AJAX menus to appear before reading a page',
+          },
+          maxStates: { type: 'number', description: 'cap on how many screens a crawl maps' },
         },
         additionalProperties: false,
       },
@@ -470,18 +495,41 @@ export function buildChatTools(session: ChatSession): ChatTool[] {
           bRepo?: string;
           threshold?: number;
           storageStatePath?: string;
+          cookiesPath?: string;
+          startPath?: string;
+          faEnv?: string;
+          hydrateMs?: number;
+          maxStates?: number;
         };
         const p = session.profile;
         const baseUrl = a.baseUrl ?? p.app?.baseUrl;
         const storageStatePath = a.storageStatePath ?? p.app?.storageStatePath;
+        const cookiesPath = a.cookiesPath ?? p.app?.cookiesPath;
+        // Merge any explore/crawl fields onto the existing crawl config (auth/exclude preserved).
+        const crawl =
+          a.startPath != null || a.faEnv != null || a.hydrateMs != null || a.maxStates != null
+            ? {
+                ...(p.crawl ?? {}),
+                ...(a.startPath != null ? { startPath: a.startPath } : {}),
+                ...(a.faEnv != null ? { faEnv: a.faEnv } : {}),
+                ...(a.hydrateMs != null ? { hydrateMs: a.hydrateMs } : {}),
+                ...(a.maxStates != null ? { maxStates: a.maxStates } : {}),
+              }
+            : p.crawl;
         const config: ProfileConfig = {
           project: a.project ?? p.project,
           llm: p.llm,
           source: a.strutsConfig ? { strutsConfig: a.strutsConfig } : p.source,
-          app: baseUrl ? { baseUrl, ...(storageStatePath ? { storageStatePath } : {}) } : p.app,
+          app: baseUrl
+            ? {
+                baseUrl,
+                ...(storageStatePath ? { storageStatePath } : {}),
+                ...(cookiesPath ? { cookiesPath } : {}),
+              }
+            : p.app,
           target: a.bRepo ? { bRepo: a.bRepo } : p.target,
           eval: a.threshold != null ? { ...(p.eval ?? {}), threshold: a.threshold } : p.eval,
-          crawl: p.crawl,
+          crawl,
           mcp: p.mcp,
           skills: p.skills,
         };

@@ -135,6 +135,57 @@ describe('chat tools — conversational project setup', () => {
     expect(out).toMatch(/project: fixture/);
     expect(out).toMatch(/not runnable yet/i);
   });
+
+  test('configure_project also sets up the painful explore/crawl fields', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'chat-explore-'));
+    try {
+      const s = session({
+        profile: {
+          project: 'baa',
+          dir: join(tmp, 'profile'),
+          dataDir: tmp,
+          env: {},
+          llm: { driver: 'openai', model: 'm' },
+          source: { strutsConfig: join(tmp, 'struts-config.xml') },
+          app: { baseUrl: 'http://legacy.app/' },
+        } as Profile,
+      });
+      const out = await run(s, 'configure_project', {
+        startPath: 'jsp/loginAction.do',
+        faEnv: 'fa_numbers',
+        hydrateMs: 1500,
+        cookiesPath: join(tmp, 'cookies.json'),
+      });
+      expect(out).toMatch(/saved/i);
+      // persisted to disk, and the app.baseUrl is preserved alongside the new crawl fields
+      const reloaded = loadProfile(join(tmp, 'profile'), { env: {} });
+      expect(reloaded.crawl?.startPath).toBe('jsp/loginAction.do');
+      expect(reloaded.crawl?.faEnv).toBe('fa_numbers');
+      expect(reloaded.crawl?.hydrateMs).toBe(1500);
+      expect(reloaded.app?.cookiesPath).toBe(join(tmp, 'cookies.json'));
+      expect(reloaded.app?.baseUrl).toBe('http://legacy.app/');
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test('show_profile surfaces the explore/crawl config', async () => {
+    const s = session({
+      profile: {
+        project: 'baa',
+        dir: resolve('/p'),
+        dataDir: resolve('/d'),
+        env: {},
+        llm: { driver: 'openai', model: 'm' },
+        app: { baseUrl: 'http://legacy.app/' },
+        crawl: { startPath: 'jsp/loginAction.do', faEnv: 'fa_numbers', hydrateMs: 1500 },
+      } as Profile,
+    });
+    const out = await run(s, 'show_profile');
+    expect(out).toMatch(/startPath/i);
+    expect(out).toMatch(/jsp\/loginAction\.do/);
+    expect(out).toMatch(/faEnv/i);
+  });
 });
 
 describe('chat tools — Hermes-grade code/file/exec + self-knowledge', () => {

@@ -65,8 +65,8 @@ flowchart LR
 
 Every "thinking" step — writing docs, writing the rebuild, deciding what to click, and now driving the chat — calls a model through one **gateway driver**:
 
-- **`openai`** — a direct OpenAI/Azure endpoint (`LLM_BASE_URL` + `LLM_API_KEY`). The default and only active path; it authenticates Azure's `…/openai/v1` surface out of the box.
-- **`anthropic`** — for portability outside the bank.
+- **`openai`** — a direct OpenAI/Azure endpoint (`LLM_BASE_URL` + `LLM_API_KEY`). The **sole live connector** — Loom's only connection point — and it authenticates Azure's `…/openai/v1` surface out of the box.
+- **`anthropic`** — present for portability outside the bank, but **gated off by default**: a `driver: anthropic` profile errors at gateway-build unless you opt in with `LOOM_ENABLE_ANTHROPIC=1`. So out of the box the Azure/OpenAI link + key is the only path that connects.
 
 > The `copilot` driver code still ships but is **disabled** — Loom is OpenAI/Azure-only (the agentic chat needs tool-calling, which the Copilot CLI doesn't surface). `loom models list` shows the active provider; `loom models test` probes it live.
 

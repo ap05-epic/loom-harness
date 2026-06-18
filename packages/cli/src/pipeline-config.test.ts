@@ -1,5 +1,5 @@
 import { join, resolve } from 'node:path';
-import { OpenAiDriver, type LlmGateway } from '@loom/agents';
+import { AnthropicDriver, OpenAiDriver, type LlmGateway } from '@loom/agents';
 import type { Profile } from '@loom/core';
 import { describe, expect, test } from 'vitest';
 import {
@@ -141,6 +141,22 @@ describe('gatewayFromProfile', () => {
     });
     expect(() => gatewayFromProfile(p)).toThrow(/api key|LLM_API_KEY/i);
   });
+
+  test('the anthropic driver is gated off by default — Loom is OpenAI/Azure-only', () => {
+    const p = profile({
+      llm: { driver: 'anthropic', model: 'claude', apiKeyEnv: 'LLM_API_KEY' },
+      env: { LLM_API_KEY: 'k' },
+    });
+    expect(() => gatewayFromProfile(p)).toThrow(/gated|only.*openai|openai.*only/i);
+  });
+
+  test('anthropic builds only when explicitly opted in (portability escape hatch)', () => {
+    const p = profile({
+      llm: { driver: 'anthropic', model: 'claude', apiKeyEnv: 'LLM_API_KEY' },
+      env: { LLM_API_KEY: 'k', LOOM_ENABLE_ANTHROPIC: '1' },
+    });
+    expect(gatewayFromProfile(p)).toBeInstanceOf(AnthropicDriver);
+  });
 });
 
 describe('describeProvider', () => {
@@ -156,5 +172,23 @@ describe('describeProvider', () => {
     );
     expect(info.modelSelectable).toBe(false);
     expect(info.auth).toMatch(/key/i);
+  });
+
+  test('anthropic: reported as gated off unless opted in', () => {
+    const info = describeProvider(
+      profile({ llm: { driver: 'anthropic', model: 'claude', apiKeyEnv: 'LLM_API_KEY' }, env: {} }),
+    );
+    expect(info.auth).toMatch(/gated|only/i);
+    expect(info.modelSelectable).toBe(false);
+  });
+
+  test('anthropic: opted in reports an Anthropic key', () => {
+    const info = describeProvider(
+      profile({
+        llm: { driver: 'anthropic', model: 'claude', apiKeyEnv: 'LLM_API_KEY' },
+        env: { LOOM_ENABLE_ANTHROPIC: '1' },
+      }),
+    );
+    expect(info.auth).toMatch(/anthropic/i);
   });
 });

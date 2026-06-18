@@ -6,6 +6,13 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.23 — 2026-06-18
+
+The Azure/OpenAI link + key is now Loom's **one and only** connection point, and the painful explore setup is now conversational (R9 Thrust E).
+
+- **Azure/OpenAI is the sole live connector.** The Anthropic driver still ships (for portability outside the bank) but is now **gated off by default**: a `driver: anthropic` profile errors at gateway-build unless you opt in with `LOOM_ENABLE_ANTHROPIC=1`. With the Copilot driver already disabled, the only path that connects out of the box is `LLM_BASE_URL` (…/openai/v1) + `LLM_API_KEY` — exactly the single Azure connection point asked for. `loom doctor` now says this **plainly** ("Loom connects only via the OpenAI/Azure link + key — present/…"), and `describeProvider` reports the gated state.
+- **Seamless explore setup in chat.** `configure_project` now also writes the explore/crawl fields — `startPath`, `faEnv`, `hydrateMs`, `maxStates`, and `cookiesPath` — so `loom chat` can interview you for what `loom explore` needs (where to start, the FA env var, how long to wait for late-AJAX menus) and save it, instead of you hand-editing `loom.config.yaml`. `show_profile` surfaces those fields too, and the chat system prompt knows to collect them conversationally.
+
 ## v1.3.22 — 2026-06-18
 
 `loom chat` is now a real coding/ops agent — it can read the codebase, run commands, know itself, and remember (R9 Thrust C; Hermes-grade).

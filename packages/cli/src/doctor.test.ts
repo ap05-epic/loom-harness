@@ -5,6 +5,7 @@ import { describe, expect, test } from 'vitest';
 import {
   dataDirCheck,
   gitTreeContaining,
+  llmConnectorStatus,
   proxyStatus,
   runChecks,
   type DoctorCheck,
@@ -77,5 +78,23 @@ describe('proxyStatus', () => {
       LLM_BASE_URL: 'https://api.example.com/v1',
     });
     expect(s).toMatch(/NOT in NO_PROXY/);
+  });
+});
+
+describe('llmConnectorStatus', () => {
+  test('plainly states the sole OpenAI/Azure connector and reports both creds present', () => {
+    const s = llmConnectorStatus({ LLM_BASE_URL: 'https://x/openai/v1', LLM_API_KEY: 'k' });
+    expect(s).toMatch(/openai|azure/i);
+    expect(s).toMatch(/only/i); // it's the *sole* connector — said plainly
+    expect(s).toMatch(/present/i);
+  });
+
+  test('flags a missing base URL or a missing key', () => {
+    expect(llmConnectorStatus({ LLM_API_KEY: 'k' })).toMatch(/base url|LLM_BASE_URL/i);
+    expect(llmConnectorStatus({ LLM_BASE_URL: 'https://x/openai/v1' })).toMatch(/key|LLM_API_KEY/i);
+  });
+
+  test('says nothing is configured yet when neither cred is present', () => {
+    expect(llmConnectorStatus({})).toMatch(/no .*creds|not set|set LLM_BASE_URL/i);
   });
 });

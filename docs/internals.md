@@ -220,10 +220,10 @@ interface LlmGateway {
 | Driver            | File                          | Status       | Notes                                                                                                                                                                                                                                       |
 | ----------------- | ----------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `OpenAiDriver`    | `drivers/openai-driver.ts`    | **Active**   | OpenAI-compatible. Sends **both** `Authorization: Bearer` and `api-key` headers, so Azure's `/openai/v1` surface authenticates with no extra config. Classifies 401/404/429/5xx into actionable errors and retries once on 429/5xx/network. |
-| `AnthropicDriver` | `drivers/anthropic-driver.ts` | **Active**   | Kept for portability outside the bank. Pure request/response mappers.                                                                                                                                                                       |
+| `AnthropicDriver` | `drivers/anthropic-driver.ts` | **Gated**    | Kept for portability outside the bank but dormant: `gatewayFromProfile` only constructs it when `LOOM_ENABLE_ANTHROPIC=1` is set, else errors with a switch-to-openai hint. Pure request/response mappers.                                  |
 | `CopilotDriver`   | `drivers/copilot-driver.ts`   | **Disabled** | Code intact, but `gatewayFromProfile` never constructs it (see [ADR 0001](decisions/0001-model-b-direct-llm.md)). Copilot doesn't surface tool calls, so the agent loop can't run on it.                                                    |
 
-**Loom is OpenAI/Azure-only.** A `driver: copilot` profile parses (the enum still includes it) but errors at gateway-build with a hint to switch to the key path.
+**Loom's sole live connector is the OpenAI/Azure link + key.** A `driver: copilot` profile parses but errors at gateway-build; a `driver: anthropic` profile is gated off unless `LOOM_ENABLE_ANTHROPIC=1` opts in — so the only connection point out of the box is `LLM_BASE_URL` (…/openai/v1) + `LLM_API_KEY`.
 
 ### `AgentRunner` — the inner loop
 
