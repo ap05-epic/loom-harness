@@ -56,6 +56,32 @@ describe('exploreApp (live AI-explorer)', () => {
   );
 
   test.runIf(liveOk)(
+    'waits for a slow page to STOP adding controls before reading (not just the first one)',
+    async () => {
+      // "First" is present immediately; "Second" appears 800ms later. A slow legacy app (BAA) loads
+      // its controls in stages — reading at the first control grabs a half-loaded page, and the next
+      // action lands on nothing. The explorer must wait until the control set settles.
+      const html =
+        '<!doctype html><html><body><button>First</button>' +
+        '<script>setTimeout(function(){' +
+        'var b=document.createElement("button");b.textContent="Second";' +
+        'document.body.appendChild(b);},800);</script></body></html>';
+      const startUrl = `data:text/html,${encodeURIComponent(html)}`;
+      const result = await exploreApp({
+        startUrl,
+        chooser: async () => null, // don't act — just check what was read after the page settled
+        hydrateMs: 5000,
+        maxStates: 2,
+        maxVisits: 1,
+      });
+      const texts = result.states.flatMap((s) => collectText(s.dom));
+      expect(texts.some((t) => t.includes('First'))).toBe(true);
+      expect(texts.some((t) => t.includes('Second'))).toBe(true); // proves it waited for stability
+    },
+    30_000,
+  );
+
+  test.runIf(liveOk)(
     'discovers a screen reachable only by clicking a button (no link to follow)',
     async () => {
       const html =

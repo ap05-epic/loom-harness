@@ -83,8 +83,10 @@ export function exploreOptionsFrom(
     chooser: llmChooser(gatewayFromProfile(profile), profile.llm.model, Object.keys(secrets)),
     storageStatePath: profile.app?.storageStatePath,
     cookiesPath: profile.app?.cookiesPath,
-    // Legacy homes (BAA) load their menu via AJAX after settle — wait for controls by default.
-    hydrateMs: c.hydrateMs ?? 12_000,
+    // Legacy homes (BAA) load their menu/content in stages over several seconds — wait for the page
+    // to settle (controls stop appearing) up to this ceiling. Generous by default; raise crawl.hydrateMs
+    // for an especially slow app (the ceiling is only paid when the page keeps changing).
+    hydrateMs: c.hydrateMs ?? 20_000,
     // Save a PNG of every screen — the visual map, and the baseline the rebuild's parity test needs.
     captureScreenshots: true,
     maxStates: maxStatesOverride ?? c.maxStates,

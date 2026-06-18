@@ -6,6 +6,12 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.13 — 2026-06-18
+
+`loom explore` is patient with slow legacy apps — it waits for a page to finish loading before it reads or acts.
+
+- **Wait for the page to settle, not just appear.** The explorer used to read a screen the moment the _first_ control showed up. On a slow app that loads its menu/content in stages (BAA), that meant acting on a half-loaded page — typing the FA code or hitting submit before the control was ready — so the walk stalled, taking shot after shot of the same screen. It now waits until the set of controls **stops changing** (stable across reads) before reading, bounded by `crawl.hydrateMs`. The default ceiling is raised to 20s, and since it's only paid while the page is still changing, fast pages are unaffected — raise `crawl.hydrateMs` further for an especially slow app.
+
 ## v1.3.12 — 2026-06-18
 
 `loom atlas` now works in the zero-config `~/.loom` home — no more "no atlas path" after `loom map`.

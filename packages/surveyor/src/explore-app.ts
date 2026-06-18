@@ -100,12 +100,18 @@ export async function exploreApp(options: ExploreAppOptions): Promise<ExploreRes
       dom: DomSnapshot;
       screenshot?: Buffer;
     }> => {
-      // Some legacy homes load their menu via AJAX after the page settles (BAA's #pmenu) — give the
-      // page a bounded chance to surface interactive controls before we read it. Breaks early as soon
-      // as anything is clickable/fillable, so non-hydrating pages pay nothing.
+      // Slow legacy apps (BAA) load their menu/content in stages over several seconds. Reading at the
+      // FIRST control grabs a half-loaded page — and the next action (typing the FA code, hitting
+      // submit) lands on a control that isn't ready, so the walk stalls on one screen. Wait until the
+      // control set STOPS changing (stable across two reads) before reading, bounded by hydrateMs.
+      // A page that never hydrates (0 controls) still waits the full window, then a diagnosis fires.
       const deadline = Date.now() + hydrateMs;
-      while (Date.now() < deadline && (await session.enumerateCandidates()).length === 0) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+      let prev = -1;
+      let count = (await session.enumerateCandidates()).length;
+      while (Date.now() < deadline && (count === 0 || count !== prev)) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        prev = count;
+        count = (await session.enumerateCandidates()).length;
       }
       const dom = await session.captureCombined();
       const screenshot = options.captureScreenshots ? await session.screenshot() : undefined;
