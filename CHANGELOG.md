@@ -6,6 +6,13 @@ All notable changes are recorded here. The project follows semantic versioning; 
 
 _Nothing yet._
 
+## v1.3.14 — 2026-06-18
+
+`loom explore` now shows what a stuck screen offered, and is steered to pick a search result.
+
+- **Stuck-step visibility.** When an action doesn't reach a new screen, the live log now appends the controls the page actually offered — `clicked "Submit" (no new screen) — page offers: "Close" | "AB12345 — Jane Doe" | …`. So a walk that stalls on a search-results overlay shows immediately whether the result rows are even being detected (vs. a screen-identity issue) — turning a silent stall into a diagnosis.
+- **Result-selection nudge.** The chooser is now told: if a search opened a list of results (a search overlay / results table), click the matching result to open it instead of searching again — the overlay→detail step BAA's FA Quick Search needs.
+
 ## v1.3.13 — 2026-06-18
 
 `loom explore` is patient with slow legacy apps — it waits for a page to finish loading before it reads or acts.

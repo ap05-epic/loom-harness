@@ -51,6 +51,8 @@ export function buildChoosePrompt(ctx: ChooserContext, secretRefs: string[] = []
         'trust those lists. On a LOGIN screen, fill $user and $pass then click submit/login. Fill $fa ' +
         'into a Quick Search / FA box ONCE per session to set the working context — if the session ' +
         'list already shows you filled $fa, do NOT fill it again; it persists, so navigate instead. ' +
+        'If a search opened a list of RESULTS (a search overlay or a results table of matches), CLICK ' +
+        'the matching result row/link to open it — do NOT search again. ' +
         'Otherwise click a control you have NOT clicked yet that likely reveals a screen NOT yet seen ' +
         '(menus, tabs, "view"/"detail"/"open"); do not re-click a home/menu you already used or ' +
         're-open a screen already found. You MAY submit LOGIN and SEARCH forms to navigate. NEVER ' +

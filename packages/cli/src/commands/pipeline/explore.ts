@@ -117,7 +117,13 @@ function describeStep(s: ExploreStep): string {
   const target = s.label ? `"${s.label}"` : s.action.ref;
   const what =
     s.action.kind === 'fill' ? `typed ${s.action.value} into ${target}` : `clicked ${target}`;
-  return s.isNew ? `${what} → new screen (${s.discovered})` : what;
+  if (s.isNew) return `${what} → new screen (${s.discovered})`;
+  // No new screen — show what the page actually offered, so a stuck walk (e.g. a search-results
+  // overlay whose rows we couldn't act on) is debuggable: you can see if the result rows are even there.
+  const offered = s.candidates?.length
+    ? ` — page offers: ${s.candidates.slice(0, 20).join(' | ')}`
+    : '';
+  return `${what} (no new screen)${offered}`;
 }
 
 export const exploreCommand = defineCommand({

@@ -74,6 +74,8 @@ export type ExploreStep = {
   discovered: number;
   /** Whether this step revealed a screen not seen before. */
   isNew: boolean;
+  /** Labels of the controls the page offered this step — so a stuck walk shows what was actionable. */
+  candidates?: string[];
 };
 
 export type ExploreOptions = {
@@ -260,11 +262,18 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
     takenByScreen.get(curKey)!.push(action);
     const label = cands.find((c) => c.ref === action.ref)?.label;
     history.push({ action, label });
+    const offered = cands.map((c) => c.label).filter((l): l is string => Boolean(l));
     const before = states.length;
     cur = await driver.activate(action);
     visited += 1;
     curKey = record(cur);
-    opts.onStep?.({ action, label, discovered: states.length, isNew: states.length > before });
+    opts.onStep?.({
+      action,
+      label,
+      discovered: states.length,
+      isNew: states.length > before,
+      candidates: offered,
+    });
   }
 
   return { states, visited, truncated: states.length >= maxStates || visited >= maxVisits };

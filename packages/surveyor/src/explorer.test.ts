@@ -285,6 +285,21 @@ describe('explore', () => {
     expect(result.states[0]!.screenshot).toEqual(shot); // the image rides through to the Ui atlas
   });
 
+  test('onStep surfaces the candidate labels available each step (debugging a stuck walk)', async () => {
+    const driver = new FakeMenuApp();
+    const offered: string[][] = [];
+    await explore({
+      driver,
+      chooser: heuristicChooser,
+      maxStates: 10,
+      maxVisits: 10,
+      onStep: (s) => offered.push(s.candidates ?? []),
+    });
+    // The first action was chosen from the start screen's controls — they're reported on the step so
+    // a stuck page (e.g. a search overlay we couldn't act on) shows exactly what it offered.
+    expect(offered[0]).toEqual(expect.arrayContaining(['Open A', 'Open B']));
+  });
+
   test('reports each step via onStep (live progress + diagnostics)', async () => {
     const driver = new FakeMenuApp();
     const steps: Array<{ kind: string; label?: string; isNew: boolean }> = [];
