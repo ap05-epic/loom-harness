@@ -98,19 +98,20 @@ Multiple modernization projects coexist in a **workspace** (`loom-workspace.yaml
 
 A pnpm monorepo of strict-TypeScript, ESM packages under `@loom/*`:
 
-| Package           | Responsibility                                                                                        |
-| ----------------- | ----------------------------------------------------------------------------------------------------- |
-| `core`            | domain types · SQLite + migrations · append-only event log + spans · config                           |
-| `agents`          | LLM gateway (OpenAI/Azure · Anthropic) · the `AgentRunner` tool loop · guards · model-adaptive packer |
-| `cartographer`    | legacy scanners → CodeAtlas · repo-map · documentation pass                                           |
-| `surveyor`        | Playwright crawler → UI atlas (screenshots, DOM, styles, forms, nav)                                  |
-| `evaluator`       | the deterministic, LLM-free parity judge + coverage ledger                                            |
-| `conductor`       | the durable pipeline · shift mode · gates · integration evals                                         |
-| `mission-control` | the local observability dashboard + human-in-the-loop decisions                                       |
-| `skills`          | SKILL.md runtime · progressive disclosure · DIGIT export                                              |
-| `tokens`          | the `@loom/tokens` design palette                                                                     |
-| `cli`             | the `loom` operator surface                                                                           |
-| `test-kit`        | mock LLM server + fixtures                                                                            |
+| Package               | Responsibility                                                                                        |
+| --------------------- | ----------------------------------------------------------------------------------------------------- |
+| `core`                | domain types · SQLite + migrations · append-only event log + spans · config                           |
+| `agents`              | LLM gateway (OpenAI/Azure · Anthropic) · the `AgentRunner` tool loop · guards · model-adaptive packer |
+| `cartographer`        | legacy scanners → CodeAtlas · repo-map · documentation pass                                           |
+| `surveyor`            | Playwright crawler → UI atlas (screenshots, DOM, styles, forms, nav)                                  |
+| `evaluator`           | the deterministic, LLM-free parity judge + coverage ledger                                            |
+| `conductor`           | the durable pipeline · shift mode · gates · integration evals                                         |
+| `mission-control`     | the local observability server (read-only over `loom.db`) + human-in-the-loop decisions               |
+| `mission-control-web` | the **React** Mission Control SPA (dashboard + Live Crawl), served by `mission-control`               |
+| `skills`              | SKILL.md runtime · progressive disclosure · DIGIT export                                              |
+| `tokens`              | the `@loom/tokens` design palette                                                                     |
+| `cli`                 | the `loom` operator surface                                                                           |
+| `test-kit`            | mock LLM server + fixtures                                                                            |
 
 ## Brand palette
 
@@ -140,7 +141,7 @@ pnpm format      # prettier check
 
 ## Status
 
-**v1.2.1** — the `--json` envelope and the exit-code table are frozen as stable (see the [CHANGELOG](CHANGELOG.md)). The foundations, the full MAP → CRAWL → PLAN → BUILD → EVAL → FIX pipeline, the deterministic evaluator, skills/memory recall, shift-mode safeguards, the typed-tool + hook substrate, MCP, parallel workers, the agentic `loom chat` (now with conversational project setup), and Mission Control (a live kanban board + worker fleet view + the gate/question inbox) are all in place and tested (770+ tests, CI green on Linux + Windows). The live frontier is onboarding the first real application end-to-end on a pod.
+**v1.4.0** — the `--json` envelope and the exit-code table are frozen as stable (see the [CHANGELOG](CHANGELOG.md)). The foundations, the full MAP → CRAWL → PLAN → BUILD → EVAL → FIX pipeline, the deterministic evaluator, skills/memory recall, shift-mode safeguards, the typed-tool + hook substrate, MCP, parallel workers, the agentic `loom chat` (code search · `run_command` · memory recall · conversational project setup), and a real **[React Mission Control](docs/cockpit.md)** — the kanban board + live worker fleet + actionable inbox + cost/eval charts, a **Live Crawl** view that watches `loom explore` map an app in real time (every move + a live token-burn line), screen drill-down, and a capabilities inventory — are all in place and tested (880+ tests, CI green on Linux + Windows). Azure/OpenAI is the sole live connector. The live frontier is onboarding the first real application end-to-end on a pod.
 
 New to the codebase? Read the [internals deep-dive](docs/internals.md) — the whole system, end to end, in one document.
 
