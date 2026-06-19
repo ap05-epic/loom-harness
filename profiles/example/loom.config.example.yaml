@@ -65,7 +65,12 @@ skills:
 # visible state in a runtime screenshot + the JSP/CSS/JS source — never infer UI from
 # backend payloads.
 
-# ── Optional: external MCP servers to attach (shown in Mission Control) ───────
-# mcp:
-#   servers:
-#     - { name: playwright, command: npx, args: ['@playwright/mcp'] }
+# ── External MCP servers — curated defaults the harness benefits from ─────────
+# Their tools join the agent toolset (via the @loom/mcp → ChatTool adapter) and appear in the
+# Mission Control inventory. Both are stdio servers launched on demand; drop either if unwanted.
+mcp:
+  servers:
+    # Playwright — drive + inspect the running legacy app (supports CRAWL, EVAL, and dogfood QA).
+    - { name: playwright, command: npx, args: ['-y', '@playwright/mcp@latest'] }
+    # Context7 — current React / Playwright / library docs in context (fewer stale-API mistakes).
+    - { name: context7, command: npx, args: ['-y', '@upstash/context7-mcp@latest'] }
