@@ -2,14 +2,18 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { MIGRATIONS, openDb, runMigrations, TaskStore, type SqliteDatabase } from '@loom/core';
 import {
+  runBuildStage,
+  runCrawlStage,
+  runMapStage,
   runPipeline,
+  runPlanStage,
   type BuildStrategy,
   type RunPipelineResult,
   type ShiftLimits,
 } from '@loom/conductor';
 import type { LlmGateway } from '@loom/agents';
 import type { Profile } from '@loom/core';
-import { EXIT, notFoundError } from '../../errors.js';
+import { EXIT, notFoundError, usageError } from '../../errors.js';
 import { defineCommand } from '../../registry.js';
 import {
   gatewayFromProfile,
@@ -255,6 +259,187 @@ export const runCommand = defineCommand({
         otlpEndpoint: ctx.env.OTEL_EXPORTER_OTLP_ENDPOINT,
         webhookUrl: ctx.env.LOOM_WEBHOOK_URL ?? ctx.env.HARNESS_WEBHOOK_URL,
       });
+      if (result.failed > 0) ctx.requestExit(EXIT.BLOCKED);
+      return toRunData(result);
+    } finally {
+      db.close();
+    }
+  },
+  render: renderRun,
+});
+
+const RUN_ID_OPT = {
+  flags: '--run <id>',
+  describe: 'operate within a specific run id (default: latest running)',
+};
+
+export const planCommand = defineCommand({
+  name: 'plan',
+  group: 'pipeline',
+  describe: 'Plan a run — create one work package per target screen (the PLAN stage), then stop',
+  exitCodes: ['CONFIG', 'NETWORK', 'RUNTIME'],
+  options: [SCREENS_OPT, MODEL_OPT, RUN_ID_OPT],
+  examples: ['loom plan', 'loom plan --screens login,list'],
+  async run(ctx, input) {
+    const profile = ctx.requireProfile();
+    const cfg = resolvePipelineConfig(profile, overrides(input.options));
+    const gateway = gatewayFromProfile(profile);
+    const db = openHarnessDb(cfg);
+    try {
+      const store = new TaskStore(db);
+      const runId =
+        (input.options.run as string | undefined) ?? store.latestRun({ status: 'running' })?.id;
+      const args = pipelineArgs(
+        cfg,
+        db,
+        gateway,
+        ctx.version,
+        buildStrategyFor(profile),
+        undefined,
+        false,
+        undefined,
+        undefined,
+      );
+      const result = await runPlanStage(runId ? { ...args, runId } : args);
+      return toRunData(result);
+    } finally {
+      db.close();
+    }
+  },
+  render: renderRun,
+});
+
+export const buildCommand = defineCommand({
+  name: 'build',
+  group: 'pipeline',
+  describe:
+    'Run the BUILD stage (BUILD → EVAL → FIX) over the planned screens, then finish the run',
+  exitCodes: ['CONFIG', 'NETWORK', 'BLOCKED', 'NOT_FOUND', 'RUNTIME'],
+  options: [
+    SCREENS_OPT,
+    MODEL_OPT,
+    THRESHOLD_OPT,
+    MAX_ATTEMPTS_OPT,
+    SHIFT_OPT,
+    BUDGET_TOKENS_OPT,
+    HOURS_OPT,
+    STOP_AFTER_OPT,
+    BUDGET_PER_SCREEN_OPT,
+    REFLECT_OPT,
+    MAX_PARALLEL_OPT,
+    SKILL_PROMOTE_AFTER_OPT,
+    RUN_ID_OPT,
+  ],
+  examples: ['loom build', 'loom build --run run_abc123 --shift'],
+  async run(ctx, input) {
+    const profile = ctx.requireProfile();
+    const cfg = resolvePipelineConfig(profile, overrides(input.options));
+    const gateway = gatewayFromProfile(profile);
+    const db = openHarnessDb(cfg);
+    const stopFlag = stopFlagFor({ db: cfg.dbPath })!;
+    rmSync(stopFlag, { force: true }); // clear any stale stop request before building
+    try {
+      const store = new TaskStore(db);
+      const runId =
+        (input.options.run as string | undefined) ?? store.latestRun({ status: 'running' })?.id;
+      if (!runId) {
+        throw notFoundError(
+          'run to build',
+          'latest',
+          'plan one with `loom plan` (or use `loom run`)',
+        );
+      }
+      const result = await runBuildStage({
+        ...pipelineArgs(
+          cfg,
+          db,
+          gateway,
+          ctx.version,
+          buildStrategyFor(profile),
+          shiftFrom(input.options),
+          Boolean(input.options.reflect),
+          input.options.maxParallel !== undefined ? Number(input.options.maxParallel) : undefined,
+          input.options.skillPromoteAfter !== undefined
+            ? Number(input.options.skillPromoteAfter)
+            : undefined,
+        ),
+        runId,
+        shouldStop: () => existsSync(stopFlag),
+        otlpEndpoint: ctx.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+        webhookUrl: ctx.env.LOOM_WEBHOOK_URL ?? ctx.env.HARNESS_WEBHOOK_URL,
+      });
+      if (result.failed > 0) ctx.requestExit(EXIT.BLOCKED);
+      return toRunData(result);
+    } finally {
+      db.close();
+    }
+  },
+  render: renderRun,
+});
+
+export const stageCommand = defineCommand({
+  name: 'stage',
+  group: 'pipeline',
+  describe:
+    'Run a single pipeline stage (map | plan | crawl | build) against a run — the BAA stage-graph seam',
+  exitCodes: ['CONFIG', 'NETWORK', 'BLOCKED', 'USAGE', 'RUNTIME'],
+  options: [
+    { flags: '--name <stage>', describe: 'which stage: map | plan | crawl | build' },
+    RUN_ID_OPT,
+    SCREENS_OPT,
+    MODEL_OPT,
+    THRESHOLD_OPT,
+    MAX_ATTEMPTS_OPT,
+    SHIFT_OPT,
+    BUDGET_TOKENS_OPT,
+    HOURS_OPT,
+    STOP_AFTER_OPT,
+    BUDGET_PER_SCREEN_OPT,
+    REFLECT_OPT,
+    MAX_PARALLEL_OPT,
+  ],
+  examples: ['loom stage --name map', 'loom stage --name build --run run_abc123'],
+  async run(ctx, input) {
+    const name = String(input.options.name ?? '');
+    if (!['map', 'plan', 'crawl', 'build'].includes(name)) {
+      throw usageError(`unknown stage "${name}"`, 'choose one of: map, plan, crawl, build');
+    }
+    const profile = ctx.requireProfile();
+    const cfg = resolvePipelineConfig(profile, overrides(input.options));
+    const gateway = gatewayFromProfile(profile);
+    const db = openHarnessDb(cfg);
+    const stopFlag = stopFlagFor({ db: cfg.dbPath })!;
+    rmSync(stopFlag, { force: true });
+    try {
+      const store = new TaskStore(db);
+      const runId =
+        (input.options.run as string | undefined) ?? store.latestRun({ status: 'running' })?.id;
+      const base = pipelineArgs(
+        cfg,
+        db,
+        gateway,
+        ctx.version,
+        buildStrategyFor(profile),
+        shiftFrom(input.options),
+        Boolean(input.options.reflect),
+        input.options.maxParallel !== undefined ? Number(input.options.maxParallel) : undefined,
+        undefined,
+      );
+      const opts = {
+        ...base,
+        ...(runId ? { runId } : {}),
+        shouldStop: () => existsSync(stopFlag),
+        otlpEndpoint: ctx.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+        webhookUrl: ctx.env.LOOM_WEBHOOK_URL ?? ctx.env.HARNESS_WEBHOOK_URL,
+      };
+      const result =
+        name === 'map'
+          ? await runMapStage(opts)
+          : name === 'plan'
+            ? await runPlanStage(opts)
+            : name === 'crawl'
+              ? await runCrawlStage(opts)
+              : await runBuildStage(opts);
       if (result.failed > 0) ctx.requestExit(EXIT.BLOCKED);
       return toRunData(result);
     } finally {

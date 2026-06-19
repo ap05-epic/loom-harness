@@ -8,6 +8,7 @@
     { "path": "packages/core" },
     { "path": "packages/test-kit" },
     { "path": "packages/agents" },
+    { "path": "packages/chat" },
     { "path": "packages/evaluator" },
     { "path": "packages/browser" },
     { "path": "packages/cartographer" },

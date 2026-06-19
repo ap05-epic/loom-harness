@@ -13,7 +13,13 @@ import { evalCommand } from './pipeline/eval.js';
 import { mapCommand } from './pipeline/map.js';
 import { crawlCommand } from './pipeline/crawl.js';
 import { exploreCommand } from './pipeline/explore.js';
-import { runCommand, resumeCommand } from './pipeline/run.js';
+import {
+  runCommand,
+  resumeCommand,
+  planCommand,
+  buildCommand,
+  stageCommand,
+} from './pipeline/run.js';
 import { stopCommand } from './pipeline/stop.js';
 import { wpListCommand, wpShowCommand } from './work/wp.js';
 import { gatesListCommand, gatesApproveCommand, gatesRejectCommand } from './work/gates.js';
@@ -62,6 +68,9 @@ export const ALL_COMMANDS = [
   nextCommand,
   mapCommand,
   crawlCommand,
+  planCommand,
+  buildCommand,
+  stageCommand,
   exploreCommand,
   evalCommand,
   runCommand,

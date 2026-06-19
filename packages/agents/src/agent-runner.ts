@@ -21,6 +21,11 @@ export type RunOptions = {
   maxTokensPerTurn?: number;
   /** Cap each tool result at this many characters before it enters the transcript (hygiene). */
   maxToolOutputChars?: number;
+  /**
+   * Fired with each assistant message as it is produced — before its tool calls run — so a UI can
+   * stream the turn (the gateway is non-streaming, so this is per-message, not per-token).
+   */
+  onStep?: (message: ChatMessage) => void;
   /** Injectable clock for tests. */
   now?: () => number;
 };
@@ -89,11 +94,13 @@ export class AgentRunner {
       usage.inputTokens += response.usage.inputTokens;
       usage.outputTokens += response.usage.outputTokens;
 
-      transcript.push({
+      const assistant: ChatMessage = {
         role: 'assistant',
         content: response.content,
         toolCalls: response.toolCalls.length ? response.toolCalls : undefined,
-      });
+      };
+      transcript.push(assistant);
+      options.onStep?.(assistant);
 
       if (usage.inputTokens + usage.outputTokens > options.guards.maxTokens) {
         return tripped('token_budget');
@@ -125,11 +132,26 @@ export class AgentRunner {
         if (!tool) {
           result = `Unknown tool: ${call.name}. Available tools: ${[...byName.keys()].join(', ')}`;
         } else {
-          try {
-            const args: unknown = call.arguments ? JSON.parse(call.arguments) : {};
-            result = await tool.execute(args);
-          } catch (error) {
-            result = `Error: ${error instanceof Error ? error.message : String(error)}`;
+          // Parse the arguments on their own so a malformed tool call is repaired with a clear,
+          // actionable message (and the tool never runs on garbage) — distinct from a tool failure.
+          // The retry is bounded by the iteration / no-progress guards above.
+          let args: unknown = {};
+          let argsOk = true;
+          if (call.arguments) {
+            try {
+              args = JSON.parse(call.arguments);
+            } catch {
+              argsOk = false;
+            }
+          }
+          if (!argsOk) {
+            result = `Invalid JSON arguments for ${call.name}: ${call.arguments.slice(0, 200)}. Resend the tool call with valid JSON.`;
+          } else {
+            try {
+              result = await tool.execute(args);
+            } catch (error) {
+              result = `Error: ${error instanceof Error ? error.message : String(error)}`;
+            }
           }
         }
         transcript.push({

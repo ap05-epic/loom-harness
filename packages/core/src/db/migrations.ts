@@ -191,4 +191,29 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX idx_spans_run ON spans(run_id, started_at);
     `,
   },
+  {
+    version: 7,
+    name: 'chat',
+    sql: `
+      CREATE TABLE chat_sessions (
+        id TEXT PRIMARY KEY,
+        project TEXT NOT NULL,
+        title TEXT,
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      );
+      CREATE TABLE chat_messages (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT,
+        tool_calls_json TEXT,
+        tool_call_id TEXT,
+        ts TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      );
+      CREATE INDEX idx_chat_messages_session ON chat_messages(session_id, seq);
+      CREATE INDEX idx_chat_sessions_project ON chat_sessions(project, updated_at);
+    `,
+  },
 ];

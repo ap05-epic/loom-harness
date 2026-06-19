@@ -80,6 +80,18 @@ importers:
         specifier: workspace:*
         version: link:../test-kit
 
+  packages/chat:
+    dependencies:
+      '@loom/agents':
+        specifier: workspace:*
+        version: link:../agents
+      '@loom/core':
+        specifier: workspace:*
+        version: link:../core
+      '@loom/tools':
+        specifier: workspace:*
+        version: link:../tools
+
   packages/cli:
     dependencies:
       '@inquirer/prompts':
@@ -94,6 +106,9 @@ importers:
       '@loom/cartographer':
         specifier: workspace:*
         version: link:../cartographer
+      '@loom/chat':
+        specifier: workspace:*
+        version: link:../chat
       '@loom/conductor':
         specifier: workspace:*
         version: link:../conductor
@@ -212,6 +227,12 @@ importers:
 
   packages/mission-control:
     dependencies:
+      '@loom/agents':
+        specifier: workspace:*
+        version: link:../agents
+      '@loom/chat':
+        specifier: workspace:*
+        version: link:../chat
       '@loom/core':
         specifier: workspace:*
         version: link:../core
@@ -221,6 +242,9 @@ importers:
       '@loom/tokens':
         specifier: workspace:*
         version: link:../tokens
+      '@loom/tools':
+        specifier: workspace:*
+        version: link:../tools
 
   packages/mission-control-web:
     dependencies:

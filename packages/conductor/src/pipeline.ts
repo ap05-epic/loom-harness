@@ -219,13 +219,31 @@ function fixFeedback(
   return lines.join('\n');
 }
 
+/** The discrete pipeline stages, in order. `runPipeline` runs them all; the stage entry points
+ * ({@link runMapStage} …) run exactly one against the same run — the seam the BAA stage graph
+ * drives, each as its own resumable `loom <stage>` invocation. */
+export type PipelineStage = 'map' | 'plan' | 'crawl' | 'build';
+const ALL_STAGES: ReadonlySet<PipelineStage> = new Set<PipelineStage>([
+  'map',
+  'plan',
+  'crawl',
+  'build',
+]);
+
 /**
  * The conductor's outer loop for one run: MAP → CRAWL (baseline) → PLAN → per
  * screen BUILD → EVAL → FIX, persisting every transition to the TaskStore and
  * EventLog. Resumable: call again with the same `runId` after a crash and it
  * reconciles interrupted attempts and finishes the unfinished work packages.
+ *
+ * `stages` selects which stages run (default: all). The setup (atlas, targets, the WP index) always
+ * runs, so a single-stage call still reconstructs what it needs; `finish` runs only when the terminal
+ * BUILD stage is included, leaving the run open between discrete stages.
  */
-export async function runPipeline(options: RunPipelineOptions): Promise<RunPipelineResult> {
+export async function runPipeline(
+  options: RunPipelineOptions,
+  stages: ReadonlySet<PipelineStage> = ALL_STAGES,
+): Promise<RunPipelineResult> {
   const store = new TaskStore(options.db);
   const events = new EventLog(options.db);
   const skills = new SkillStore(options.db);
@@ -260,8 +278,7 @@ export async function runPipeline(options: RunPipelineOptions): Promise<RunPipel
     }
   };
 
-  // ---- MAP ----
-  store.setRunStage(run.id, 'map');
+  // ---- Setup (always — every stage needs the atlas, the targets, and the WP index) ----
   const { atlas, jspFiles } = mapOnce(options.strutsConfigPath, options.atlasPath);
   const repoMapText = repoMap(atlas, { project: options.project });
   const jspSource = (logicalPath: string): string | undefined => {
@@ -272,203 +289,239 @@ export async function runPipeline(options: RunPipelineOptions): Promise<RunPipel
     const allScreens = atlas.screens();
     const wanted = new Set(options.screens ?? allScreens.map((s) => s.key));
     const targets = allScreens.filter((s) => wanted.has(s.key));
-    events.append({
-      type: 'map.completed',
-      runId: run.id,
-      payload: { screens: allScreens.map((s) => s.key), targets: targets.map((s) => s.key) },
-    });
+    // The WP index — built once here so a resumed crawl/build stage sees the plan's work packages.
+    const byScreen = new Map(store.listWorkPackages(run.id).map((w) => [w.screenKey, w]));
+
+    // ---- MAP ----
+    if (stages.has('map')) {
+      store.setRunStage(run.id, 'map');
+      events.append({
+        type: 'map.completed',
+        runId: run.id,
+        payload: { screens: allScreens.map((s) => s.key), targets: targets.map((s) => s.key) },
+      });
+    }
 
     // ---- PLAN (idempotent: one WP per screen, reused on resume) ----
-    store.setRunStage(run.id, 'plan');
-    const byScreen = new Map(store.listWorkPackages(run.id).map((w) => [w.screenKey, w]));
-    for (const screen of targets) {
-      if (byScreen.has(screen.key)) continue;
-      const wp = store.createWorkPackage({
-        runId: run.id,
-        title: `Rebuild ${screen.key}`,
-        screenKey: screen.key,
-        spec: screen,
-      });
-      store.setWorkPackageState(wp.id, 'planned');
-      byScreen.set(screen.key, store.getWorkPackage(wp.id)!);
-      events.append({
-        type: 'wp.created',
-        runId: run.id,
-        wpId: wp.id,
-        payload: { screenKey: screen.key, title: wp.title },
-      });
+    if (stages.has('plan')) {
+      store.setRunStage(run.id, 'plan');
+      for (const screen of targets) {
+        if (byScreen.has(screen.key)) continue;
+        const wp = store.createWorkPackage({
+          runId: run.id,
+          title: `Rebuild ${screen.key}`,
+          screenKey: screen.key,
+          spec: screen,
+        });
+        store.setWorkPackageState(wp.id, 'planned');
+        byScreen.set(screen.key, store.getWorkPackage(wp.id)!);
+        events.append({
+          type: 'wp.created',
+          runId: run.id,
+          wpId: wp.id,
+          payload: { screenKey: screen.key, title: wp.title },
+        });
+      }
+      // A discrete PLAN (the BAA graph's plan node — not part of a full `loom run`) opens a plan gate
+      // the human approves before BUILD. `GateStore.open` is idempotent for the same run+type.
+      if (!stages.has('build')) {
+        gates.open({
+          scopeType: 'run',
+          scopeId: run.id,
+          type: 'plan',
+          payload: { screens: targets.map((s) => s.key) },
+        });
+      }
     }
 
     // ---- CRAWL (capture the legacy baseline once per screen) ----
-    store.setRunStage(run.id, 'crawl');
-    mkdirSync(baselineDir, { recursive: true });
-    for (const screen of targets) {
-      const wp = byScreen.get(screen.key)!;
-      if (!shouldProcess(wp.state)) continue;
-      const baselinePath = join(baselineDir, `${screen.key}.png`);
-      if (existsSync(baselinePath)) continue;
-      const url = screenUrl(screen, options.legacyBaseUrl);
-      const png = await capture({ url, viewport });
-      writeFileSync(baselinePath, png);
-      events.append({
-        type: 'crawl.captured',
-        runId: run.id,
-        wpId: wp.id,
-        payload: { screenKey: screen.key, url },
-      });
+    if (stages.has('crawl')) {
+      store.setRunStage(run.id, 'crawl');
+      mkdirSync(baselineDir, { recursive: true });
+      for (const screen of targets) {
+        const wp = byScreen.get(screen.key);
+        if (!wp || !shouldProcess(wp.state)) continue;
+        const baselinePath = join(baselineDir, `${screen.key}.png`);
+        if (existsSync(baselinePath)) continue;
+        const url = screenUrl(screen, options.legacyBaseUrl);
+        const png = await capture({ url, viewport });
+        writeFileSync(baselinePath, png);
+        events.append({
+          type: 'crawl.captured',
+          runId: run.id,
+          wpId: wp.id,
+          payload: { screenKey: screen.key, url },
+        });
+      }
     }
 
     // ---- BUILD → EVAL → FIX (with shift safeguards) ----
-    store.setRunStage(run.id, 'build');
-    const clock = options.now ?? Date.now;
-    const shiftStart = clock();
-    const maxParallel = Math.max(1, options.maxParallel ?? 1);
-    let cumulativeTokens = 0;
-    let consecutiveFailures = 0;
+    // A discrete BUILD (not part of a full `loom run`) waits for an open plan gate to be approved.
+    const planBlocked =
+      stages.has('build') &&
+      !stages.has('plan') &&
+      gates.list({ status: 'open' }).some((g) => g.type === 'plan' && g.scopeId === run.id);
     let stopReason: StopReason | null = null;
+    if (stages.has('build') && !planBlocked) {
+      store.setRunStage(run.id, 'build');
+      const clock = options.now ?? Date.now;
+      const shiftStart = clock();
+      const maxParallel = Math.max(1, options.maxParallel ?? 1);
+      // On resume, seed the cumulative spend from prior attempts so the shift budget guard accounts
+      // for what a crashed shift already spent — it was reset to 0, letting a resumed shift blow past
+      // its token budget. consecutiveFailures intentionally restarts: a resume is a fresh segment.
+      const priorUsage = store.usageRollup(run.id);
+      let cumulativeTokens = priorUsage.inputTokens + priorUsage.outputTokens;
+      let consecutiveFailures = 0;
 
-    // A bounded worker pool over the unfinished screens. maxParallel=1 is the
-    // serial path (unchanged); >1 builds independent screens concurrently. Shift
-    // guards are checked before each dispatch — once any trips, in-flight screens
-    // finish but no new one starts, so the run stops gracefully, never thrashing.
-    const buildQueue = targets.filter((s) => shouldProcess(byScreen.get(s.key)!.state));
-    let cursor = 0;
-    const shiftTripped = (): StopReason | null => {
-      // Cooperative stop (`loom stop`) — honored even when no shift limits are set.
-      if (options.shouldStop?.()) return 'stop_requested';
-      const shift = options.shift;
-      if (!shift) return null;
-      if (shift.maxWallClockMs !== undefined && clock() - shiftStart > shift.maxWallClockMs) {
-        return 'wall_clock';
-      }
-      if (shift.maxTokens !== undefined && cumulativeTokens >= shift.maxTokens) {
-        return 'budget_tokens';
-      }
-      if (
-        shift.stopAfterConsecutiveFailures !== undefined &&
-        consecutiveFailures >= shift.stopAfterConsecutiveFailures
-      ) {
-        return 'stop_the_line';
-      }
-      return null;
-    };
-    const buildWorker = async (): Promise<void> => {
-      for (;;) {
-        if (stopReason) return;
-        const tripped = shiftTripped();
-        if (tripped) {
-          stopReason = tripped;
-          return;
-        }
-        const i = cursor;
-        cursor += 1;
-        if (i >= buildQueue.length) return;
-        const screen = buildQueue[i]!;
-        const wp = byScreen.get(screen.key)!;
-        const outcome = await processWorkPackage({
-          store,
-          events,
-          runId: run.id,
-          atlas,
-          screen,
-          wpId: wp.id,
-          baseline: readFileSync(join(baselineDir, `${screen.key}.png`)),
-          bRepoDir: join(options.bRepoRoot, screen.key),
-          legacyUrl: screenUrl(screen, options.legacyBaseUrl),
-          jspSource,
-          repoMapText,
-          skills,
-          memory,
-          gates,
-          questions,
-          spans,
-          project: options.project,
-          reflectOnPass: options.reflectOnPass ?? false,
-          skillsDir: options.skillsDir,
-          skillPromoteAfter: options.skillPromoteAfter ?? DEFAULT_PROMOTE_AFTER,
-          gateway: options.gateway,
-          model: options.model,
-          build,
-          capture,
-          domCapture,
-          viewport,
-          threshold,
-          maxAttempts,
-          maxTokensPerWp: options.shift?.maxTokensPerWp,
-          buildGuards: options.buildGuards,
-          now: options.now,
-          notify,
-        });
-        cumulativeTokens += outcome.tokensUsed;
-        consecutiveFailures = outcome.passed ? 0 : consecutiveFailures + 1;
-        // A heartbeat per screen — the shift dashboard's progress / "is it wedged?" signal.
-        emitHeartbeat(options.db, run.id);
-      }
-    };
-    await Promise.all(Array.from({ length: maxParallel }, () => buildWorker()));
-    if (stopReason) {
-      events.append({
-        type: 'shift.stopped',
-        runId: run.id,
-        payload: { reason: stopReason, cumulativeTokens },
+      // A bounded worker pool over the unfinished screens. maxParallel=1 is the
+      // serial path (unchanged); >1 builds independent screens concurrently. Shift
+      // guards are checked before each dispatch — once any trips, in-flight screens
+      // finish but no new one starts, so the run stops gracefully, never thrashing.
+      const buildQueue = targets.filter((s) => {
+        const wp = byScreen.get(s.key);
+        return wp ? shouldProcess(wp.state) : false;
       });
-      await notify(
-        'shift_stopped',
-        `Loom shift stopped: ${stopReason} (project ${options.project}, run ${run.id}).`,
-      );
-    }
-
-    // ---- INTEGRATION EVAL (cumulative cross-screen regression gate) ----
-    // Re-check every passed screen against its baseline: a shared-component change can't silently
-    // regress an earlier screen. Skipped on an early shift stop (the run is incomplete anyway).
-    if (!stopReason) {
-      const passedScreens = targets
-        .filter((s) => store.getWorkPackage(byScreen.get(s.key)!.id)!.state === 'passed')
-        .map((s) => ({
-          screenKey: s.key,
-          bRepoDir: join(options.bRepoRoot, s.key),
-          baseline: readFileSync(join(baselineDir, `${s.key}.png`)),
-          legacyUrl: screenUrl(s, options.legacyBaseUrl),
-        }));
-      if (passedScreens.length > 1) {
-        const regressions = await integrationEval({
-          screens: passedScreens,
-          capture,
-          domCapture,
-          viewport,
-          threshold,
-        });
-        if (regressions.length) {
-          for (const r of regressions) {
-            store.setWorkPackageState(byScreen.get(r.screenKey)!.id, 'failed');
+      let cursor = 0;
+      const shiftTripped = (): StopReason | null => {
+        // Cooperative stop (`loom stop`) — honored even when no shift limits are set.
+        if (options.shouldStop?.()) return 'stop_requested';
+        const shift = options.shift;
+        if (!shift) return null;
+        if (shift.maxWallClockMs !== undefined && clock() - shiftStart > shift.maxWallClockMs) {
+          return 'wall_clock';
+        }
+        if (shift.maxTokens !== undefined && cumulativeTokens >= shift.maxTokens) {
+          return 'budget_tokens';
+        }
+        if (
+          shift.stopAfterConsecutiveFailures !== undefined &&
+          consecutiveFailures >= shift.stopAfterConsecutiveFailures
+        ) {
+          return 'stop_the_line';
+        }
+        return null;
+      };
+      const buildWorker = async (): Promise<void> => {
+        for (;;) {
+          if (stopReason) return;
+          const tripped = shiftTripped();
+          if (tripped) {
+            stopReason = tripped;
+            return;
           }
-          events.append({
-            type: 'integration.regression',
+          const i = cursor;
+          cursor += 1;
+          if (i >= buildQueue.length) return;
+          const screen = buildQueue[i]!;
+          const wp = byScreen.get(screen.key)!;
+          const outcome = await processWorkPackage({
+            store,
+            events,
             runId: run.id,
-            payload: { regressions },
+            atlas,
+            screen,
+            wpId: wp.id,
+            baseline: readFileSync(join(baselineDir, `${screen.key}.png`)),
+            bRepoDir: join(options.bRepoRoot, screen.key),
+            legacyUrl: screenUrl(screen, options.legacyBaseUrl),
+            jspSource,
+            repoMapText,
+            skills,
+            memory,
+            gates,
+            questions,
+            spans,
+            project: options.project,
+            reflectOnPass: options.reflectOnPass ?? false,
+            skillsDir: options.skillsDir,
+            skillPromoteAfter: options.skillPromoteAfter ?? DEFAULT_PROMOTE_AFTER,
+            gateway: options.gateway,
+            model: options.model,
+            build,
+            capture,
+            domCapture,
+            viewport,
+            threshold,
+            maxAttempts,
+            maxTokensPerWp: options.shift?.maxTokensPerWp,
+            buildGuards: options.buildGuards,
+            now: options.now,
+            notify,
           });
-        } else {
-          events.append({
-            type: 'integration.passed',
-            runId: run.id,
-            payload: { screens: passedScreens.length },
+          cumulativeTokens += outcome.tokensUsed;
+          consecutiveFailures = outcome.passed ? 0 : consecutiveFailures + 1;
+          // A heartbeat per screen — the shift dashboard's progress / "is it wedged?" signal.
+          emitHeartbeat(options.db, run.id);
+        }
+      };
+      await Promise.all(Array.from({ length: maxParallel }, () => buildWorker()));
+      if (stopReason) {
+        events.append({
+          type: 'shift.stopped',
+          runId: run.id,
+          payload: { reason: stopReason, cumulativeTokens },
+        });
+        await notify(
+          'shift_stopped',
+          `Loom shift stopped: ${stopReason} (project ${options.project}, run ${run.id}).`,
+        );
+      }
+
+      // ---- INTEGRATION EVAL (cumulative cross-screen regression gate) ----
+      // Re-check every passed screen against its baseline: a shared-component change can't silently
+      // regress an earlier screen. Skipped on an early shift stop (the run is incomplete anyway).
+      if (!stopReason) {
+        const passedScreens = targets
+          .filter((s) => store.getWorkPackage(byScreen.get(s.key)!.id)!.state === 'passed')
+          .map((s) => ({
+            screenKey: s.key,
+            bRepoDir: join(options.bRepoRoot, s.key),
+            baseline: readFileSync(join(baselineDir, `${s.key}.png`)),
+            legacyUrl: screenUrl(s, options.legacyBaseUrl),
+          }));
+        if (passedScreens.length > 1) {
+          const regressions = await integrationEval({
+            screens: passedScreens,
+            capture,
+            domCapture,
+            viewport,
+            threshold,
           });
+          if (regressions.length) {
+            for (const r of regressions) {
+              store.setWorkPackageState(byScreen.get(r.screenKey)!.id, 'failed');
+            }
+            events.append({
+              type: 'integration.regression',
+              runId: run.id,
+              payload: { regressions },
+            });
+          } else {
+            events.append({
+              type: 'integration.passed',
+              runId: run.id,
+              payload: { screens: passedScreens.length },
+            });
+          }
         }
       }
-    }
+    } // end BUILD stage
 
-    // ---- finish ----
-    const outcomes = targets.map((screen): ScreenOutcome => {
-      const wp = store.getWorkPackage(byScreen.get(screen.key)!.id)!;
-      const best = store.bestEval(wp.id);
-      return {
-        screenKey: screen.key,
-        wpId: wp.id,
-        state: wp.state,
-        diffPercent: best?.visualPct ?? null,
-        attempts: store.listAttempts(wp.id).length,
-      };
-    });
+    // ---- finish (outcomes always; the run is finalized only when the terminal BUILD stage ran) ----
+    const outcomes = targets
+      .filter((s) => byScreen.has(s.key))
+      .map((screen): ScreenOutcome => {
+        const wp = store.getWorkPackage(byScreen.get(screen.key)!.id)!;
+        const best = store.bestEval(wp.id);
+        return {
+          screenKey: screen.key,
+          wpId: wp.id,
+          state: wp.state,
+          diffPercent: best?.visualPct ?? null,
+          attempts: store.listAttempts(wp.id).length,
+        };
+      });
     const passed = outcomes.filter((o) => o.state === 'passed').length;
     const failed = outcomes.length - passed;
     const targetKeys = targets.map((s) => s.key);
@@ -477,39 +530,41 @@ export async function runPipeline(options: RunPipelineOptions): Promise<RunPipel
       crawled: targetKeys,
       built: outcomes.filter((o) => o.state === 'passed').map((o) => o.screenKey),
     });
-    const status = stopReason ? 'stopped' : failed === 0 ? 'completed' : 'failed';
-    store.finishRun(run.id, status);
-    events.append({
-      type: 'run.finished',
-      runId: run.id,
-      payload: { passed, failed, coveragePct: coverage.coveragePct, status, stopReason },
-    });
-    await notify(
-      'run_finished',
-      `Loom run ${run.id} finished (${status}): ${passed} passed, ${failed} not passed, coverage ${coverage.coveragePct}%.`,
-    );
-    // Memory consolidation (L5): a periodic, loss-safe compaction at the run boundary so project
-    // facts stay bounded as the Reflector re-discovers the same conventions across shifts. Dedup
-    // only here (no recency cap) — it never drops a distinct fact.
-    const consolidation = memory.consolidate(options.project);
-    if (consolidation.deduped > 0 || consolidation.trimmed > 0) {
-      events.append({ type: 'memory.consolidated', runId: run.id, payload: consolidation });
-    }
-    // Optional OTLP export (L7): stream this run's spans to a collector if one is configured.
-    // Best-effort and isolated — a collector being down must never fail or stall the run.
-    if (options.otlpEndpoint) {
-      try {
-        const out = await exportSpansOtlp({
-          endpoint: options.otlpEndpoint,
-          spans: spans.listForRun(run.id),
-        });
-        events.append({ type: 'spans.exported', runId: run.id, payload: out });
-      } catch (error) {
-        events.append({
-          type: 'spans.export_failed',
-          runId: run.id,
-          payload: { error: error instanceof Error ? error.message : String(error) },
-        });
+    if (stages.has('build') && !planBlocked) {
+      const status = stopReason ? 'stopped' : failed === 0 ? 'completed' : 'failed';
+      store.finishRun(run.id, status);
+      events.append({
+        type: 'run.finished',
+        runId: run.id,
+        payload: { passed, failed, coveragePct: coverage.coveragePct, status, stopReason },
+      });
+      await notify(
+        'run_finished',
+        `Loom run ${run.id} finished (${status}): ${passed} passed, ${failed} not passed, coverage ${coverage.coveragePct}%.`,
+      );
+      // Memory consolidation (L5): a periodic, loss-safe compaction at the run boundary so project
+      // facts stay bounded as the Reflector re-discovers the same conventions across shifts. Dedup
+      // only here (no recency cap) — it never drops a distinct fact.
+      const consolidation = memory.consolidate(options.project);
+      if (consolidation.deduped > 0 || consolidation.trimmed > 0) {
+        events.append({ type: 'memory.consolidated', runId: run.id, payload: consolidation });
+      }
+      // Optional OTLP export (L7): stream this run's spans to a collector if one is configured.
+      // Best-effort and isolated — a collector being down must never fail or stall the run.
+      if (options.otlpEndpoint) {
+        try {
+          const out = await exportSpansOtlp({
+            endpoint: options.otlpEndpoint,
+            spans: spans.listForRun(run.id),
+          });
+          events.append({ type: 'spans.exported', runId: run.id, payload: out });
+        } catch (error) {
+          events.append({
+            type: 'spans.export_failed',
+            runId: run.id,
+            payload: { error: error instanceof Error ? error.message : String(error) },
+          });
+        }
       }
     }
     return { runId: run.id, screens: outcomes, passed, failed, coverage, stopReason };
@@ -517,6 +572,21 @@ export async function runPipeline(options: RunPipelineOptions): Promise<RunPipel
     atlas.close();
   }
 }
+
+/**
+ * Run a single pipeline stage against one run — the seam the BAA stage graph drives, each spawned as
+ * its own resumable `loom <stage>` process so the conductor stays the single writer. Each reuses
+ * {@link runPipeline}'s shared setup (atlas, targets, the WP index); only the named stage executes,
+ * and the run is finalized only by the terminal BUILD stage. Idempotent + resumable like the full run.
+ */
+export const runMapStage = (options: RunPipelineOptions): Promise<RunPipelineResult> =>
+  runPipeline(options, new Set<PipelineStage>(['map']));
+export const runPlanStage = (options: RunPipelineOptions): Promise<RunPipelineResult> =>
+  runPipeline(options, new Set<PipelineStage>(['plan']));
+export const runCrawlStage = (options: RunPipelineOptions): Promise<RunPipelineResult> =>
+  runPipeline(options, new Set<PipelineStage>(['crawl']));
+export const runBuildStage = (options: RunPipelineOptions): Promise<RunPipelineResult> =>
+  runPipeline(options, new Set<PipelineStage>(['build']));
 
 type ProcessArgs = {
   store: TaskStore;

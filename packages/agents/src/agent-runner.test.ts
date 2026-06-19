@@ -2,7 +2,7 @@ import { MockLlmServer } from '@loom/test-kit';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { AgentRunner } from './agent-runner.js';
 import { OpenAiDriver } from './drivers/openai-driver.js';
-import type { ToolDef } from './types.js';
+import type { ChatMessage, LlmGateway, ToolDef } from './types.js';
 
 let server: MockLlmServer;
 let baseUrl: string;
@@ -202,5 +202,67 @@ describe('AgentRunner', () => {
     expect(result.usage.inputTokens).toBeGreaterThan(0);
     expect(result.usage.outputTokens).toBeGreaterThan(0);
     expect(result.transcript.length).toBeGreaterThanOrEqual(4);
+  });
+
+  test('a malformed tool-call argument is reported as an arguments error and the tool is not run', async () => {
+    let executed = false;
+    const echo: ToolDef = {
+      name: 'echo',
+      description: 'echoes',
+      parameters: { type: 'object', properties: { text: { type: 'string' } } },
+      execute: () => {
+        executed = true;
+        return 'ran';
+      },
+    };
+    let i = 0;
+    const gw: LlmGateway = {
+      complete: () => {
+        i += 1;
+        if (i === 1) {
+          return Promise.resolve({
+            content: null,
+            toolCalls: [{ id: 'c1', name: 'echo', arguments: '{not valid json' }],
+            usage: { inputTokens: 1, outputTokens: 1 },
+            finishReason: 'tool_calls',
+          });
+        }
+        return Promise.resolve({
+          content: 'ok then',
+          toolCalls: [],
+          usage: { inputTokens: 1, outputTokens: 1 },
+          finishReason: 'stop',
+        });
+      },
+    };
+    const result = await new AgentRunner(gw).run({
+      model: 'm',
+      messages: [{ role: 'user', content: 'go' }],
+      tools: [echo],
+      guards: GUARDS,
+    });
+    expect(result.status).toBe('completed');
+    expect(executed).toBe(false); // a tool with unparseable args must not run
+    const toolMsg = result.transcript.find((m) => m.role === 'tool');
+    expect(String(toolMsg?.content)).toMatch(/invalid json arguments/i); // a clear, actionable repair message
+  });
+
+  test('onStep fires once per assistant message, with content + tool calls, before tool execution', async () => {
+    server.enqueueToolCall('echo', { text: 'one' });
+    server.enqueueText('final answer');
+    const steps: ChatMessage[] = [];
+    const result = await makeRunner().run({
+      model: 'm',
+      messages: [{ role: 'user', content: 'go' }],
+      tools: [echoTool],
+      guards: GUARDS,
+      onStep: (m) => steps.push(m),
+    });
+    expect(result.status).toBe('completed');
+    // one step for the tool-call turn, one for the final-text turn — so a UI can stream each
+    expect(steps).toHaveLength(2);
+    expect(steps[0]).toMatchObject({ role: 'assistant' });
+    expect(steps[0]?.role === 'assistant' && steps[0].toolCalls?.[0]?.name).toBe('echo');
+    expect(steps[1]).toMatchObject({ role: 'assistant', content: 'final answer' });
   });
 });

@@ -13,7 +13,8 @@ import {
   TaskStore,
   type Profile,
 } from '@loom/core';
-import { buildChatTools, type ChatSession } from './chat-tools.js';
+import { buildChatTools } from './tools.js';
+import type { ChatSession } from './session.js';
 
 function session(over: Partial<ChatSession> = {}): ChatSession {
   const db = openDb(':memory:');
@@ -86,57 +87,8 @@ describe('chat tools — read + inbox', () => {
   });
 });
 
-describe('chat tools — pipeline tools degrade gracefully on a minimal profile', () => {
-  test('map returns a friendly config message when source.strutsConfig is missing', async () => {
-    const out = await run(session(), 'map');
-    expect(out).toMatch(/can't map yet/i);
-    expect(out).toMatch(/struts/i);
-  });
-
-  test('run returns a friendly config message on a minimal profile', async () => {
-    expect(await run(session(), 'run')).toMatch(/can't run yet/i);
-  });
-});
-
 describe('chat tools — conversational project setup', () => {
-  test('configure_project writes the profile so the project becomes runnable', async () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'chat-cfg-'));
-    try {
-      const s = session({
-        profile: {
-          project: 'baa',
-          dir: join(tmp, 'profile'),
-          dataDir: tmp,
-          env: {},
-          llm: { driver: 'openai', model: 'm' },
-        } as Profile,
-      });
-      // a bare profile can't run yet (no source/app)
-      expect(await run(s, 'map')).toMatch(/can't map yet/i);
-      // set the two required fields conversationally
-      const out = await run(s, 'configure_project', {
-        strutsConfig: join(tmp, 'struts-config.xml'),
-        baseUrl: 'http://legacy.app/',
-      });
-      expect(out).toMatch(/saved/i);
-      // the session reloaded its profile → now runnable (map fails on the missing file, not config)
-      expect(await run(s, 'map')).not.toMatch(/can't map yet/i);
-      // and it persisted to disk
-      expect(loadProfile(join(tmp, 'profile'), { env: {} }).app?.baseUrl).toBe(
-        'http://legacy.app/',
-      );
-    } finally {
-      rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-
-  test('show_profile reports what is missing on a minimal profile', async () => {
-    const out = await run(session(), 'show_profile');
-    expect(out).toMatch(/project: fixture/);
-    expect(out).toMatch(/not runnable yet/i);
-  });
-
-  test('configure_project also sets up the painful explore/crawl fields', async () => {
+  test('configure_project persists the rebuild + explore/crawl fields', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'chat-explore-'));
     try {
       const s = session({
@@ -167,6 +119,15 @@ describe('chat tools — conversational project setup', () => {
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
+  });
+
+  test('show_profile reports the injected readiness on a minimal profile', async () => {
+    const out = await run(
+      session({ readiness: () => ({ ready: false, problem: 'source.strutsConfig' }) }),
+      'show_profile',
+    );
+    expect(out).toMatch(/project: fixture/);
+    expect(out).toMatch(/not runnable yet — source\.strutsConfig/i);
   });
 
   test('show_profile surfaces the explore/crawl config', async () => {
@@ -227,8 +188,8 @@ describe('chat tools — Hermes-grade code/file/exec + self-knowledge', () => {
     }
   });
 
-  test('self-knowledge: list_tools includes the new tools; list_commands knows explore', async () => {
-    const s = session();
+  test('list_tools includes the code tools; list_commands surfaces the injected command list', async () => {
+    const s = session({ commands: [{ name: 'explore', describe: 'walk the running app' }] });
     expect(await run(s, 'list_tools')).toMatch(/search_code/);
     expect(await run(s, 'list_commands')).toMatch(/explore/);
   });

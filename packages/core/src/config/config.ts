@@ -97,6 +97,12 @@ const skillsSchema = z.object({
 
 const profileSchema = z.object({
   project: z.string().min(1),
+  /**
+   * The learning root this project binds to (the loom analog of Hermes's HERMES_HOME). Defaults to
+   * `project`; set the same name across projects to share profile-tier memory + accumulated skills,
+   * and switch it to start fresh. Per-project `loom.db` stays isolated regardless (ADR 0006).
+   */
+  profile: z.string().min(1).optional(),
   llm: llmSchema,
   source: sourceSchema.optional(),
   app: appSchema.optional(),

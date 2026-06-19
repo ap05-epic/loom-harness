@@ -1,28 +1,48 @@
-import { AgentRunner, type ChatMessage, type LlmGateway, type ToolDef } from '@loom/agents';
-import { MemoryStore, SkillStore, type SqliteDatabase } from '@loom/core';
+import {
+  AgentRunner,
+  type ChatMessage,
+  type LlmGateway,
+  type ToolDef,
+  type Usage,
+} from '@loom/agents';
+import { MemoryStore, SkillStore, type ProfileStore, type SqliteDatabase } from '@loom/core';
 import {
   checkPermission,
   type PermissionPolicy,
   type PermissionPrompt,
   type ToolRisk,
 } from '@loom/tools';
-import type { ChatTool } from './chat-tools.js';
+import type { ChatTool } from './session.js';
 
 /**
  * Recall the most relevant project facts + active skills for this turn and format them for the
  * system prompt — context packing, not a tool (the agent shouldn't have to ask). Per-turn + cheap;
  * injected as an ephemeral system message so the base prompt stays cache-stable.
  */
-export function packRecall(db: SqliteDatabase, project: string, userText: string): string {
+export function packRecall(
+  db: SqliteDatabase,
+  project: string,
+  userText: string,
+  opts: { profile?: ProfileStore } = {},
+): string {
   const terms = userText
     .split(/\W+/)
     .map((w) => w.toLowerCase())
     .filter((w) => w.length >= 3);
   if (terms.length === 0) return '';
+  // Three tiers merged for the turn: profile-wide knowledge (cross-project, the learning root),
+  // then this project's facts, then relevant skills.
+  const profileFacts = opts.profile?.recall(terms, 4) ?? [];
   const facts = new MemoryStore(db).recall(project, { terms, kind: 'project_fact', limit: 6 });
   const skills = new SkillStore(db).recall(project, { terms, limit: 4 });
-  if (!facts.length && !skills.length) return '';
+  if (!profileFacts.length && !facts.length && !skills.length) return '';
   const parts = ['## Recalled project context (use if relevant)'];
+  if (profileFacts.length)
+    parts.push(
+      `Profile knowledge (applies across this profile's projects):\n${profileFacts
+        .map((m) => `- ${m.title}: ${m.body}`)
+        .join('\n')}`,
+    );
   if (facts.length) parts.push(`Facts:\n${facts.map((m) => `- ${m.title}: ${m.body}`).join('\n')}`);
   if (skills.length)
     parts.push(`Skills:\n${skills.map((k) => `- ${k.name}: ${k.description}`).join('\n')}`);
@@ -44,9 +64,13 @@ export const CHAT_SYSTEM_PROMPT = [
   '- search_code / read_file / list_files — read the repo (read-only; never write).',
   '- read_doc — read Loom’s own docs under docs/ (concepts, guides, decisions, reference).',
   '- list_tools / list_commands / list_skills — your own tools, the CLI commands, the skills.',
-  '- run_command — run a shell command (curl, git, node, a build). This is the ONLY tool',
-  '  that affects the machine; the user approves every run. Say what you will run and why',
-  '  first, and prefer read-only commands. Everything else is read-only.',
+  '- write_file / edit_file — create or modify files in the workspace (protected paths like .env,',
+  '  .git, node_modules, loom.config.yaml are refused). The user approves each write.',
+  '- run_command — run a shell command (curl, git, node, a build). The user approves every run; say',
+  '  what you will run and why first, and prefer read-only commands.',
+  '- memory_remember / memory_recall — persist + recall durable facts. PROACTIVELY remember salient',
+  '  conventions, preferences, and decisions as you learn them, without being asked; use',
+  "  scope:profile for cross-cutting process/preferences shared across this profile's projects.",
   'When asked "how does X work" or "where is Y", SEARCH and READ rather than guessing,',
   'and cite file paths. If recalled project memory is provided, trust it.',
   '',
@@ -83,6 +107,11 @@ export type AgenticTurnOptions = {
   guards?: { maxIterations?: number; maxTokens?: number; maxWallClockMs?: number };
   /** Fired as each tool starts/finishes, so the view can show live progress. */
   onTool?: (e: { name: string; phase: 'start' | 'done'; ok?: boolean; summary?: string }) => void;
+  /**
+   * Fired with each assistant message as it is produced (before its tool calls run) — the seam a
+   * browser surface streams over SSE. The gateway is non-streaming, so this is per-message.
+   */
+  onMessage?: (message: ChatMessage) => void;
 };
 
 /**
@@ -93,7 +122,7 @@ export type AgenticTurnOptions = {
 export async function agenticChatTurn(
   gateway: LlmGateway,
   opts: AgenticTurnOptions,
-): Promise<{ history: ChatMessage[]; finalText: string | null }> {
+): Promise<{ history: ChatMessage[]; finalText: string | null; usage: Usage }> {
   const riskOf = (name: string): ToolRisk =>
     opts.tools.find((t) => t.def.name === name)?.risk ?? 'expensive';
 
@@ -135,6 +164,7 @@ export async function agenticChatTurn(
       maxTokens: opts.guards?.maxTokens ?? 400_000,
       maxWallClockMs: opts.guards?.maxWallClockMs ?? 30 * 60_000,
     },
+    onStep: opts.onMessage,
   });
-  return { history: result.transcript, finalText: result.finalText };
+  return { history: result.transcript, finalText: result.finalText, usage: result.usage };
 }

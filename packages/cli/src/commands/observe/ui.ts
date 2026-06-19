@@ -1,8 +1,10 @@
 import { spawn } from 'node:child_process';
 import { isAbsolute, join } from 'node:path';
-import { openDb, type Profile } from '@loom/core';
+import { openDb, ProfileStore, type Profile } from '@loom/core';
 import { defaultWebDistDir, startMissionControl, type McpInfo } from '@loom/mission-control';
 import { requireExistingDb } from '../../db-path.js';
+import { homeDataDir } from '../../workspace.js';
+import { gatewayFromProfile } from '../../pipeline-config.js';
 import { defineCommand } from '../../registry.js';
 import type { CliContext } from '../../context.js';
 
@@ -54,6 +56,11 @@ export const uiCommand = defineCommand({
       name: s.name,
       description: [s.command, ...(s.args ?? [])].join(' '),
     }));
+    // The profile learning root (cross-project memory + skills) — opened once, shared by every chat
+    // turn, fresh when you switch profiles. Bound by `profile:` in loom.config.yaml (default: project).
+    const profileStore = profile
+      ? new ProfileStore(homeDataDir(ctx.env), profile.profile ?? profile.project)
+      : undefined;
     const mc = await startMissionControl({
       db,
       port,
@@ -65,12 +72,51 @@ export const uiCommand = defineCommand({
       exploreShotsDir: profile?.dataDir ? join(profile.dataDir, 'explore-shots') : undefined,
       // Serve the built React SPA when present; the server falls back to the vanilla dashboard.
       webDistDir: defaultWebDistDir(),
+      // Enable the browser Generic Chat surface when a profile is configured — it drives the SAME
+      // agent loop as `loom chat`. The file/exec tools are confined to the cwd `loom ui` ran in.
+      chat: profile
+        ? {
+            gateway: gatewayFromProfile(profile),
+            model: profile.llm.model,
+            profile,
+            root: ctx.cwd,
+            version: ctx.version,
+            profileStore,
+            homeDir: homeDataDir(ctx.env),
+          }
+        : undefined,
+      // Enable the BAA stage graph's stage triggers: each spawns a detached `loom stage` child so the
+      // conductor (via the CLI) stays the single writer and the work survives a UI restart.
+      baa: profile?.dataDir
+        ? {
+            spawnStage: (stage, runId) => {
+              const args = [
+                process.argv[1]!,
+                'stage',
+                '--name',
+                stage,
+                '--data-dir',
+                profile.dataDir!,
+              ];
+              if (runId) args.push('--run', runId);
+              const child = spawn(process.execPath, args, {
+                cwd: ctx.cwd,
+                detached: true,
+                stdio: 'ignore',
+                env: process.env,
+              });
+              child.unref();
+              return { pid: child.pid };
+            },
+          }
+        : undefined,
     });
     ctx.sink.line(`Mission Control → ${mc.url}  (Ctrl-C to stop)`);
     if (input.options.open) openBrowser(mc.url);
     // Serve until interrupted, then shut down cleanly.
     await new Promise<void>((resolve) => process.once('SIGINT', () => resolve()));
     await mc.stop();
+    profileStore?.close();
     db.close();
     return { url: mc.url, port: mc.port };
   },

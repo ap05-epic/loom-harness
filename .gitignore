@@ -49,3 +49,6 @@ docs/brand/
 # OS noise
 .DS_Store
 Thumbs.db
+
+# Playwright MCP scratch (screenshots/logs)
+.playwright-mcp/

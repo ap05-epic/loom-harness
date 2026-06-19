@@ -1,95 +1,38 @@
+import { existsSync, readdirSync, readFileSync, type Dirent } from 'node:fs';
+import { join, relative } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, rmSync, statSync, type Dirent } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
-import type { LlmGateway, ToolDef } from '@loom/agents';
-import { discoverLegacyWebapp, mapProject } from '@loom/cartographer';
-import { runPipeline } from '@loom/conductor';
 import {
   applyGateDecision,
   GateStore,
   loadProfile,
-  MIGRATIONS,
   QuestionStore,
-  runMigrations,
   saveProfile,
   SkillStore,
   TaskStore,
-  type Profile,
   type ProfileConfig,
-  type SqliteDatabase,
 } from '@loom/core';
-import type { ToolRisk } from '@loom/tools';
-import { resolvePipelineConfig, type ResolvedPipeline } from '../../pipeline-config.js';
-
-/** Everything the chat tools operate on — opened once, bound into each tool for the session. */
-export type ChatSession = {
-  db: SqliteDatabase;
-  gateway: LlmGateway;
-  profile: Profile;
-  version: string;
-  /** The directory the code/file/exec tools are confined to (the repo/project the user is in). */
-  root: string;
-  /** The repo `docs/` dir for `read_doc` (when chat runs from the clone), if present. */
-  docsDir?: string;
-};
-
-const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'coverage', '.loom', '.loom-data']);
-
-/** Resolve a path under `root`, or null if it escapes (the file/exec confinement guard). */
-function confine(root: string, p: string): string | null {
-  const abs = resolve(root, p);
-  return relative(root, abs).startsWith('..') ? null : abs;
-}
-
-/** Recursive substring grep — the fallback when ripgrep isn't installed. */
-function jsGrep(root: string, query: string, glob: string | undefined, limit: number): string[] {
-  const out: string[] = [];
-  const q = query.toLowerCase();
-  const needle = glob?.replace(/\*/g, '');
-  const walk = (dir: string): void => {
-    if (out.length >= limit) return;
-    let entries: Dirent[];
-    try {
-      entries = readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const e of entries) {
-      if (out.length >= limit) return;
-      if (e.isDirectory()) {
-        if (!SKIP_DIRS.has(e.name)) walk(join(dir, e.name));
-        continue;
-      }
-      if (needle && !e.name.includes(needle)) continue;
-      const file = join(dir, e.name);
-      let text: string;
-      try {
-        if (statSync(file).size > 512 * 1024) continue;
-        text = readFileSync(file, 'utf8');
-      } catch {
-        continue;
-      }
-      const lines = text.split('\n');
-      for (let i = 0; i < lines.length && out.length < limit; i++) {
-        if (lines[i]!.toLowerCase().includes(q)) {
-          out.push(`${relative(root, file)}:${i + 1}: ${lines[i]!.trim().slice(0, 200)}`);
-        }
-      }
-    }
-  };
-  walk(root);
-  return out;
-}
+import {
+  confine,
+  inboxLine,
+  jsGrep,
+  NO_ARGS,
+  SKIP_DIRS,
+  tool,
+  type ChatSession,
+  type ChatTool,
+} from './session.js';
+import { buildFsTools } from './fs-tools.js';
+import { buildMemoryTools } from './memory-tools.js';
 
 /**
  * The Hermes-grade capability tools: search/read the codebase, run gated shell commands, and
  * introspect Loom's own commands/docs/skills/tools. Adapted from Hermes Agent (MIT) patterns —
- * reimplemented onto Loom's permission policy + ToolDef substrate. The seven read tools run freely;
+ * reimplemented onto Loom's permission policy + ToolDef substrate. The read tools run freely;
  * `run_command` is `expensive` so the user approves every shell call. `tools` is the live array
  * (so `list_tools` can describe the whole set, itself included).
  */
 function buildCodeTools(session: ChatSession, tools: ChatTool[]): ChatTool[] {
-  const { root, db } = session;
+  const { root } = session;
   return [
     tool(
       'search_code',
@@ -253,10 +196,10 @@ function buildCodeTools(session: ChatSession, tools: ChatTool[]): ChatTool[] {
       NO_ARGS,
       'read',
       async () => {
-        const mod = (await import('../index.js')) as {
-          ALL_COMMANDS: Array<{ name: string; describe: string }>;
-        };
-        return mod.ALL_COMMANDS.map((c) => `loom ${c.name} — ${c.describe}`).join('\n');
+        const cmds = session.commands ?? [];
+        return cmds.length
+          ? cmds.map((c) => `loom ${c.name} — ${c.describe}`).join('\n')
+          : '(no commands available in this surface)';
       },
     ),
     tool(
@@ -270,7 +213,7 @@ function buildCodeTools(session: ChatSession, tools: ChatTool[]): ChatTool[] {
       'read',
       async (a) => {
         const { query } = a as { query?: string };
-        const store = new SkillStore(db);
+        const store = new SkillStore(session.db);
         const project = session.profile.project;
         const skills = query
           ? store.recall(project, { terms: query.split(/\W+/).filter((w) => w.length >= 3) })
@@ -323,44 +266,26 @@ function buildCodeTools(session: ChatSession, tools: ChatTool[]): ChatTool[] {
   ];
 }
 
-/** A harness tool the agent can call, plus its risk (for the permission policy). */
-export type ChatTool = { def: ToolDef; risk: ToolRisk };
-
-const NO_ARGS = { type: 'object', properties: {}, additionalProperties: false } as const;
-
-function tool(
-  name: string,
-  description: string,
-  parameters: Record<string, unknown>,
-  risk: ToolRisk,
-  execute: (args: unknown) => Promise<string>,
-): ChatTool {
-  return { def: { name, description, parameters, execute }, risk };
-}
-
-/** Resolve the pipeline config, or a friendly message if the profile isn't wired for a run yet. */
-function resolveCfg(session: ChatSession): { cfg?: ResolvedPipeline; problem?: string } {
-  try {
-    return { cfg: resolvePipelineConfig(session.profile, {}) };
-  } catch (error) {
-    const e = error as { message?: string; hint?: string };
-    return { problem: `${e.message ?? String(error)}${e.hint ? ` (${e.hint})` : ''}` };
-  }
-}
-
-function inboxLine(db: SqliteDatabase): string {
-  const gates = new GateStore(db).list({ status: 'open' }).length;
-  const questions = new QuestionStore(db).list({ status: 'open' }).length;
-  return `${gates} gate(s) + ${questions} question(s) awaiting you`;
+/** Report the profile's runnability via the host-injected readiness probe (if any). */
+function readinessLine(session: ChatSession): string {
+  const r = session.readiness?.();
+  if (!r) return 'status: (readiness unknown in this surface)';
+  return r.ready
+    ? 'status: ready to run (map, then run)'
+    : `status: not runnable yet — ${r.problem}`;
 }
 
 /**
- * Build the harness-driving toolset for one chat session. Read tools just query
- * the db; inbox + pipeline tools change state and are gated by the permission
- * policy (see chat-agent.ts). Pipeline tools resolve their config lazily, so the
- * chat still works on a minimal profile.
+ * Build the harness-driving toolset for one chat session. Read tools just query the db; inbox tools
+ * change state and are gated by the permission policy (see {@link agenticChatTurn}). The host may pass
+ * `extraTools` — e.g. the CLI's pipeline-executing tools (map/run/resume), which depend on the
+ * conductor and so live outside `@loom/chat`. A browser surface omits them (it triggers stages out of
+ * band) so the server never drives a pipeline inline.
  */
-export function buildChatTools(session: ChatSession): ChatTool[] {
+export function buildChatTools(
+  session: ChatSession,
+  opts: { extraTools?: ChatTool[] } = {},
+): ChatTool[] {
   const { db } = session;
 
   const tools: ChatTool[] = [
@@ -429,10 +354,7 @@ export function buildChatTools(session: ChatSession): ChatTool[] {
           `crawl.hydrateMs: ${p.crawl?.hydrateMs ?? '(none)'}`,
           `app.cookiesPath: ${p.app?.cookiesPath ?? '(not set)'}`,
         ];
-        const { cfg, problem } = resolveCfg(session);
-        lines.push(
-          cfg ? 'status: ready to run (map, then run)' : `status: not runnable yet — ${problem}`,
-        );
+        lines.push(readinessLine(session));
         return lines.join('\n');
       },
     ),
@@ -543,10 +465,10 @@ export function buildChatTools(session: ChatSession): ChatTool[] {
         }
         // Reload so this session — and the next map/run — sees the update.
         session.profile = loadProfile(p.dir, p.dataDir ? { dataDir: p.dataDir } : {});
-        const { cfg, problem } = resolveCfg(session);
-        return cfg
-          ? `Saved ${saved}. The project is ready — source + app are set. Offer to run \`map\`, then \`run\`.`
-          : `Saved ${saved}. Still not runnable — ${problem}. Ask the user for the missing value.`;
+        const r = session.readiness?.();
+        return r && !r.ready
+          ? `Saved ${saved}. Still not runnable — ${r.problem}. Ask the user for the missing value.`
+          : `Saved ${saved}. The project is ready — source + app are set. Offer to run \`map\`, then \`run\`.`;
       },
     ),
 
@@ -616,122 +538,15 @@ export function buildChatTools(session: ChatSession): ChatTool[] {
         return `Answered question ${id}. Use 'resume' to retry its screen.`;
       },
     ),
-
-    tool(
-      'map',
-      'Map the legacy source into the CodeAtlas (the MAP stage). Returns the screens found.',
-      NO_ARGS,
-      'expensive',
-      async () => {
-        const { cfg, problem } = resolveCfg(session);
-        if (!cfg) return `Can't map yet — ${problem}`;
-        if (!existsSync(cfg.strutsConfigPath)) {
-          return `struts-config not found at ${cfg.strutsConfigPath} — check source.strutsConfig.`;
-        }
-        for (const suffix of ['', '-wal', '-shm']) {
-          const f = cfg.atlasPath + suffix;
-          if (existsSync(f)) rmSync(f);
-        }
-        const discovered = discoverLegacyWebapp(cfg.strutsConfigPath);
-        const atlas = mapProject({
-          strutsConfigPath: cfg.strutsConfigPath,
-          atlasPath: cfg.atlasPath,
-          tilesDefsPath: discovered.tilesDefsPath,
-          webXmlPath: discovered.webXmlPath,
-          jsps: discovered.jsps,
-        });
-        try {
-          const screens = atlas.screens().map((s) => s.key);
-          return `Mapped ${screens.length} screen(s): ${screens.join(', ')} → ${cfg.atlasPath}`;
-        } finally {
-          atlas.close();
-        }
-      },
-    ),
-
-    tool(
-      'run',
-      'Run the rebuild pipeline (MAP→CRAWL→BUILD→EVAL→FIX). Optionally limit to specific screen keys, or enable unattended shift mode.',
-      {
-        type: 'object',
-        properties: {
-          screens: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'optional screen keys to build (default: all)',
-          },
-          shift: { type: 'boolean', description: 'unattended shift mode with stop-the-line' },
-        },
-        additionalProperties: false,
-      },
-      'expensive',
-      async (args) => {
-        const { screens, shift } = args as { screens?: string[]; shift?: boolean };
-        const { cfg, problem } = resolveCfg(session);
-        if (!cfg) return `Can't run yet — ${problem}`;
-        runMigrations(db, MIGRATIONS);
-        const result = await runPipeline({
-          db,
-          gateway: session.gateway,
-          model: cfg.model,
-          project: cfg.project,
-          strutsConfigPath: cfg.strutsConfigPath,
-          atlasPath: cfg.atlasPath,
-          legacyBaseUrl: cfg.legacyBaseUrl,
-          bRepoRoot: cfg.bRepoRoot,
-          baselineDir: cfg.baselineDir,
-          screens: screens ?? cfg.screens,
-          threshold: cfg.threshold,
-          viewport: cfg.viewport,
-          maxAttempts: cfg.maxAttempts,
-          skillsDir: cfg.skillsDir,
-          harnessVersion: session.version,
-          shift: shift ? { stopAfterConsecutiveFailures: 3 } : undefined,
-        });
-        return (
-          `Run ${result.runId}: ${result.passed} passed, ${result.failed} not passed, coverage ${result.coverage.coveragePct}%.` +
-          (result.stopReason ? ` Stopped: ${result.stopReason}.` : '') +
-          ` Inbox: ${inboxLine(db)}.`
-        );
-      },
-    ),
-
-    tool(
-      'resume',
-      'Resume the latest interrupted run, finishing its unfinished screens (after answering questions).',
-      NO_ARGS,
-      'expensive',
-      async () => {
-        const { cfg, problem } = resolveCfg(session);
-        if (!cfg) return `Can't resume yet — ${problem}`;
-        const runId = new TaskStore(db).latestRun({ status: 'running' })?.id;
-        if (!runId) return 'No resumable run — start one with the run tool.';
-        runMigrations(db, MIGRATIONS);
-        const result = await runPipeline({
-          db,
-          gateway: session.gateway,
-          model: cfg.model,
-          project: cfg.project,
-          strutsConfigPath: cfg.strutsConfigPath,
-          atlasPath: cfg.atlasPath,
-          legacyBaseUrl: cfg.legacyBaseUrl,
-          bRepoRoot: cfg.bRepoRoot,
-          baselineDir: cfg.baselineDir,
-          threshold: cfg.threshold,
-          viewport: cfg.viewport,
-          skillsDir: cfg.skillsDir,
-          harnessVersion: session.version,
-          runId,
-        });
-        return (
-          `Resumed run ${result.runId}: ${result.passed} passed, ${result.failed} not passed, coverage ${result.coverage.coveragePct}%.` +
-          ` Inbox: ${inboxLine(db)}.`
-        );
-      },
-    ),
   ];
+
   // Append the Hermes-grade code/file/exec + self-knowledge tools (they reference `tools` so
-  // `list_tools` can describe the full set).
+  // `list_tools` can describe the full set), then the file-mutation and memory tools.
   for (const t of buildCodeTools(session, tools)) tools.push(t);
+  for (const t of buildFsTools(session)) tools.push(t);
+  for (const t of buildMemoryTools(session)) tools.push(t);
+  // Host-provided tools (e.g. the CLI's pipeline tools) — pushed into the same array so `list_tools`
+  // describes them too.
+  if (opts.extraTools) for (const t of opts.extraTools) tools.push(t);
   return tools;
 }

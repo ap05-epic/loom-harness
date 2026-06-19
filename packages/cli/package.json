@@ -23,6 +23,7 @@
     "@loom/agents": "workspace:*",
     "@loom/browser": "workspace:*",
     "@loom/cartographer": "workspace:*",
+    "@loom/chat": "workspace:*",
     "@loom/conductor": "workspace:*",
     "@loom/core": "workspace:*",
     "@loom/evaluator": "workspace:*",

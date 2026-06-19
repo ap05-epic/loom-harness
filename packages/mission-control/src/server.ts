@@ -3,9 +3,16 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyGateDecision, EventLog, QuestionStore, type SqliteDatabase } from '@loom/core';
-import { dashboardState, exploreState, listProjects, wpDetail } from './read-model.js';
+import {
+  applyGateDecision,
+  EventLog,
+  QuestionStore,
+  TaskStore,
+  type SqliteDatabase,
+} from '@loom/core';
+import { baaState, dashboardState, exploreState, listProjects, wpDetail } from './read-model.js';
 import { inventory, type McpInfo } from './inventory.js';
+import { handleChatRequest, type ChatRuntime } from './chat-endpoints.js';
 import { dashboardHtml } from './ui.js';
 
 /** A running Mission Control server; `stop()` releases the port. */
@@ -32,7 +39,36 @@ export type MissionControlOptions = {
    * dir) to serve vanilla — the pod-safe fallback. The CLI passes {@link defaultWebDistDir}.
    */
   webDistDir?: string;
+  /**
+   * Enables the browser **Generic Chat** surface (the `/api/chat/*` routes) by supplying what's
+   * needed to drive the same agent loop the CLI uses. Omit to run a read-only dashboard (existing
+   * behavior). The CLI's `loom ui` passes this when a profile is configured.
+   */
+  chat?: ChatRuntime;
+  /**
+   * Enables the **BAA stage graph's** stage-trigger action (`POST /api/baa/stage`). The CLI supplies
+   * a spawner that launches a detached `loom <stage>` child, so the conductor stays the single writer
+   * and the work survives a UI restart. Omit → the trigger reports 503; the read-only graph still
+   * works (`GET /api/baa-state` needs no runtime).
+   */
+  baa?: BaaRuntime;
 };
+
+/** The BAA stages a `POST /api/baa/stage` can trigger (each its own resumable `loom <stage>` run). */
+export type BaaStageName = 'map' | 'plan' | 'crawl' | 'build';
+export type BaaRuntime = {
+  /** Launch a detached `loom <stage>` child against `runId` (or a fresh run for the first MAP). */
+  spawnStage: (stage: BaaStageName, runId?: string) => { pid?: number };
+};
+
+const BAA_STAGE_NAMES = new Set<BaaStageName>(['map', 'plan', 'crawl', 'build']);
+
+/**
+ * PIDs of the detached `loom <stage>` children we've spawned, so `POST /api/baa/stop` can halt them.
+ * Sequential single-writer stages mean this is usually 0–1 live; dead PIDs are skipped on kill.
+ */
+const activeStagePids = new Set<number>();
+const ACTIVE_WP_STATES = new Set(['building', 'evaluating', 'fixing']);
 
 /** The built React bundle's location, relative to this compiled module (the sibling
  * `@loom/mission-control-web` package's `dist/`). */
@@ -121,6 +157,9 @@ async function handle(
   const { pathname } = url;
   const method = req.method ?? 'GET';
 
+  // The browser Generic Chat surface (its own module — SSE turns + the permission round-trip).
+  if (await handleChatRequest(opts, req, res, url, method)) return;
+
   if (method === 'GET' && pathname === '/') {
     // Serve the built React SPA when present; otherwise the vanilla dashboard (pod-safe fallback).
     const indexFile = opts.webDistDir ? join(opts.webDistDir, 'index.html') : undefined;
@@ -198,7 +237,77 @@ async function handle(
     return;
   }
 
+  // The BAA stage graph's read model (per-node status from run.stage + WP states + events + inboxes).
+  if (method === 'GET' && pathname === '/api/baa-state') {
+    const project = url.searchParams.get('project') ?? opts.project;
+    sendJson(
+      res,
+      200,
+      baaState(db, url.searchParams.get('run') ?? undefined, project ? { project } : {}),
+    );
+    return;
+  }
+
   // ---- writes: the only mutations Mission Control performs ----
+
+  // Trigger one BAA stage — spawns a detached `loom <stage>` child (the conductor stays the single
+  // writer; the run survives a UI restart). Enabled only when the CLI supplied a spawner.
+  if (method === 'POST' && pathname === '/api/baa/stage') {
+    if (!opts.baa) {
+      return sendJson(res, 503, {
+        error: 'stage triggers are not enabled — start `loom ui` from a configured project',
+      });
+    }
+    const body = await readJson(req);
+    const stage = body.stage;
+    if (typeof stage !== 'string' || !BAA_STAGE_NAMES.has(stage as BaaStageName)) {
+      return sendJson(res, 400, { error: 'stage must be map | plan | crawl | build' });
+    }
+    const runId = typeof body.runId === 'string' ? body.runId : undefined;
+    const { pid } = opts.baa.spawnStage(stage as BaaStageName, runId);
+    if (pid) activeStagePids.add(pid);
+    sendJson(res, 200, { started: true, pid: pid ?? null });
+    return;
+  }
+
+  // Halt — the operator's kill switch. Terminates the spawned stage processes and stops the run, so
+  // nothing keeps running without a way to stop it. Works without a runtime (the seeded demo too):
+  // kills tracked PIDs, marks the run stopped, and blocks its in-flight work packages (resumable — a
+  // new BUILD picks them up).
+  if (method === 'POST' && pathname === '/api/baa/stop') {
+    const body = await readJson(req);
+    let killed = 0;
+    for (const pid of activeStagePids) {
+      try {
+        process.kill(pid, 'SIGTERM');
+        killed++;
+      } catch {
+        /* already exited */
+      }
+    }
+    activeStagePids.clear();
+    const tasks = new TaskStore(db);
+    const runId =
+      typeof body.runId === 'string'
+        ? body.runId
+        : (
+            tasks.latestRun({ status: 'running', project: opts.project }) ??
+            tasks.latestRun(opts.project ? { project: opts.project } : undefined)
+          )?.id;
+    let halted = 0;
+    if (runId) {
+      for (const wp of tasks.listWorkPackages(runId)) {
+        if (ACTIVE_WP_STATES.has(wp.state)) {
+          tasks.setWorkPackageState(wp.id, 'blocked');
+          halted++;
+        }
+      }
+      tasks.finishRun(runId, 'stopped');
+      new EventLog(db).append({ type: 'run.stopped', runId, payload: { by: 'operator', killed } });
+    }
+    sendJson(res, 200, { killed, runId: runId ?? null, halted });
+    return;
+  }
   const gateMatch = pathname.match(/^\/api\/gates\/([^/]+)$/);
   if (method === 'POST' && gateMatch) {
     const body = await readJson(req);

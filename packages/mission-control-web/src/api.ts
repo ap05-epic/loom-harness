@@ -158,6 +158,156 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 export const decideGate = (id: string, decision: 'approve' | 'reject', note?: string) =>
   postJson<{ status: string }>(`/api/gates/${encodeURIComponent(id)}`, { decision, note });
 
+// ---- BAA modernization surface (the stage graph) ----
+
+export type BaaNodeStatus = 'idle' | 'running' | 'green' | 'stuck';
+export type BaaStageNode = { status: BaaNodeStatus; detail: string };
+export type BaaStageName = 'map' | 'plan' | 'crawl' | 'build';
+export type BaaState = {
+  run: { id: string; project: string; status: string; stage: string | null } | null;
+  stages: {
+    map: BaaStageNode;
+    plan: BaaStageNode;
+    crawl: BaaStageNode;
+    build: BaaStageNode;
+    ship: BaaStageNode;
+  };
+  gates: Gate[];
+  questions: Question[];
+};
+
+export const fetchBaaState = (project?: string, run?: string): Promise<BaaState> => {
+  const params = new URLSearchParams();
+  if (project) params.set('project', project);
+  if (run) params.set('run', run);
+  const qstr = params.toString();
+  return getJson<BaaState>(`/api/baa-state${qstr ? `?${qstr}` : ''}`);
+};
+
+/** Trigger one stage — the server spawns a detached `loom stage` child against the run. */
+export const triggerBaaStage = (stage: BaaStageName, runId?: string) =>
+  postJson<{ started: boolean; pid: number | null }>('/api/baa/stage', {
+    stage,
+    ...(runId ? { runId } : {}),
+  });
+
+/** Halt — the kill switch. Terminates spawned stage processes + stops the run (blocks its WPs). */
+export const stopBaa = (runId?: string) =>
+  postJson<{ killed: number; runId: string | null; halted: number }>(
+    '/api/baa/stop',
+    runId ? { runId } : {},
+  );
+
 /** Answer an open agent question, unblocking its screen. */
 export const answerQuestion = (id: string, answer: string) =>
   postJson<{ status: string }>(`/api/questions/${encodeURIComponent(id)}`, { answer });
+
+// ---- Generic Chat surface ----
+
+/** The chat surface's standing context (for the status bar). */
+export type ChatInfo = { model: string; project: string; profile: string; driver: string };
+export const fetchChatInfo = (): Promise<ChatInfo> => getJson<ChatInfo>('/api/chat/info');
+
+/** A switchable profile learning-root (the Hermes `HERMES_HOME` analog). */
+export type ProfileSummary = { name: string; active: boolean; configured: boolean; skills: number };
+export type ProfilesResponse = { active: string; configured: string; profiles: ProfileSummary[] };
+export const fetchProfiles = (): Promise<ProfilesResponse> =>
+  getJson<ProfilesResponse>('/api/profiles');
+/** Switch the active profile (no restart) — reloads profile-tier memory + skills for new turns. */
+export const switchProfile = (name: string): Promise<{ active: string }> =>
+  postJson<{ active: string }>('/api/profiles/active', { name });
+
+export type ChatSessionInfo = {
+  id: string;
+  project: string;
+  title: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+export type ChatMessageRecord = {
+  id: string;
+  sessionId: string;
+  seq: number;
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string | null;
+  toolCalls: Array<{ id: string; name: string; arguments: string }> | null;
+  toolCallId: string | null;
+  ts: string;
+};
+
+export const fetchChatSessions = (project?: string): Promise<{ sessions: ChatSessionInfo[] }> =>
+  getJson<{ sessions: ChatSessionInfo[] }>(`/api/chat/sessions${q(project)}`);
+
+export const createChatSession = (project?: string): Promise<ChatSessionInfo> =>
+  postJson<ChatSessionInfo>('/api/chat/sessions', project ? { project } : {});
+
+export const fetchChatSession = (
+  id: string,
+): Promise<{ session: ChatSessionInfo; messages: ChatMessageRecord[] }> =>
+  getJson<{ session: ChatSessionInfo; messages: ChatMessageRecord[] }>(
+    `/api/chat/sessions/${encodeURIComponent(id)}`,
+  );
+
+export type PermissionAnswer = 'yes' | 'no' | 'always' | 'all';
+export const answerChatPermission = (turnId: string, requestId: string, answer: PermissionAnswer) =>
+  postJson<{ ok: boolean }>(`/api/chat/turns/${encodeURIComponent(turnId)}/permission`, {
+    requestId,
+    answer,
+  });
+
+/** A parsed SSE event from a chat turn — mirrors the server's event types. */
+export type ChatStreamEvent =
+  | { event: 'message'; data: { content: string | null; toolCalls?: unknown } }
+  | { event: 'tool_start'; data: { name: string } }
+  | { event: 'tool_done'; data: { name: string; ok?: boolean; summary?: string } }
+  | {
+      event: 'permission_request';
+      data: { turnId: string; requestId: string; name: string; risk: string; input: unknown };
+    }
+  | { event: 'compacted'; data: { keptLast: number } }
+  | {
+      event: 'done';
+      data: { finalText: string | null; usage?: { inputTokens: number; outputTokens: number } };
+    }
+  | { event: 'error'; data: { message: string } };
+
+/**
+ * Drive one chat turn and surface its SSE events to `onEvent`. POST (with the user input) returns a
+ * server-sent-event stream; we read it incrementally so tool-call cards, assistant text, and the
+ * permission prompt appear live. EventSource can't POST, so we read the fetch body stream directly.
+ */
+export async function streamChatTurn(
+  sessionId: string,
+  input: string,
+  onEvent: (ev: ChatStreamEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`/api/chat/sessions/${encodeURIComponent(sessionId)}/turn`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ input }),
+    signal,
+  });
+  if (!res.ok || !res.body) throw new Error(`turn → ${res.status}`);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let idx: number;
+    while ((idx = buf.indexOf('\n\n')) >= 0) {
+      const block = buf.slice(0, idx);
+      buf = buf.slice(idx + 2);
+      let event = '';
+      let dataStr = '';
+      for (const line of block.split('\n')) {
+        if (line.startsWith('event:')) event = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataStr = line.slice(5).trim();
+      }
+      if (!event) continue;
+      onEvent({ event, data: dataStr ? JSON.parse(dataStr) : {} } as ChatStreamEvent);
+    }
+  }
+}

@@ -13,6 +13,11 @@ export {
 } from './builder.js';
 export {
   runPipeline,
+  runMapStage,
+  runPlanStage,
+  runCrawlStage,
+  runBuildStage,
+  type PipelineStage,
   type CaptureFn,
   type DomCaptureFn,
   type RunPipelineOptions,

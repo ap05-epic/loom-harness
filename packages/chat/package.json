@@ -1,5 +1,5 @@
 {
-  "name": "@loom/mission-control",
+  "name": "@loom/chat",
   "version": "1.4.0",
   "private": true,
   "type": "module",
@@ -18,10 +18,7 @@
   },
   "dependencies": {
     "@loom/agents": "workspace:*",
-    "@loom/chat": "workspace:*",
     "@loom/core": "workspace:*",
-    "@loom/skills": "workspace:*",
-    "@loom/tokens": "workspace:*",
     "@loom/tools": "workspace:*"
   }
 }

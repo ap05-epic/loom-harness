@@ -1,9 +1,19 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import type { LlmGateway, LlmRequest, LlmResponse } from '@loom/agents';
-import { MemoryStore, MIGRATIONS, openDb, runMigrations, SkillStore } from '@loom/core';
+import {
+  MemoryStore,
+  MIGRATIONS,
+  openDb,
+  ProfileStore,
+  runMigrations,
+  SkillStore,
+} from '@loom/core';
 import { createPolicy } from '@loom/tools';
-import { agenticChatTurn, packRecall } from './chat-agent.js';
-import type { ChatTool } from './chat-tools.js';
+import { agenticChatTurn, packRecall } from './turn.js';
+import type { ChatTool } from './session.js';
 
 /** A gateway scripted to return a fixed sequence of responses (one per turn). */
 function scriptedGateway(script: LlmResponse[]): LlmGateway {
@@ -112,6 +122,24 @@ describe('agenticChatTurn', () => {
     expect(ran).toBe(true);
     expect(prompts).toBe(0);
   });
+
+  test('forwards onMessage for each assistant step (the SSE streaming seam)', async () => {
+    const gw = scriptedGateway([callTool('status', {}), text('all good')]);
+    const seen: Array<string | null> = [];
+    await agenticChatTurn(gw, {
+      model: 'm',
+      history: [],
+      input: 'go',
+      tools: [fakeTool('status', 'read', () => {})],
+      policy: createPolicy('ask'),
+      prompt: () => 'no',
+      onMessage: (m) => {
+        if (m.role === 'assistant') seen.push(m.content);
+      },
+    });
+    // one assistant step for the tool-call turn (content null), one for the final text
+    expect(seen).toEqual([null, 'all good']);
+  });
 });
 
 describe('packRecall', () => {
@@ -146,5 +174,34 @@ describe('packRecall', () => {
     expect(out).not.toContain('moon'); // the irrelevant fact is excluded
     expect(packRecall(db, 'baa', '')).toBe(''); // empty input → no recall block
     db.close();
+  });
+
+  test('merges profile-tier facts when a profile store is provided', () => {
+    const db = openDb(':memory:');
+    runMigrations(db, MIGRATIONS);
+    const home = mkdtempSync(join(tmpdir(), 'loom-home-'));
+    try {
+      const profile = new ProfileStore(home, 'baa');
+      profile.remember({ title: 'Voice', body: 'write verbs over adjectives, calm' });
+      new MemoryStore(db).remember({
+        project: 'baa',
+        kind: 'project_fact',
+        title: 'Dates',
+        body: 'all dates render dd.MM.yyyy',
+      });
+
+      const out = packRecall(db, 'baa', 'what voice and date format do we use', {
+        profile,
+      });
+      expect(out).toContain('verbs over adjectives'); // the profile-tier fact (cross-project)
+      expect(out).toContain('dd.MM.yyyy'); // the project-tier fact
+      profile.close();
+    } finally {
+      try {
+        rmSync(home, { recursive: true, force: true });
+      } catch {
+        /* Windows can briefly lock the closed sqlite file — leak the temp dir (the OS cleans it). */
+      }
+    }
   });
 });

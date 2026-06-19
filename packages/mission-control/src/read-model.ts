@@ -393,6 +393,138 @@ export function wpDetail(db: SqliteDatabase, wpId: string): WpDetail | null {
   };
 }
 
+// ---- BAA stage graph ----
+
+export type BaaNodeStatus = 'idle' | 'running' | 'green' | 'stuck';
+export type BaaStageNode = { status: BaaNodeStatus; detail: string };
+
+/** The BAA modernization surface's live stage graph — each node's status derived from the same
+ * durable signals (run.stage, WP states, the event tail, the gate/question inboxes). Read-only. */
+export type BaaState = {
+  run: { id: string; project: string; status: string; stage: string | null } | null;
+  stages: {
+    map: BaaStageNode;
+    plan: BaaStageNode;
+    crawl: BaaStageNode;
+    build: BaaStageNode;
+    ship: BaaStageNode;
+  };
+  /** Open gates + questions for this run — the inline "stuck" inbox the graph resolves. */
+  gates: Array<{ id: string; type: string; scopeId: string; payload: unknown }>;
+  questions: Array<{ id: string; wpId: string | null; question: string; context: unknown }>;
+};
+
+const idleStage = (): BaaStageNode => ({ status: 'idle', detail: '' });
+
+/**
+ * Assemble the BAA stage-graph state for one run (default: the latest running, else most recent for
+ * the project). Each node folds the run's real signals into idle / running / green / stuck so the
+ * graph reflects exactly what the conductor has durably recorded — and rehydrates on reconnect.
+ */
+export function baaState(
+  db: SqliteDatabase,
+  runId?: string,
+  opts: { project?: string } = {},
+): BaaState {
+  const tasks = new TaskStore(db);
+  const run = runId
+    ? tasks.getRun(runId)
+    : (tasks.latestRun({ status: 'running', project: opts.project }) ??
+      tasks.latestRun(opts.project ? { project: opts.project } : undefined));
+  if (!run) {
+    return {
+      run: null,
+      stages: {
+        map: idleStage(),
+        plan: idleStage(),
+        crawl: idleStage(),
+        build: idleStage(),
+        ship: idleStage(),
+      },
+      gates: [],
+      questions: [],
+    };
+  }
+
+  const wps = tasks.listWorkPackages(run.id);
+  const wpIds = new Set(wps.map((w) => w.id));
+  const total = wps.length;
+  const counts: Record<string, number> = {};
+  for (const w of wps) counts[w.state] = (counts[w.state] ?? 0) + 1;
+  const passed = (counts.passed ?? 0) + (counts.shipped ?? 0);
+  const shipped = counts.shipped ?? 0;
+  const blocked = (counts.blocked ?? 0) + (counts.needs_human ?? 0) + (counts.failed ?? 0);
+  const active = (counts.building ?? 0) + (counts.evaluating ?? 0) + (counts.fixing ?? 0);
+
+  const events = new EventLog(db).tailFrom(0, 5000, { runId: run.id });
+  const has = (type: string): boolean => events.some((e) => e.type === type);
+  const countOf = (type: string): number => events.filter((e) => e.type === type).length;
+  const shiftStopped = [...events].reverse().find((e) => e.type === 'shift.stopped');
+
+  const allGates = new GateStore(db).list({ status: 'open' });
+  const gates = allGates
+    .filter((g) => g.scopeId === run.id || wpIds.has(g.scopeId))
+    .map((g) => ({ id: g.id, type: g.type, scopeId: g.scopeId, payload: g.payload }));
+  const questions = new QuestionStore(db)
+    .list({ status: 'open', runId: run.id })
+    .map((q) => ({ id: q.id, wpId: q.wpId, question: q.question, context: q.context }));
+  const planGate = gates.some((g) => g.type === 'plan');
+  const shipGates = gates.filter((g) => g.type === 'ship');
+  const stage = run.stage;
+
+  const map: BaaStageNode = has('map.completed')
+    ? { status: 'green', detail: 'mapped' }
+    : stage === 'map'
+      ? { status: 'running', detail: 'mapping…' }
+      : idleStage();
+
+  const plan: BaaStageNode = planGate
+    ? { status: 'stuck', detail: 'plan gate — approve to build' }
+    : total > 0
+      ? { status: 'green', detail: `${total} screen(s) planned` }
+      : stage === 'plan'
+        ? { status: 'running', detail: 'planning…' }
+        : idleStage();
+
+  const crawled = countOf('crawl.captured');
+  const crawl: BaaStageNode =
+    total > 0 && crawled >= total
+      ? { status: 'green', detail: `${crawled} baseline(s)` }
+      : stage === 'crawl'
+        ? { status: 'running', detail: `${crawled}/${total} baselines` }
+        : crawled > 0
+          ? { status: 'running', detail: `${crawled}/${total} baselines` }
+          : idleStage();
+
+  const buildDone = total > 0 && passed === total;
+  const build: BaaStageNode =
+    blocked > 0
+      ? { status: 'stuck', detail: `${blocked} screen(s) blocked` }
+      : shiftStopped && run.status !== 'completed'
+        ? {
+            status: 'stuck',
+            detail: `stopped: ${String((shiftStopped.payload as { reason?: string }).reason ?? 'shift')}`,
+          }
+        : buildDone
+          ? { status: 'green', detail: `${passed}/${total} passed` }
+          : stage === 'build' || active > 0
+            ? { status: 'running', detail: `${active} building…` }
+            : idleStage();
+
+  const ship: BaaStageNode = shipGates.length
+    ? { status: 'stuck', detail: `${shipGates.length} ship gate(s) — approve` }
+    : total > 0 && shipped === total
+      ? { status: 'green', detail: 'all shipped' }
+      : idleStage();
+
+  return {
+    run: { id: run.id, project: run.project, status: run.status, stage: run.stage },
+    stages: { map, plan, crawl, build, ship },
+    gates,
+    questions,
+  };
+}
+
 /** Bucket a free-text attempt failure reason into a Pareto category. */
 function failureCategory(reason: string | null): string {
   const r = (reason ?? '').toLowerCase();

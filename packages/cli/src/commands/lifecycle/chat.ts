@@ -2,15 +2,22 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { ChatMessage, LlmGateway } from '@loom/agents';
-import { MIGRATIONS, openDb, runMigrations } from '@loom/core';
+import { MIGRATIONS, openDb, ProfileStore, runMigrations } from '@loom/core';
 import { createPolicy, type PermissionMode, type PermissionPrompt } from '@loom/tools';
 import { configError, usageError } from '../../errors.js';
+import { homeDataDir } from '../../workspace.js';
 import { describeProvider, gatewayFromProfile } from '../../pipeline-config.js';
 import { defineCommand } from '../../registry.js';
 import { makePalette } from '../../ui/colors.js';
 import { ChatView } from '../../ui/chat-view.js';
-import { agenticChatTurn, CHAT_SYSTEM_PROMPT, packRecall } from './chat-agent.js';
-import { buildChatTools, type ChatSession } from './chat-tools.js';
+import {
+  agenticChatTurn,
+  buildChatTools,
+  CHAT_SYSTEM_PROMPT,
+  packRecall,
+  type ChatSession,
+} from '@loom/chat';
+import { buildPipelineTools, chatReadiness } from './chat-pipeline-tools.js';
 import { readStdin } from './ask.js';
 
 const MODES: readonly PermissionMode[] = ['ask', 'auto', 'allow-all', 'deny'];
@@ -115,7 +122,18 @@ export const chatCommand = defineCommand({
       root: ctx.cwd,
       docsDir: resolveDocsDir(ctx.cwd),
     };
-    const tools = buildChatTools(session);
+    session.readiness = chatReadiness(session);
+    // Surface the CLI command list to `list_commands` via a lazy import — index.ts imports this
+    // command, so an eager import would be a load-time cycle.
+    const { ALL_COMMANDS } = (await import('../index.js')) as {
+      ALL_COMMANDS: Array<{ name: string; describe: string }>;
+    };
+    session.commands = ALL_COMMANDS.map((c) => ({ name: c.name, describe: c.describe }));
+    // The profile learning root — cross-project memory + skills shared by every project on this
+    // profile (defaults to the project name). Recall merges it; `memory_remember scope:profile` writes it.
+    const profileStore = new ProfileStore(homeDataDir(ctx.env), p.profile ?? p.project);
+    session.profileStore = profileStore;
+    const tools = buildChatTools(session, { extraTools: buildPipelineTools(session) });
     const extra = input.options.system as string | undefined;
     const system = extra ? `${CHAT_SYSTEM_PROMPT}\n\n${extra}` : CHAT_SYSTEM_PROMPT;
     const baseHistory: ChatMessage[] = [{ role: 'system', content: system }];
@@ -129,7 +147,7 @@ export const chatCommand = defineCommand({
           model,
           history: baseHistory,
           input: prompt,
-          recall: packRecall(db, p.project, prompt),
+          recall: packRecall(db, p.project, prompt, { profile: profileStore }),
           tools,
           policy,
           prompt: () => 'no',
@@ -185,7 +203,7 @@ export const chatCommand = defineCommand({
               model,
               history,
               input: text,
-              recall: packRecall(db, p.project, text),
+              recall: packRecall(db, p.project, text, { profile: profileStore }),
               tools,
               policy,
               prompt,
@@ -207,6 +225,7 @@ export const chatCommand = defineCommand({
       }
       return { turns, reply: null, model, provider: provider.driver };
     } finally {
+      profileStore.close();
       db.close();
     }
   },

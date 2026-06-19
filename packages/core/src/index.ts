@@ -76,3 +76,11 @@ export { notifyWebhook, type WebhookEvent } from './notify/webhook.js';
 export { GateStore, type Gate, type GateType, type GateStatus } from './gates/gates.js';
 export { applyGateDecision, type GateDecision, type GateDecisionResult } from './gates/decide.js';
 export { QuestionStore, type Question, type QuestionStatus } from './questions/questions.js';
+export {
+  ChatStore,
+  type ChatSession,
+  type ChatRole,
+  type ChatMessageRecord,
+  type ChatMessageInput,
+} from './chat/chat-store.js';
+export { ProfileStore, profilePaths } from './profile/profile-store.js';
