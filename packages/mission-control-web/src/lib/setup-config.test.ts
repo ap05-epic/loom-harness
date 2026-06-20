@@ -39,8 +39,8 @@ describe('looksLikeValueNotName', () => {
   test('flags a URL pasted into an env-var-name field', () => {
     expect(looksLikeValueNotName('https://x.openai.azure.com/openai/v1/')).toBe(true);
   });
-  test('flags an actual key', () => {
-    expect(looksLikeValueNotName('sk-proj-abc123def456')).toBe(true);
+  test('flags an actual key (an sk- prefix)', () => {
+    expect(looksLikeValueNotName('sk-fake-not-a-real-key')).toBe(true);
   });
   test('flags a value with whitespace', () => {
     expect(looksLikeValueNotName('my key')).toBe(true);
