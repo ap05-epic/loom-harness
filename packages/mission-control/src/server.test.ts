@@ -109,7 +109,9 @@ describe('Mission Control server', () => {
     const res = await fetch(`${mc.url}/api/setup`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ config: 'project: BAA-Test-2\nllm:\n  driver: openai\n  model: gpt-5.4\n' }),
+      body: JSON.stringify({
+        config: 'project: BAA-Test-2\nllm:\n  driver: openai\n  model: gpt-5.4\n',
+      }),
     });
     expect(res.status).toBe(200);
     const path = join(dir, 'loom.config.yaml');
@@ -125,6 +127,22 @@ describe('Mission Control server', () => {
       body: JSON.stringify({ config: 'project: x' }),
     });
     expect(res.status).toBe(503);
+  });
+
+  test('chat 503 carries the disabledReason so the UI can explain WHY chat is off', async () => {
+    mc = await startMissionControl({ db, chatDisabledReason: 'no API key (LLM_API_KEY) in .env' });
+    const res = await fetch(`${mc.url}/api/chat/info`);
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { disabledReason?: string };
+    expect(body.disabledReason).toContain('no API key');
+  });
+
+  test('a busy port rejects with an actionable message (no unhandled crash)', async () => {
+    mc = await startMissionControl({ db, port: 0 });
+    const db2 = openDb(':memory:');
+    runMigrations(db2, MIGRATIONS);
+    await expect(startMissionControl({ db: db2, port: mc.port })).rejects.toThrow(/already in use/);
+    db2.close();
   });
 
   test('approving a skill gate via the API activates the drafted skill (human-in-the-loop)', async () => {

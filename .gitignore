@@ -52,3 +52,6 @@ Thumbs.db
 
 # Playwright MCP scratch (screenshots/logs)
 .playwright-mcp/
+
+# local UI-test screenshots
+ui-*.png

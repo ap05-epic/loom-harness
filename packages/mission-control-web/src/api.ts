@@ -212,6 +212,24 @@ export const answerQuestion = (id: string, answer: string) =>
 export type ChatInfo = { model: string; project: string; profile: string; driver: string };
 export const fetchChatInfo = (): Promise<ChatInfo> => getJson<ChatInfo>('/api/chat/info');
 
+/**
+ * Chat status WITH the reason it's off — so the UI can say "no API key (LLM_API_KEY) in ~/.loom/.env"
+ * instead of a blank "not available." 200 → enabled + info; 503 → disabled + the server's reason.
+ */
+export type ChatStatus = { enabled: true; info: ChatInfo } | { enabled: false; reason: string };
+export async function fetchChatStatus(): Promise<ChatStatus> {
+  const res = await fetch('/api/chat/info', { headers: { accept: 'application/json' } });
+  if (res.ok) return { enabled: true, info: (await res.json()) as ChatInfo };
+  let reason = 'Chat is not available — open Setup to configure your project.';
+  try {
+    const body = (await res.json()) as { disabledReason?: string };
+    if (body.disabledReason) reason = body.disabledReason;
+  } catch {
+    /* non-JSON body — keep the default */
+  }
+  return { enabled: false, reason };
+}
+
 /** A switchable profile learning-root (the Hermes `HERMES_HOME` analog). */
 export type ProfileSummary = { name: string; active: boolean; configured: boolean; skills: number };
 export type ProfilesResponse = { active: string; configured: string; profiles: ProfileSummary[] };

@@ -17,7 +17,7 @@ import { ControlCenter } from './components/ControlCenter';
 import { LoomMark } from './components/LoomMark';
 import { ProjectSwitcher } from './components/ProjectSwitcher';
 import { ProjectProvider } from './project';
-import { fetchChatInfo, fetchProfiles, switchProfile } from './api';
+import { fetchChatStatus, fetchProfiles, switchProfile } from './api';
 
 const client = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 1000 } },
@@ -208,14 +208,15 @@ function TopBar({ view, onView }: { view: string; onView: (v: string) => void })
   );
 }
 
-/** When the project isn't configured (no model/profile → chat 503s), guide the user to Setup. */
+/** When chat is off (no/broken profile), guide the user to Setup AND show the precise reason. */
 function SetupBanner({ onSetup }: { onSetup: () => void }) {
-  const { isError, isLoading } = useQuery({
-    queryKey: ['chat-info'],
-    queryFn: fetchChatInfo,
+  const { data } = useQuery({
+    queryKey: ['chat-status'],
+    queryFn: fetchChatStatus,
     retry: false,
+    refetchInterval: 4000,
   });
-  if (isLoading || !isError) return null; // configured (chat enabled) → nothing to nag about
+  if (!data || data.enabled) return null; // configured (chat enabled) → nothing to nag about
   return (
     <div
       className="mx-auto mt-3 flex max-w-[1500px] flex-wrap items-center gap-3 rounded-[10px] px-4 py-2.5"
@@ -225,10 +226,7 @@ function SetupBanner({ onSetup }: { onSetup: () => void }) {
       }}
     >
       <span className="text-sm">
-        <b>Loom isn’t set up yet.</b>{' '}
-        <span className="muted">
-          Configure your pod to enable Chat, the pipeline, and profiles.
-        </span>
+        <b>Loom isn’t fully set up.</b> <span className="muted">{data.reason}</span>
       </span>
       <button className="btn btn-accent ml-auto" onClick={onSetup}>
         Open Setup

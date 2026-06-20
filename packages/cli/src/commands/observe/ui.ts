@@ -2,7 +2,12 @@ import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 import { MIGRATIONS, openDb, ProfileStore, runMigrations, type Profile } from '@loom/core';
-import { defaultWebDistDir, startMissionControl, type McpInfo } from '@loom/mission-control';
+import {
+  defaultWebDistDir,
+  startMissionControl,
+  type ChatRuntime,
+  type McpInfo,
+} from '@loom/mission-control';
 import { homeDataDir } from '../../workspace.js';
 import { gatewayFromProfile } from '../../pipeline-config.js';
 import { defineCommand } from '../../registry.js';
@@ -74,6 +79,28 @@ export const uiCommand = defineCommand({
     const profileStore = profile
       ? new ProfileStore(homeDataDir(ctx.env), profile.profile ?? profile.project)
       : undefined;
+    // Build the chat runtime DEFENSIVELY: a configured-but-broken profile (e.g. no resolvable API
+    // key) must never crash `loom ui` — the dashboard + Setup wizard have to stay reachable so the
+    // user can FIX the config from the UI. On failure, chat is disabled and the reason is surfaced.
+    let chat: ChatRuntime | undefined;
+    let chatDisabledReason: string | undefined;
+    if (!profile) {
+      chatDisabledReason = 'No project configured yet — open Setup to create one.';
+    } else {
+      try {
+        chat = {
+          gateway: gatewayFromProfile(profile),
+          model: profile.llm.model,
+          profile,
+          root: ctx.cwd,
+          version: ctx.version,
+          profileStore,
+          homeDir: homeDataDir(ctx.env),
+        };
+      } catch (error) {
+        chatDisabledReason = error instanceof Error ? error.message : String(error);
+      }
+    }
     const mc = await startMissionControl({
       db,
       port,
@@ -87,19 +114,10 @@ export const uiCommand = defineCommand({
       webDistDir: defaultWebDistDir(),
       // Where the Setup wizard writes loom.config.yaml so the UI can create the project — the home (~/.loom).
       setupDir: homeDataDir(ctx.env),
-      // Enable the browser Generic Chat surface when a profile is configured — it drives the SAME
-      // agent loop as `loom chat`. The file/exec tools are confined to the cwd `loom ui` ran in.
-      chat: profile
-        ? {
-            gateway: gatewayFromProfile(profile),
-            model: profile.llm.model,
-            profile,
-            root: ctx.cwd,
-            version: ctx.version,
-            profileStore,
-            homeDir: homeDataDir(ctx.env),
-          }
-        : undefined,
+      // The browser Generic Chat surface (drives the SAME agent loop as `loom chat`); undefined when
+      // no/broken profile — chatDisabledReason then tells the UI exactly why.
+      chat,
+      chatDisabledReason,
       // Enable the BAA stage graph's stage triggers: each spawns a detached `loom stage` child so the
       // conductor (via the CLI) stays the single writer and the work survives a UI restart.
       baa: profile?.dataDir
@@ -110,6 +128,11 @@ export const uiCommand = defineCommand({
                 'stage',
                 '--name',
                 stage,
+                // Pass BOTH the profile dir (where loom.config.yaml lives) and the data dir, so the
+                // spawned stage resolves the config even when they differ (only the home case has
+                // them equal). Without --profile the child couldn't find the project config.
+                '--profile',
+                profile.dir,
                 '--data-dir',
                 profile.dataDir!,
               ];

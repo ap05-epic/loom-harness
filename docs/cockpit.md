@@ -36,7 +36,7 @@ the base (server, durable store, tools, permission gate, theme) is shared. Tabs:
 | **Agents**     | **Live orchestration** — the orchestrator node (pulses while summoning), live **subagent** cards (screen · phase · attempt · tokens · last action), and a colour-coded activity feed. A **Halt** button stops everything.                                                                                                      |
 | **Chat**       | **Surface A — the general agent.** A browser chat over the _same_ extracted agent loop the CLI uses (`@loom/chat`): streaming replies, inline tool-call cards, an in-UI **permission prompt** (Yes/No/Always/Allow-all), a **Stop** button, durable conversations, and a pill status bar (model · profile · tokens · context). |
 | **BAA**        | **Surface B — the modernization pipeline** as a stage graph: `MAP → PLAN → CRAWL → BUILD → SHIP`, each startable; EVAL↔FIX runs inside BUILD; SHIP is a human gate in the inline Inbox. A **Halt** button stops the run.                                                                                                       |
-| **Setup**      | A guided **onboarding wizard** (Welcome → Prerequisites → Legacy app → Model → Review) that generates a ready-to-paste `loom.config.yaml` + the pod commands.                                                                                                                                                                  |
+| **Setup**      | A guided **onboarding wizard** (Welcome → Prerequisites → Legacy app → Model → Review) that **writes** a valid `loom.config.yaml` for you (`POST /api/setup`, backing up any existing one) — form-only, no YAML editing — then prompts a one-line restart. It refuses to save a config whose env-var-name fields hold an actual key/URL.                                                                                  |
 | **Settings**   | A Hermes-style **Control Center**: switch **Profiles** (the learning root — memory + skills — no restart), browse **Skills** (searchable), set **Preferences** (theme, send-key), and **About**. The active profile is also a one-click chip in the top bar.                                                                   |
 
 ## Theme
@@ -61,6 +61,10 @@ human-initiated action:
 - **Halt** (`POST /api/baa/stop`) — the **kill switch**: SIGTERMs the spawned stage processes, marks
   the run `stopped`, and blocks its in-flight work packages (resumable — a new BUILD picks them up).
   A streaming **chat turn** has its own Stop (aborts the request; the server settles cleanly).
+- **Resilient startup** — a broken or absent profile (e.g. no resolvable API key) never crashes
+  `loom ui`: it serves the dashboard + Setup wizard anyway, so you can fix the config from the UI, and
+  `/api/chat/info`'s 503 carries the exact reason so the UI explains _why_ chat is off. A busy port
+  (another Loom already running) is reported with an actionable message, not crashed into.
 
 So there is always a human in the loop (permission prompts, gates, the inbox) and always a way to
 stop (Halt on Agents/BAA, Stop in Chat).

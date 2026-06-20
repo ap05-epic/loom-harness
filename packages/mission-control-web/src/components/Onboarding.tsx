@@ -184,6 +184,9 @@ export function Onboarding() {
   // A failed save with a 404/405 means the running server predates /api/setup — i.e. `loom update`
   // ran but the live `loom` wasn't restarted. Detect it so we can tell the user exactly that.
   const staleServer = create.error instanceof Error && /\b(404|405)\b/.test(create.error.message);
+  // Block Create if the env-var-NAME fields hold an actual key/URL — that yields an invalid profile
+  // (and would write a secret into the file). The Model step warns inline; this stops the save.
+  const envNamesBad = looksLikeValueNotName(d.apiKeyEnv) || looksLikeValueNotName(d.baseUrlEnv);
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5">
@@ -414,14 +417,20 @@ export function Onboarding() {
                 ) : null}
                 <button
                   className="btn btn-accent justify-center"
-                  disabled={create.isPending || !d.projectName.trim()}
+                  disabled={create.isPending || !d.projectName.trim() || envNamesBad}
                   onClick={() => create.mutate()}
                 >
                   {create.isPending ? 'Creating…' : `Create ${d.projectName.trim() || 'project'}`}
                 </button>
                 {!d.projectName.trim() ? (
                   <span className="muted text-center text-xs">
-                    Give your project a name first (step 3).
+                    Name your project first (the Legacy app step).
+                  </span>
+                ) : envNamesBad ? (
+                  <span className="text-center text-xs" style={{ color: 'var(--fail)' }}>
+                    The Model → Advanced env-var fields hold an actual key/URL. Enter variable{' '}
+                    <b>names</b> (e.g. <span className="mono">LLM_API_KEY</span>) — your secret
+                    stays in the pod environment.
                   </span>
                 ) : null}
               </>

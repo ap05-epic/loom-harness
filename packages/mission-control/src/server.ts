@@ -52,6 +52,8 @@ export type MissionControlOptions = {
    * behavior). The CLI's `loom ui` passes this when a profile is configured.
    */
   chat?: ChatRuntime;
+  /** When chat is disabled (no/broken profile), the human-readable reason — surfaced by the 503. */
+  chatDisabledReason?: string;
   /**
    * Enables the **BAA stage graph's** stage-trigger action (`POST /api/baa/stage`). The CLI supplies
    * a spawner that launches a detached `loom <stage>` child, so the conductor stays the single writer
@@ -176,7 +178,12 @@ async function handle(
     // Serve the built React SPA when present; otherwise the vanilla dashboard (pod-safe fallback).
     const indexFile = opts.webDistDir ? join(opts.webDistDir, 'index.html') : undefined;
     if (indexFile && existsSync(indexFile)) {
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      // no-cache so a browser never serves a STALE SPA after `loom update` (hashed assets are
+      // immutable; only index.html points at the current bundle).
+      res.writeHead(200, {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-cache',
+      });
       createReadStream(indexFile).pipe(res);
       return;
     }
@@ -394,7 +401,22 @@ export function startMissionControl(opts: MissionControlOptions): Promise<Missio
       if (!res.headersSent) sendJson(res, 500, { error: 'internal error' });
     });
   });
-  return new Promise<MissionControl>((resolve) => {
+  return new Promise<MissionControl>((resolve, reject) => {
+    // Surface a busy port (EADDRINUSE) with an actionable message instead of an unhandled 'error'
+    // crash that leaves the OTHER (possibly stale) server running — the root of "loom is out of date".
+    server.once('error', (err) => {
+      if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE') {
+        const p = opts.port ?? 0;
+        reject(
+          new Error(
+            `port ${p} is already in use — a Loom server is probably already running there. ` +
+              `Open http://127.0.0.1:${p} in your browser, or stop the other one (Ctrl-C in its ` +
+              `terminal) and try again. If the UI looks out of date after an update, that older ` +
+              `server is the reason — stop it, then restart.`,
+          ),
+        );
+      } else reject(err);
+    });
     server.listen(opts.port ?? 0, '127.0.0.1', () => {
       const port = (server.address() as AddressInfo).port;
       resolve({

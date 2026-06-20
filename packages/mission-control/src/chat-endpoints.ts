@@ -310,7 +310,7 @@ async function streamTurn(
  * `loom ui`), the chat routes answer 503 — the rest of Mission Control is unaffected.
  */
 export async function handleChatRequest(
-  opts: { db: SqliteDatabase; chat?: ChatRuntime; project?: string },
+  opts: { db: SqliteDatabase; chat?: ChatRuntime; project?: string; chatDisabledReason?: string },
   req: IncomingMessage,
   res: ServerResponse,
   url: URL,
@@ -320,8 +320,12 @@ export async function handleChatRequest(
   if (!pathname.startsWith('/api/chat') && !pathname.startsWith('/api/profiles')) return false;
   const rt = opts.chat;
   if (!rt) {
+    // 503 carries the precise reason (no project / no API key / bad config) so the UI can explain it
+    // instead of a blank "not available" — see SetupBanner + the Chat surface.
     sendJson(res, 503, {
       error: 'chat is not enabled — start `loom ui` from a configured project',
+      disabledReason:
+        opts.chatDisabledReason ?? 'No project configured yet — open Setup to create one.',
     });
     return true;
   }
