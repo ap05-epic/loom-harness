@@ -2,20 +2,8 @@ import { useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Check, Copy } from 'lucide-react';
 import { createProject } from '../api';
+import { genConfig, looksLikeValueNotName, type SetupData } from '../lib/setup-config';
 import { LoomMark } from './LoomMark';
-
-/** The setup inputs the wizard collects, then turns into a saved loom.config.yaml. */
-type Data = {
-  projectName: string;
-  appType: string;
-  strutsConfig: string;
-  baseUrl: string;
-  startPath: string;
-  provider: string;
-  model: string;
-  apiKeyEnv: string;
-  baseUrlEnv: string;
-};
 
 const STEPS = ['Welcome', 'Prerequisites', 'Legacy app', 'Model', 'Review'];
 
@@ -42,20 +30,42 @@ const PREREQS = [
   },
 ];
 
-/** Build a SCHEMA-VALID loom.config.yaml from the wizard inputs. */
-function genConfig(d: Data): string {
-  const lines = [
-    `project: ${d.projectName || 'my-app'}`,
-    `llm:`,
-    `  driver: ${d.provider}`,
-    `  model: ${d.model || 'gpt-5.4'}`,
-    `  apiKeyEnv: ${d.apiKeyEnv || 'LLM_API_KEY'}`,
-  ];
-  if (d.baseUrlEnv.trim()) lines.push(`  baseUrlEnv: ${d.baseUrlEnv}`);
-  if (d.strutsConfig.trim()) lines.push(`source:`, `  strutsConfig: ${d.strutsConfig}`);
-  if (d.baseUrl.trim()) lines.push(`app:`, `  baseUrl: ${d.baseUrl}`);
-  if (d.startPath.trim()) lines.push(`crawl:`, `  startPath: ${d.startPath}`);
-  return lines.join('\n');
+/** An env-var-NAME field that warns inline if the user pastes the actual secret/URL instead. */
+function EnvVarField({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  const warn = looksLikeValueNotName(value);
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs font-medium">{label}</span>
+      <input
+        className="field"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        style={warn ? { borderColor: 'var(--fail)' } : undefined}
+      />
+      {warn ? (
+        <span className="text-[11px]" style={{ color: 'var(--fail)' }}>
+          That looks like the actual value. Enter the variable <b>name</b> (e.g.{' '}
+          <span className="mono">LLM_API_KEY</span>) — your secret stays in the pod environment,
+          never in this file.
+        </span>
+      ) : (
+        <span className="muted text-[11px]">
+          The <b>name</b> of the env var Loom reads at runtime — not the value.
+        </span>
+      )}
+    </label>
+  );
 }
 
 function Stepper({ step }: { step: number }) {
@@ -155,7 +165,8 @@ function CopyBlock({ text }: { text: string }) {
  * loom.config.yaml for you (no hand-placing a file) — then you just restart Loom. */
 export function Onboarding() {
   const [step, setStep] = useState(0);
-  const [d, setD] = useState<Data>({
+  const [advanced, setAdvanced] = useState(false);
+  const [d, setD] = useState<SetupData>({
     projectName: '',
     appType: 'struts',
     strutsConfig: '',
@@ -166,10 +177,13 @@ export function Onboarding() {
     apiKeyEnv: 'LLM_API_KEY',
     baseUrlEnv: 'LLM_BASE_URL',
   });
-  const set = (k: keyof Data) => (v: string) => setD((p) => ({ ...p, [k]: v }));
+  const set = (k: keyof SetupData) => (v: string) => setD((p) => ({ ...p, [k]: v }));
   const config = useMemo(() => genConfig(d), [d]);
   const create = useMutation({ mutationFn: () => createProject(config) });
   const last = STEPS.length - 1;
+  // A failed save with a 404/405 means the running server predates /api/setup — i.e. `loom update`
+  // ran but the live `loom` wasn't restarted. Detect it so we can tell the user exactly that.
+  const staleServer = create.error instanceof Error && /\b(404|405)\b/.test(create.error.message);
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5">
@@ -276,11 +290,15 @@ export function Onboarding() {
         {step === 3 ? (
           <div className="reveal flex flex-col gap-4">
             <h2 className="text-lg font-semibold">Model</h2>
-            <p className="muted text-sm">
-              On the pod your key + endpoint are already in the environment (set by{' '}
-              <span className="mono">loom init</span>). The config just references them by name —
-              nothing secret is typed here.
-            </p>
+            <div
+              className="rounded-[8px] p-3 text-sm"
+              style={{ background: 'var(--accent-soft)', border: '1px solid var(--border)' }}
+            >
+              Your API key + endpoint are <b>already set in the pod environment</b> (
+              <span className="mono">LLM_API_KEY</span> / <span className="mono">LLM_BASE_URL</span>
+              , from <span className="mono">loom init</span>). Loom uses those —{' '}
+              <b>don't paste your key or URL here.</b>
+            </div>
             <label className="flex flex-col gap-1">
               <span className="text-xs font-medium">Provider</span>
               <select
@@ -293,20 +311,32 @@ export function Onboarding() {
               </select>
             </label>
             <Field label="Model id" value={d.model} onChange={set('model')} placeholder="gpt-5.4" />
-            <Field
-              label="API-key env var"
-              value={d.apiKeyEnv}
-              onChange={set('apiKeyEnv')}
-              placeholder="LLM_API_KEY"
-              hint="Loom reads the key from this variable at runtime (the pod default is LLM_API_KEY)."
-            />
-            <Field
-              label="Base-URL env var (optional)"
-              value={d.baseUrlEnv}
-              onChange={set('baseUrlEnv')}
-              placeholder="LLM_BASE_URL"
-              hint="For Azure / self-hosted endpoints (must end in …/openai/v1)."
-            />
+            <button
+              type="button"
+              className="muted self-start text-xs underline"
+              onClick={() => setAdvanced((a) => !a)}
+            >
+              {advanced ? 'Hide advanced' : 'Advanced — environment variable names'}
+            </button>
+            {advanced ? (
+              <div className="flex flex-col gap-4">
+                <p className="muted text-xs">
+                  Only change these if your pod names the variables differently than the defaults.
+                </p>
+                <EnvVarField
+                  label="API-key env var name"
+                  value={d.apiKeyEnv}
+                  onChange={set('apiKeyEnv')}
+                  placeholder="LLM_API_KEY"
+                />
+                <EnvVarField
+                  label="Base-URL env var name"
+                  value={d.baseUrlEnv}
+                  onChange={set('baseUrlEnv')}
+                  placeholder="LLM_BASE_URL"
+                />
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -355,17 +385,31 @@ export function Onboarding() {
                 </div>
                 {create.isError ? (
                   <div
-                    className="rounded-[8px] p-2.5 text-sm"
+                    className="rounded-[8px] p-3 text-sm"
                     style={{
                       color: 'var(--fail)',
                       background: 'color-mix(in srgb, var(--fail) 8%, var(--surface))',
                       border: '1px solid color-mix(in srgb, var(--fail) 35%, var(--border))',
                     }}
                   >
-                    Couldn't save:{' '}
-                    {create.error instanceof Error ? create.error.message : String(create.error)}.
-                    You can still copy the config above into{' '}
-                    <span className="mono">~/.loom/loom.config.yaml</span>.
+                    {staleServer ? (
+                      <>
+                        <b>Your running Loom is out of date.</b> You updated, but the live server
+                        started before this button existed. In your terminal: press{' '}
+                        <span className="mono">Ctrl-C</span>, type{' '}
+                        <span className="mono">loom</span>, reload this page, then click Create
+                        again.
+                      </>
+                    ) : (
+                      <>
+                        Couldn't save:{' '}
+                        {create.error instanceof Error
+                          ? create.error.message
+                          : String(create.error)}
+                        . You can still copy the config above into{' '}
+                        <span className="mono">~/.loom/loom.config.yaml</span> and restart Loom.
+                      </>
+                    )}
                   </div>
                 ) : null}
                 <button
