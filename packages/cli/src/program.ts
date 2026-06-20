@@ -198,7 +198,9 @@ export function buildProgram(registry: CommandRegistry, deps: ProgramDeps): Comm
     });
     const exit = deps.exit ?? ((code: number) => void (process.exitCode = code));
     try {
-      const data = await uiSpec.run(ctx, { options: { open: true }, args: {} });
+      // A stable default port so a pod can port-forward it predictably (ephemeral changes each run);
+      // override with `loom ui --port <n>`. `open` is best-effort — a no-op on a headless host.
+      const data = await uiSpec.run(ctx, { options: { open: true, port: '7777' }, args: {} });
       ctx.sink.result(data);
       ctx.sink.flushSuccess(uiSpec.render ? (d) => uiSpec.render!(d, ctx) : undefined);
       exit(ctx.requestedExit);

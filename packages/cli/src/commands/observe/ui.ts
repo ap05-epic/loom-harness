@@ -17,16 +17,20 @@ function optionalProfile(ctx: CliContext): Profile | undefined {
   }
 }
 
-/** Best-effort open of a URL in the OS default browser. */
+/** Best-effort open of a URL in the OS default browser (a no-op on a headless host). */
 function openBrowser(url: string): void {
   const cmd =
     process.platform === 'win32' ? 'start' : process.platform === 'darwin' ? 'open' : 'xdg-open';
   try {
-    spawn(cmd, [url], {
+    const child = spawn(cmd, [url], {
       shell: process.platform === 'win32',
       detached: true,
       stdio: 'ignore',
-    }).unref();
+    });
+    // A missing opener (e.g. no `xdg-open` on a headless pod) emits an ASYNC 'error' event that a
+    // try/catch can't catch — handle it so it never crashes the server. The URL is printed anyway.
+    child.on('error', () => {});
+    child.unref();
   } catch {
     /* opening is best-effort */
   }
@@ -114,6 +118,7 @@ export const uiCommand = defineCommand({
                 stdio: 'ignore',
                 env: process.env,
               });
+              child.on('error', () => {}); // a failed stage spawn must not crash the UI server
               child.unref();
               return { pid: child.pid };
             },
