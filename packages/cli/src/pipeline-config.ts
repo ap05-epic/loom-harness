@@ -123,9 +123,11 @@ export function gatewayFromProfile(profile: Profile): LlmGateway {
   const base = baseUrlEnv ? profile.env[baseUrlEnv] : undefined;
   const key = apiKeyEnv ? profile.env[apiKeyEnv] : undefined;
   if (!key) {
+    const name = apiKeyEnv ?? 'LLM_API_KEY';
     throw configError(
-      `no API key set (${apiKeyEnv ?? 'LLM_API_KEY'}) — set it in your .env`,
-      'add LLM_API_KEY (and LLM_BASE_URL …/openai/v1) to the profile .env',
+      `no API key: ${name} is empty or unset in ${profile.dir}/.env (and the environment)`,
+      `add a line  ${name}=<your key>  to ${profile.dir}/.env — no "export" prefix, no quotes. ` +
+        `If it's already there, a blank ${name} in your shell may be overriding it (run: unset ${name}).`,
     );
   }
   if (driver === 'anthropic') {

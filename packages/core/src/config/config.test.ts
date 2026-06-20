@@ -50,6 +50,22 @@ describe('loadProfile', () => {
     expect(profile.env.LLM_BASE_URL).toBe('http://plain # trailing comments are not stripped');
   });
 
+  test('.env parsing strips a leading `export ` (shell-style env files)', () => {
+    writeFileSync(join(dir, 'harness.config.yaml'), minimalYaml);
+    writeFileSync(join(dir, '.env'), 'export LLM_API_KEY=abc123\nexport LLM_BASE_URL=http://x\n');
+    const profile = loadProfile(dir, { env: {} });
+    expect(profile.env.LLM_API_KEY).toBe('abc123');
+    expect(profile.env.LLM_BASE_URL).toBe('http://x');
+  });
+
+  test('an empty real-env value does NOT override a non-empty .env value', () => {
+    writeFileSync(join(dir, 'harness.config.yaml'), minimalYaml);
+    writeFileSync(join(dir, '.env'), 'LLM_API_KEY=from-dotenv\n');
+    // A shell that exported an empty LLM_API_KEY must not blank out the configured file value.
+    const profile = loadProfile(dir, { env: { LLM_API_KEY: '' } });
+    expect(profile.env.LLM_API_KEY).toBe('from-dotenv');
+  });
+
   test('rejects a missing config file with a helpful message', () => {
     expect(() => loadProfile(dir, { env: {} })).toThrow(/loom\.config\.yaml/);
   });

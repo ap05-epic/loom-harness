@@ -153,7 +153,9 @@ export function parseDotEnv(content: string): Record<string, string> {
     if (!line || line.startsWith('#')) continue;
     const eq = line.indexOf('=');
     if (eq <= 0) continue;
-    const key = line.slice(0, eq).trim();
+    let key = line.slice(0, eq).trim();
+    // Tolerate shell-style `export KEY=value` lines (a common way people write .env files).
+    if (key.startsWith('export ')) key = key.slice('export '.length).trim();
     let value = line.slice(eq + 1).trim();
     if (
       (value.startsWith('"') && value.endsWith('"')) ||
@@ -197,7 +199,9 @@ export function loadProfile(dir: string, options: LoadProfileOptions = {}): Prof
   const realEnv = options.env ?? process.env;
   const env: Record<string, string> = { ...dotEnv };
   for (const [key, value] of Object.entries(realEnv)) {
-    if (value !== undefined) env[key] = value;
+    // Skip empty real-env values so a blank exported var (e.g. `export LLM_API_KEY=`) can't clobber
+    // a good value from the .env file.
+    if (value !== undefined && value !== '') env[key] = value;
   }
 
   let dataDir: string | undefined;
