@@ -191,12 +191,14 @@ async function streamTurn(
   }
   activeTurns.add(sessionId);
   const turnId = newId('turn');
-  let aborted = false;
+  const cancel = new AbortController();
   const settleTurnPermissions = (): void => {
     for (const [, e] of pending) if (e.turnId === turnId) e.resolve('no');
   };
+  // A client disconnect (the Stop button aborts the fetch) cancels the agent loop — no more tokens —
+  // and settles any waiting permission prompt as "no".
   res.on('close', () => {
-    aborted = true;
+    cancel.abort();
     settleTurnPermissions();
   });
 
@@ -228,7 +230,7 @@ async function streamTurn(
 
     const prompt: PermissionPrompt = (req) =>
       new Promise<PermissionAnswer>((resolve) => {
-        if (aborted) return resolve('no');
+        if (cancel.signal.aborted) return resolve('no');
         const requestId = newId('perm');
         const settle = (a: PermissionAnswer): void => {
           if (!pending.has(requestId)) return;
@@ -264,6 +266,7 @@ async function streamTurn(
       onMessage: (m) => {
         if (m.role === 'assistant') send('message', { content: m.content, toolCalls: m.toolCalls });
       },
+      signal: cancel.signal,
     });
 
     // Persist only the new tail (assistant/tool). Skip system + recall + the user message (already saved).

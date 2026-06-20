@@ -237,6 +237,9 @@ export const exploreCommand = defineCommand({
       const run = store.createRun({ project: profile.project, harnessVersion: ctx.version });
       store.setRunStage(run.id, 'explore');
       runId = run.id;
+      // Cooperative cancel: a UI "Stop" marks this run stopped (POST /api/baa/stop); poll the status
+      // between steps and halt the walk gracefully — the screens mapped so far are kept.
+      options.shouldStop = () => store.getRun(run.id)?.status === 'stopped';
       events = new EventLog(db);
       events.append({
         type: 'explore.started',
@@ -307,7 +310,9 @@ export const exploreCommand = defineCommand({
           elapsedMs: Date.now() - startedAt,
         },
       });
-      new TaskStore(db).finishRun(runId, 'completed');
+      const tasks = new TaskStore(db);
+      // Respect a UI halt: if the run was stopped mid-walk, finish it "stopped", not "completed".
+      tasks.finishRun(runId, tasks.getRun(runId)?.status === 'stopped' ? 'stopped' : 'completed');
       db.close();
     }
 

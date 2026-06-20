@@ -11,7 +11,12 @@ export type GuardConfig = {
   noProgressLimit?: number;
 };
 
-export type GuardKind = 'max_iterations' | 'token_budget' | 'wall_clock' | 'no_progress';
+export type GuardKind =
+  | 'max_iterations'
+  | 'token_budget'
+  | 'wall_clock'
+  | 'no_progress'
+  | 'cancelled';
 
 export type RunOptions = {
   model: string;
@@ -26,6 +31,11 @@ export type RunOptions = {
    * stream the turn (the gateway is non-streaming, so this is per-message, not per-token).
    */
   onStep?: (message: ChatMessage) => void;
+  /**
+   * Cooperative cancel — checked before each model call, so a UI "Stop" / halt ends the run without
+   * another token spent. The current in-flight call (if any) finishes; no new one starts.
+   */
+  signal?: { aborted: boolean };
   /** Injectable clock for tests. */
   now?: () => number;
 };
@@ -81,6 +91,7 @@ export class AgentRunner {
     });
 
     for (;;) {
+      if (options.signal?.aborted) return tripped('cancelled');
       if (now() - startedAt > options.guards.maxWallClockMs) return tripped('wall_clock');
       if (iterations >= options.guards.maxIterations) return tripped('max_iterations');
 

@@ -97,6 +97,12 @@ export type ExploreOptions = {
    * each run, and steers the chooser (via `visitedKeys`) toward the genuinely unseen.
    */
   knownScreens?: Iterable<string>;
+  /**
+   * Cooperative cancel — checked before each step. Return true to stop the walk gracefully (a UI
+   * "Stop" / halt sets this), so an autonomous crawl can be halted mid-flight without losing the
+   * states already mapped.
+   */
+  shouldStop?: () => boolean;
 };
 
 export type ExploreResult = {
@@ -240,8 +246,13 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
   const startKey = record(cur);
   let curKey = startKey;
   let visited = 0;
+  let stopped = false;
 
   while (states.length < maxStates && visited < maxVisits) {
+    if (opts.shouldStop?.()) {
+      stopped = true;
+      break;
+    }
     const cands = await driver.candidates();
     // Offer fillable fields always (re-fillable with a new value), clicks only until tried — so a
     // deterministic chooser exhausts the click frontier instead of re-picking a dead control.
@@ -293,5 +304,9 @@ export async function explore(opts: ExploreOptions): Promise<ExploreResult> {
     });
   }
 
-  return { states, visited, truncated: states.length >= maxStates || visited >= maxVisits };
+  return {
+    states,
+    visited,
+    truncated: stopped || states.length >= maxStates || visited >= maxVisits,
+  };
 }

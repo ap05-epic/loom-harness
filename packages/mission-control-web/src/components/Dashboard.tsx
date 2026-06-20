@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { answerQuestion, decideGate, fetchState } from '../api';
+import { answerQuestion, decideGate, fetchState, stopBaa } from '../api';
 import { useProject } from '../project';
 import { CostPanel } from './CostPanel';
 import { EvalPanel } from './EvalPanel';
@@ -69,6 +69,7 @@ export function Dashboard() {
     mutationFn: ({ id, answer }: { id: string; answer: string }) => answerQuestion(id, answer),
     onSuccess: refresh,
   });
+  const stopMut = useMutation({ mutationFn: () => stopBaa(data?.run?.id), onSuccess: refresh });
 
   return (
     <div className="flex flex-col gap-4">
@@ -76,6 +77,16 @@ export function Dashboard() {
         <div className="flex-1">
           <RunHeader run={data?.run ?? null} />
         </div>
+        {data?.run?.status === 'running' ? (
+          <button
+            className="btn btn-no"
+            disabled={stopMut.isPending}
+            onClick={() => stopMut.mutate()}
+            title="Halt the run — stop all workers and their token use"
+          >
+            ■ Halt
+          </button>
+        ) : null}
         <LiveIndicator isError={isError} isFetching={isFetching} hasData={Boolean(data)} />
       </div>
 

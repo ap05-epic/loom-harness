@@ -182,6 +182,17 @@ class FakeLoginApp implements ExploreDriver {
 }
 
 describe('explore', () => {
+  test('shouldStop halts the walk immediately, keeping the states mapped so far', async () => {
+    const result = await explore({
+      driver: new FakeMenuApp(),
+      chooser: heuristicChooser,
+      shouldStop: () => true, // a UI "Stop" arrives before the first step
+    });
+    expect(result.truncated).toBe(true);
+    expect(result.visited).toBe(0); // stopped before any click — no more tokens
+    expect(result.states.length).toBeGreaterThanOrEqual(1); // the start screen is still recorded
+  });
+
   test('discovers states reachable only by clicking (what synthetic URL nav cannot)', async () => {
     const driver = new FakeMenuApp();
     const result = await explore({

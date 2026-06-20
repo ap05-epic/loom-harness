@@ -112,6 +112,8 @@ export type AgenticTurnOptions = {
    * browser surface streams over SSE. The gateway is non-streaming, so this is per-message.
    */
   onMessage?: (message: ChatMessage) => void;
+  /** Cooperative cancel — a UI "Stop" aborts this; the loop ends before the next model call. */
+  signal?: { aborted: boolean };
 };
 
 /**
@@ -165,6 +167,7 @@ export async function agenticChatTurn(
       maxWallClockMs: opts.guards?.maxWallClockMs ?? 30 * 60_000,
     },
     onStep: opts.onMessage,
+    signal: opts.signal,
   });
   return { history: result.transcript, finalText: result.finalText, usage: result.usage };
 }

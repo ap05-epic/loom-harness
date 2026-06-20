@@ -53,6 +53,34 @@ describe('AgentRunner', () => {
     expect(toolMsg?.content).toBe('echoed:one');
   });
 
+  test('a cancelled signal stops the loop before the next model call (no more tokens)', async () => {
+    server.enqueueToolCall('echo', { text: 'one' });
+    server.enqueueText('should never be reached');
+    const signal = { aborted: false };
+    const cancelOnUse: ToolDef = {
+      name: 'echo',
+      description: 'echoes then a Stop arrives',
+      parameters: { type: 'object', properties: { text: { type: 'string' } } },
+      execute: () => {
+        signal.aborted = true; // simulate the user hitting Stop mid-turn
+        return 'echoed:one';
+      },
+    };
+
+    const result = await makeRunner().run({
+      model: 'm',
+      messages: [{ role: 'user', content: 'go' }],
+      tools: [cancelOnUse],
+      guards: GUARDS,
+      signal,
+    });
+
+    expect(result.status).toBe('guard_tripped');
+    expect(result.guard).toBe('cancelled');
+    // Exactly one model call (iteration 1); the loop halted before a second — no further spend.
+    expect(server.requests).toHaveLength(1);
+  });
+
   test('tool execution errors are fed back to the model, not thrown', async () => {
     server.enqueueToolCall('boom', {});
     server.enqueueText('recovered');

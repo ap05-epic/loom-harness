@@ -64,6 +64,8 @@ export type ExploreAppOptions = {
   viewport?: Viewport;
   /** Screen keys already mapped in a prior run — skipped, for incremental/resumable mapping. */
   knownScreens?: Iterable<string>;
+  /** Cooperative cancel — checked before each step; return true to halt the walk (a UI "Stop"). */
+  shouldStop?: () => boolean;
   /** Called after each action — live progress / diagnostics. */
   onStep?: (step: ExploreStep) => void;
   /**
@@ -186,6 +188,7 @@ export async function exploreApp(options: ExploreAppOptions): Promise<ExploreRes
       maxVisits: options.maxVisits,
       knownScreens: options.knownScreens,
       onStep: options.onStep,
+      shouldStop: options.shouldStop,
     });
   } finally {
     await session.close();
