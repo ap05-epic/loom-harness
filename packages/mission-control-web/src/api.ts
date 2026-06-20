@@ -198,6 +198,10 @@ export const stopBaa = (runId?: string) =>
     runId ? { runId } : {},
   );
 
+/** Create the project from the Setup wizard — writes loom.config.yaml into the global home (~/.loom). */
+export const createProject = (config: string) =>
+  postJson<{ ok: boolean; path: string }>('/api/setup', { config });
+
 /** Answer an open agent question, unblocking its screen. */
 export const answerQuestion = (id: string, answer: string) =>
   postJson<{ status: string }>(`/api/questions/${encodeURIComponent(id)}`, { answer });

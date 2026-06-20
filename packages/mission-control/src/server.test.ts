@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -102,6 +102,29 @@ describe('Mission Control server', () => {
     });
     expect(res.status).toBe(200);
     expect(new QuestionStore(db).get(questionId)!.answer).toBe('skip it');
+  });
+
+  test('POST /api/setup writes loom.config.yaml so the wizard creates the project', async () => {
+    mc = await startMissionControl({ db, setupDir: dir });
+    const res = await fetch(`${mc.url}/api/setup`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ config: 'project: BAA-Test-2\nllm:\n  driver: openai\n  model: gpt-5.4\n' }),
+    });
+    expect(res.status).toBe(200);
+    const path = join(dir, 'loom.config.yaml');
+    expect(existsSync(path)).toBe(true);
+    expect(readFileSync(path, 'utf8')).toContain('project: BAA-Test-2');
+  });
+
+  test('POST /api/setup is 503 when no setup dir is configured', async () => {
+    mc = await startMissionControl({ db });
+    const res = await fetch(`${mc.url}/api/setup`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ config: 'project: x' }),
+    });
+    expect(res.status).toBe(503);
   });
 
   test('approving a skill gate via the API activates the drafted skill (human-in-the-loop)', async () => {

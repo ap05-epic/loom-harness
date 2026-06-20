@@ -1,4 +1,11 @@
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import {
+  copyFileSync,
+  createReadStream,
+  existsSync,
+  mkdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { dirname, extname, join, relative, resolve } from 'node:path';
@@ -52,6 +59,11 @@ export type MissionControlOptions = {
    * works (`GET /api/baa-state` needs no runtime).
    */
   baa?: BaaRuntime;
+  /**
+   * Where the onboarding wizard writes `loom.config.yaml` (the global home, `~/.loom`), so the UI can
+   * create the project for the operator. Omit → `POST /api/setup` reports 503.
+   */
+  setupDir?: string;
 };
 
 /** The BAA stages a `POST /api/baa/stage` can trigger (each its own resumable `loom <stage>` run). */
@@ -308,6 +320,32 @@ async function handle(
     sendJson(res, 200, { killed, runId: runId ?? null, halted });
     return;
   }
+
+  // Onboarding: the Setup wizard writes the project's loom.config.yaml so the operator never has to
+  // hand-place a file. Backs up any existing config (.bak), writes the new one; the user restarts loom.
+  if (method === 'POST' && pathname === '/api/setup') {
+    if (!opts.setupDir) return sendJson(res, 503, { error: 'setup is not available here' });
+    const body = await readJson(req);
+    const config = typeof body.config === 'string' ? body.config : '';
+    if (!config.trim()) return sendJson(res, 400, { error: 'config is required' });
+    try {
+      mkdirSync(opts.setupDir, { recursive: true });
+      const path = join(opts.setupDir, 'loom.config.yaml');
+      if (existsSync(path)) {
+        try {
+          copyFileSync(path, `${path}.bak`);
+        } catch {
+          /* best-effort backup */
+        }
+      }
+      writeFileSync(path, config.endsWith('\n') ? config : `${config}\n`, 'utf8');
+      sendJson(res, 200, { ok: true, path });
+    } catch (error) {
+      sendJson(res, 500, { error: error instanceof Error ? error.message : String(error) });
+    }
+    return;
+  }
+
   const gateMatch = pathname.match(/^\/api\/gates\/([^/]+)$/);
   if (method === 'POST' && gateMatch) {
     const body = await readJson(req);

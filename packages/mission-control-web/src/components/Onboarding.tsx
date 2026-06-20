@@ -1,11 +1,14 @@
 import { useMemo, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { Check, Copy } from 'lucide-react';
+import { createProject } from '../api';
 import { LoomMark } from './LoomMark';
 
-/** The setup inputs the wizard collects, then turns into a config + pod commands. */
+/** The setup inputs the wizard collects, then turns into a saved loom.config.yaml. */
 type Data = {
   projectName: string;
   appType: string;
+  strutsConfig: string;
   baseUrl: string;
   startPath: string;
   provider: string;
@@ -29,9 +32,8 @@ const PREREQS = [
   },
   {
     k: 'model',
-    label: 'A model endpoint + API key',
-    detail:
-      'OpenAI / Azure / Anthropic — supplied via an environment variable, never typed into a UI',
+    label: 'A model endpoint + API key in the environment',
+    detail: 'set on the pod (LLM_API_KEY / LLM_BASE_URL) by `loom init` — never typed into this UI',
   },
   {
     k: 'git',
@@ -40,31 +42,20 @@ const PREREQS = [
   },
 ];
 
+/** Build a SCHEMA-VALID loom.config.yaml from the wizard inputs. */
 function genConfig(d: Data): string {
   const lines = [
     `project: ${d.projectName || 'my-app'}`,
     `llm:`,
     `  driver: ${d.provider}`,
     `  model: ${d.model || 'gpt-5.4'}`,
-    `  apiKeyEnv: ${d.apiKeyEnv || 'OPENAI_API_KEY'}`,
+    `  apiKeyEnv: ${d.apiKeyEnv || 'LLM_API_KEY'}`,
   ];
   if (d.baseUrlEnv.trim()) lines.push(`  baseUrlEnv: ${d.baseUrlEnv}`);
-  lines.push(`source:`, `  type: ${d.appType}`);
-  if (d.baseUrl.trim()) lines.push(`  baseUrl: ${d.baseUrl}`);
-  if (d.startPath.trim()) lines.push(`  startPath: ${d.startPath}`);
+  if (d.strutsConfig.trim()) lines.push(`source:`, `  strutsConfig: ${d.strutsConfig}`);
+  if (d.baseUrl.trim()) lines.push(`app:`, `  baseUrl: ${d.baseUrl}`);
+  if (d.startPath.trim()) lines.push(`crawl:`, `  startPath: ${d.startPath}`);
   return lines.join('\n');
-}
-
-function genCommands(d: Data): string {
-  return [
-    '# In your pod, from the project directory:',
-    `export ${d.apiKeyEnv || 'OPENAI_API_KEY'}=<your-api-key>`,
-    ...(d.baseUrlEnv.trim() ? [`export ${d.baseUrlEnv}=<your-endpoint-url>`] : []),
-    '',
-    'loom map        # understand the legacy app',
-    'loom run        # rebuild each screen + verify parity',
-    'loom ui         # open this Mission Control',
-  ].join('\n');
 }
 
 function Stepper({ step }: { step: number }) {
@@ -160,24 +151,24 @@ function CopyBlock({ text }: { text: string }) {
   );
 }
 
-/** The onboarding wizard: a guided "set up Loom in your pod" flow that ends in a ready-to-use
- * config + the exact commands to run. Self-contained (no backend) — it produces the artifacts the
- * operator drops into their pod. */
+/** The onboarding wizard: a guided "set up Loom in your pod" flow that ends by **saving** the project's
+ * loom.config.yaml for you (no hand-placing a file) — then you just restart Loom. */
 export function Onboarding() {
   const [step, setStep] = useState(0);
   const [d, setD] = useState<Data>({
     projectName: '',
     appType: 'struts',
+    strutsConfig: '',
     baseUrl: '',
-    startPath: '',
+    startPath: '/',
     provider: 'openai',
     model: 'gpt-5.4',
-    apiKeyEnv: 'OPENAI_API_KEY',
-    baseUrlEnv: 'OPENAI_BASE_URL',
+    apiKeyEnv: 'LLM_API_KEY',
+    baseUrlEnv: 'LLM_BASE_URL',
   });
   const set = (k: keyof Data) => (v: string) => setD((p) => ({ ...p, [k]: v }));
   const config = useMemo(() => genConfig(d), [d]);
-  const commands = useMemo(() => genCommands(d), [d]);
+  const create = useMutation({ mutationFn: () => createProject(config) });
   const last = STEPS.length - 1;
 
   return (
@@ -192,11 +183,11 @@ export function Onboarding() {
               <LoomMark size={52} />
             </div>
             <div>
-              <h1 className="text-2xl font-bold">Set up Loom in your pod</h1>
+              <h1 className="text-2xl font-bold">Set up your project</h1>
               <p className="muted mx-auto mt-2 max-w-md text-sm">
-                Loom maps your undocumented legacy app, rebuilds its screens in modern React, and
-                proves each rebuild is identical to the original. This guide gets it running in five
-                short steps.
+                Tell Loom a few things about your legacy app and it'll save the project for you —
+                then map the app, rebuild its screens in modern React, and prove each rebuild
+                matches the original.
               </p>
             </div>
             <div className="flex gap-6 text-sm">
@@ -215,9 +206,7 @@ export function Onboarding() {
         {step === 1 ? (
           <div className="reveal flex flex-col gap-3">
             <h2 className="text-lg font-semibold">Before you start</h2>
-            <p className="muted text-sm">
-              Make sure your pod has these. No action here — just a checklist.
-            </p>
+            <p className="muted text-sm">A quick checklist — nothing to do here.</p>
             <ul className="flex flex-col gap-2">
               {PREREQS.map((p) => (
                 <li key={p.k} className="card-raised flex items-start gap-3 p-3">
@@ -244,8 +233,8 @@ export function Onboarding() {
               label="Project name"
               value={d.projectName}
               onChange={set('projectName')}
-              placeholder="my-app"
-              hint="A short slug — becomes the project + config name."
+              placeholder="BAA-Test-2"
+              hint="A short name — this is what shows up across Mission Control."
             />
             <label className="flex flex-col gap-1">
               <span className="text-xs font-medium">App framework</span>
@@ -261,18 +250,25 @@ export function Onboarding() {
               </select>
             </label>
             <Field
-              label="Base URL (in your pod)"
+              label="Path to struts-config.xml (on the pod)"
+              value={d.strutsConfig}
+              onChange={set('strutsConfig')}
+              placeholder="./app/WEB-INF/struts-config.xml"
+              hint="The legacy source map reads this to find every screen. Optional now — add it before you run MAP."
+            />
+            <Field
+              label="App base URL (where it runs in your pod)"
               value={d.baseUrl}
               onChange={set('baseUrl')}
               placeholder="http://localhost:8080/app"
-              hint="Where the running legacy app is reachable. Loom drives it to capture ground truth."
+              hint="The running legacy app Loom drives to capture ground truth."
             />
             <Field
-              label="Start path (optional)"
+              label="Start path"
               value={d.startPath}
               onChange={set('startPath')}
-              placeholder="jsp/login.jsp"
-              hint="The entry screen the crawl should begin from."
+              placeholder="/"
+              hint="The entry screen the crawl begins from."
             />
           </div>
         ) : null}
@@ -281,7 +277,9 @@ export function Onboarding() {
           <div className="reveal flex flex-col gap-4">
             <h2 className="text-lg font-semibold">Model</h2>
             <p className="muted text-sm">
-              The agent's brain. Your key stays a pod environment variable — never entered here.
+              On the pod your key + endpoint are already in the environment (set by{' '}
+              <span className="mono">loom init</span>). The config just references them by name —
+              nothing secret is typed here.
             </p>
             <label className="flex flex-col gap-1">
               <span className="text-xs font-medium">Provider</span>
@@ -299,61 +297,118 @@ export function Onboarding() {
               label="API-key env var"
               value={d.apiKeyEnv}
               onChange={set('apiKeyEnv')}
-              placeholder="OPENAI_API_KEY"
-              hint="Loom reads the key from this variable at runtime."
+              placeholder="LLM_API_KEY"
+              hint="Loom reads the key from this variable at runtime (the pod default is LLM_API_KEY)."
             />
             <Field
               label="Base-URL env var (optional)"
               value={d.baseUrlEnv}
               onChange={set('baseUrlEnv')}
-              placeholder="OPENAI_BASE_URL"
-              hint="For Azure / self-hosted endpoints. Leave the default for public OpenAI."
+              placeholder="LLM_BASE_URL"
+              hint="For Azure / self-hosted endpoints (must end in …/openai/v1)."
             />
           </div>
         ) : null}
 
         {step === last ? (
           <div className="reveal flex flex-col gap-4">
-            <h2 className="text-lg font-semibold">You're ready</h2>
-            <p className="muted text-sm">
-              Drop this <span className="mono">loom.config.yaml</span> in your project directory,
-              then run the commands. That's the whole setup.
-            </p>
-            <div>
-              <div className="mb-1.5 text-xs font-medium">loom.config.yaml</div>
-              <CopyBlock text={config} />
-            </div>
-            <div>
-              <div className="mb-1.5 text-xs font-medium">Run in your pod</div>
-              <CopyBlock text={commands} />
-            </div>
+            {create.isSuccess ? (
+              <div className="flex flex-col items-center gap-3 py-4 text-center">
+                <span
+                  className="flex h-12 w-12 items-center justify-center rounded-full"
+                  style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
+                >
+                  <Check size={26} />
+                </span>
+                <div>
+                  <h2 className="text-lg font-semibold">Project saved</h2>
+                  <p className="muted mt-1 text-sm">
+                    Written to <span className="mono">{create.data.path}</span>.
+                  </p>
+                </div>
+                <div className="card-raised w-full max-w-md p-4 text-left">
+                  <div className="text-sm font-medium">One last step — restart Loom:</div>
+                  <ol className="muted mt-1.5 list-decimal pl-5 text-xs leading-relaxed">
+                    <li>
+                      In the terminal running Loom, press <span className="mono">Ctrl-C</span>.
+                    </li>
+                    <li>
+                      Type <span className="mono">loom</span> and press Enter.
+                    </li>
+                    <li>
+                      Refresh this page —{' '}
+                      <span className="mono">{d.projectName || 'your project'}</span> will be live.
+                    </li>
+                  </ol>
+                </div>
+              </div>
+            ) : (
+              <>
+                <h2 className="text-lg font-semibold">Review &amp; create</h2>
+                <p className="muted text-sm">
+                  This saves the config below as your project — no files to move. Your model + key
+                  are read from the pod environment.
+                </p>
+                <div>
+                  <div className="mb-1.5 text-xs font-medium">loom.config.yaml</div>
+                  <CopyBlock text={config} />
+                </div>
+                {create.isError ? (
+                  <div
+                    className="rounded-[8px] p-2.5 text-sm"
+                    style={{
+                      color: 'var(--fail)',
+                      background: 'color-mix(in srgb, var(--fail) 8%, var(--surface))',
+                      border: '1px solid color-mix(in srgb, var(--fail) 35%, var(--border))',
+                    }}
+                  >
+                    Couldn't save:{' '}
+                    {create.error instanceof Error ? create.error.message : String(create.error)}.
+                    You can still copy the config above into{' '}
+                    <span className="mono">~/.loom/loom.config.yaml</span>.
+                  </div>
+                ) : null}
+                <button
+                  className="btn btn-accent justify-center"
+                  disabled={create.isPending || !d.projectName.trim()}
+                  onClick={() => create.mutate()}
+                >
+                  {create.isPending ? 'Creating…' : `Create ${d.projectName.trim() || 'project'}`}
+                </button>
+                {!d.projectName.trim() ? (
+                  <span className="muted text-center text-xs">
+                    Give your project a name first (step 3).
+                  </span>
+                ) : null}
+              </>
+            )}
           </div>
         ) : null}
 
-        <div className="flex items-center justify-between pt-1">
-          <button
-            className="btn"
-            disabled={step === 0}
-            onClick={() => setStep((s) => Math.max(0, s - 1))}
-          >
-            Back
-          </button>
-          <span className="muted text-xs">
-            Step {step + 1} of {STEPS.length}
-          </span>
-          {step < last ? (
+        {!create.isSuccess ? (
+          <div className="flex items-center justify-between pt-1">
             <button
-              className="btn btn-accent"
-              onClick={() => setStep((s) => Math.min(last, s + 1))}
+              className="btn"
+              disabled={step === 0}
+              onClick={() => setStep((s) => Math.max(0, s - 1))}
             >
-              Continue
+              Back
             </button>
-          ) : (
-            <button className="btn btn-accent" onClick={() => setStep(0)}>
-              Start over
-            </button>
-          )}
-        </div>
+            <span className="muted text-xs">
+              Step {step + 1} of {STEPS.length}
+            </span>
+            {step < last ? (
+              <button
+                className="btn btn-accent"
+                onClick={() => setStep((s) => Math.min(last, s + 1))}
+              >
+                Continue
+              </button>
+            ) : (
+              <span style={{ width: 1 }} />
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );

@@ -85,6 +85,8 @@ export const uiCommand = defineCommand({
       exploreShotsDir: profile?.dataDir ? join(profile.dataDir, 'explore-shots') : undefined,
       // Serve the built React SPA when present; the server falls back to the vanilla dashboard.
       webDistDir: defaultWebDistDir(),
+      // Where the Setup wizard writes loom.config.yaml so the UI can create the project — the home (~/.loom).
+      setupDir: homeDataDir(ctx.env),
       // Enable the browser Generic Chat surface when a profile is configured — it drives the SAME
       // agent loop as `loom chat`. The file/exec tools are confined to the cwd `loom ui` ran in.
       chat: profile
