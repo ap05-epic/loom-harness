@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process';
-import { isAbsolute, join } from 'node:path';
-import { openDb, ProfileStore, type Profile } from '@loom/core';
+import { mkdirSync } from 'node:fs';
+import { dirname, isAbsolute, join } from 'node:path';
+import { MIGRATIONS, openDb, ProfileStore, runMigrations, type Profile } from '@loom/core';
 import { defaultWebDistDir, startMissionControl, type McpInfo } from '@loom/mission-control';
-import { requireExistingDb } from '../../db-path.js';
 import { homeDataDir } from '../../workspace.js';
 import { gatewayFromProfile } from '../../pipeline-config.js';
 import { defineCommand } from '../../registry.js';
@@ -45,10 +45,19 @@ export const uiCommand = defineCommand({
   ],
   examples: ['loom ui --data-dir ./.loom-data', 'loom ui --port 7777 --open'],
   async run(ctx, input) {
-    const db = openDb(requireExistingDb(ctx, input.options.db));
     const port = input.options.port !== undefined ? Number(input.options.port) : undefined;
-    // A profile enriches the inventory (skills dir + external MCP) but isn't required to watch.
+    // A profile enriches the inventory (skills dir + external MCP) + enables chat/BAA, but isn't required.
     const profile = optionalProfile(ctx);
+    // Open-or-create the db so `loom ui` (and bare `loom`) works on a fresh machine — it serves the
+    // dashboard + the Setup wizard even before the first run. Resolve: --db, else the profile's data
+    // dir, else the global home (~/.loom).
+    const dbPath =
+      typeof input.options.db === 'string' && input.options.db
+        ? input.options.db
+        : join(profile?.dataDir ?? homeDataDir(ctx.env), 'loom.db');
+    mkdirSync(dirname(dbPath), { recursive: true });
+    const db = openDb(dbPath);
+    runMigrations(db, MIGRATIONS);
     const skillsDir =
       profile?.skills?.dir &&
       (isAbsolute(profile.skills.dir) ? profile.skills.dir : join(profile.dir, profile.skills.dir));

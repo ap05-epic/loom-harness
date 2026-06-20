@@ -17,7 +17,7 @@ import { ControlCenter } from './components/ControlCenter';
 import { LoomMark } from './components/LoomMark';
 import { ProjectSwitcher } from './components/ProjectSwitcher';
 import { ProjectProvider } from './project';
-import { fetchProfiles, switchProfile } from './api';
+import { fetchChatInfo, fetchProfiles, switchProfile } from './api';
 
 const client = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 1000 } },
@@ -208,6 +208,35 @@ function TopBar({ view, onView }: { view: string; onView: (v: string) => void })
   );
 }
 
+/** When the project isn't configured (no model/profile → chat 503s), guide the user to Setup. */
+function SetupBanner({ onSetup }: { onSetup: () => void }) {
+  const { isError, isLoading } = useQuery({
+    queryKey: ['chat-info'],
+    queryFn: fetchChatInfo,
+    retry: false,
+  });
+  if (isLoading || !isError) return null; // configured (chat enabled) → nothing to nag about
+  return (
+    <div
+      className="mx-auto mt-3 flex max-w-[1500px] flex-wrap items-center gap-3 rounded-[10px] px-4 py-2.5"
+      style={{
+        background: 'var(--accent-soft)',
+        border: '1px solid color-mix(in srgb, var(--accent) 35%, var(--border))',
+      }}
+    >
+      <span className="text-sm">
+        <b>Loom isn’t set up yet.</b>{' '}
+        <span className="muted">
+          Configure your pod to enable Chat, the pipeline, and profiles.
+        </span>
+      </span>
+      <button className="btn btn-accent ml-auto" onClick={onSetup}>
+        Open Setup
+      </button>
+    </div>
+  );
+}
+
 export function App() {
   const [view, setView] = useState<string>('dashboard');
   const active = SURFACES.find((s) => s.id === view) ?? SURFACES[0]!;
@@ -216,6 +245,7 @@ export function App() {
       <ProjectProvider>
         <div className="min-h-full">
           <TopBar view={view} onView={setView} />
+          <SetupBanner onSetup={() => setView('setup')} />
           {/* `key` re-mounts on surface switch → the staggered reveal plays each time. */}
           <main key={view} className="reveal mx-auto max-w-[1500px] px-5 py-5">
             <active.Component />

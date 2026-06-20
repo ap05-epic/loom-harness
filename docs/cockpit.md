@@ -29,15 +29,15 @@ flowchart LR
 The shell is a small **surface registry** (`App.tsx`) — adding a surface is one entry, not a rewrite;
 the base (server, durable store, tools, permission gate, theme) is shared. Tabs:
 
-| Surface | What it shows |
-|---|---|
-| **Dashboard** | Run header · kanban board (per pipeline state) · live fleet · inbox (gate/question approve+answer) · cost + eval analytics (Recharts) · capabilities inventory. |
-| **Live Crawl** | The live `loom explore` crawl: current URL · move feed · discovered-screen thumbnails · stats strip · client-side token-burn line. |
-| **Agents** | **Live orchestration** — the orchestrator node (pulses while summoning), live **subagent** cards (screen · phase · attempt · tokens · last action), and a colour-coded activity feed. A **Halt** button stops everything. |
-| **Chat** | **Surface A — the general agent.** A browser chat over the *same* extracted agent loop the CLI uses (`@loom/chat`): streaming replies, inline tool-call cards, an in-UI **permission prompt** (Yes/No/Always/Allow-all), a **Stop** button, durable conversations, and a pill status bar (model · profile · tokens · context). |
-| **BAA** | **Surface B — the modernization pipeline** as a stage graph: `MAP → PLAN → CRAWL → BUILD → SHIP`, each startable; EVAL↔FIX runs inside BUILD; SHIP is a human gate in the inline Inbox. A **Halt** button stops the run. |
-| **Setup** | A guided **onboarding wizard** (Welcome → Prerequisites → Legacy app → Model → Review) that generates a ready-to-paste `loom.config.yaml` + the pod commands. |
-| **Settings** | A Hermes-style **Control Center**: switch **Profiles** (the learning root — memory + skills — no restart), browse **Skills** (searchable), set **Preferences** (theme, send-key), and **About**. The active profile is also a one-click chip in the top bar. |
+| Surface        | What it shows                                                                                                                                                                                                                                                                                                                  |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Dashboard**  | Run header · kanban board (per pipeline state) · live fleet · inbox (gate/question approve+answer) · cost + eval analytics (Recharts) · capabilities inventory.                                                                                                                                                                |
+| **Live Crawl** | The live `loom explore` crawl: current URL · move feed · discovered-screen thumbnails · stats strip · client-side token-burn line.                                                                                                                                                                                             |
+| **Agents**     | **Live orchestration** — the orchestrator node (pulses while summoning), live **subagent** cards (screen · phase · attempt · tokens · last action), and a colour-coded activity feed. A **Halt** button stops everything.                                                                                                      |
+| **Chat**       | **Surface A — the general agent.** A browser chat over the _same_ extracted agent loop the CLI uses (`@loom/chat`): streaming replies, inline tool-call cards, an in-UI **permission prompt** (Yes/No/Always/Allow-all), a **Stop** button, durable conversations, and a pill status bar (model · profile · tokens · context). |
+| **BAA**        | **Surface B — the modernization pipeline** as a stage graph: `MAP → PLAN → CRAWL → BUILD → SHIP`, each startable; EVAL↔FIX runs inside BUILD; SHIP is a human gate in the inline Inbox. A **Halt** button stops the run.                                                                                                       |
+| **Setup**      | A guided **onboarding wizard** (Welcome → Prerequisites → Legacy app → Model → Review) that generates a ready-to-paste `loom.config.yaml` + the pod commands.                                                                                                                                                                  |
+| **Settings**   | A Hermes-style **Control Center**: switch **Profiles** (the learning root — memory + skills — no restart), browse **Skills** (searchable), set **Preferences** (theme, send-key), and **About**. The active profile is also a one-click chip in the top bar.                                                                   |
 
 ## Theme
 
@@ -80,12 +80,14 @@ under Vitest + Testing Library (jsdom); the server's endpoints (chat, profiles, 
 the `@loom/mission-control` suite. If the bundle is ever absent, `loom ui` falls back to the original
 vanilla HTML dashboard — so it always works, built or not.
 
-## Run it
+## Run it — the UI is the front door
 
 ```bash
-loom ui --open      # served from mission-control-web/dist; vanilla fallback if unbuilt
+loom                # bare `loom` (interactive terminal) opens Mission Control in your browser
+loom ui --open      # the same, explicitly
 ```
 
-Chat + profiles + the BAA stage triggers light up when `loom ui` is started from a **configured
-project** (a `loom.config.yaml` with a model); the read-only dashboard works without one.
-```
+`loom ui` **open-or-creates** its db, so it works on a fresh machine — before any run. When the
+project isn't configured yet, a banner + the **Setup** wizard guide you through it. Chat, profiles,
+and the BAA stage triggers light up once a model is configured; the read-only dashboard works without
+one. (In a pipe / non-TTY, bare `loom` prints the identity panel instead of launching a server.)

@@ -176,8 +176,38 @@ export function buildProgram(registry: CommandRegistry, deps: ProgramDeps): Comm
     .addHelpText('before', `${banner()}\n`)
     .addHelpText('after', exitCodeHelp());
 
-  // Bare `loom` (no subcommand) prints the Hermes-style startup identity panel.
-  program.action(() => printIdentity(deps));
+  // Bare `loom` (no subcommand): in an interactive terminal, the UI is the front door — print the
+  // identity panel, then open Mission Control in the browser (it open-or-creates the db and guides
+  // setup if the project isn't configured yet). In a pipe / non-TTY (tests, scripts), just print the
+  // panel — no server.
+  program.action(async () => {
+    printIdentity(deps);
+    const interactive = deps.stdoutTTY ?? Boolean(process.stdout.isTTY);
+    const uiSpec = interactive ? registry.all().find((s) => s.name === 'ui') : undefined;
+    if (!uiSpec) return;
+    const ctx = createContext({
+      command: 'ui',
+      flags: toGlobalFlags({}),
+      version: deps.version,
+      env: deps.env,
+      cwd: deps.cwd,
+      stdoutTTY: deps.stdoutTTY,
+      stdinTTY: deps.stdinTTY,
+      write: deps.write,
+      writeErr: deps.writeErr,
+    });
+    const exit = deps.exit ?? ((code: number) => void (process.exitCode = code));
+    try {
+      const data = await uiSpec.run(ctx, { options: { open: true }, args: {} });
+      ctx.sink.result(data);
+      ctx.sink.flushSuccess(uiSpec.render ? (d) => uiSpec.render!(d, ctx) : undefined);
+      exit(ctx.requestedExit);
+    } catch (error) {
+      const he = mapError(error);
+      ctx.sink.flushError(he);
+      exit(he.exitCode);
+    }
+  });
 
   const parents = new Map<string, Command>();
   for (const spec of registry.all()) {
