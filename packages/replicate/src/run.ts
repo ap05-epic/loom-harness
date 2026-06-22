@@ -114,11 +114,13 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
   // alone. Best-effort: if the legacy isn't reachable, fall back to JSP source only.
   let renderedTarget: string | undefined;
   let cachedLegacy: { shot: Buffer; dom: DomSnapshot } | undefined;
+  let legacyVisionShot: Buffer | undefined;
   if (opts.login) {
     // Log in and capture the legacy screen in ONE live session; reuse it every iteration.
     log('  🔑 logging in + capturing the legacy screen (one live session)…');
     const cap = await loginAndCapture({ ...opts.login, viewport, onLog: log });
     cachedLegacy = { shot: cap.screenshot, dom: cap.dom };
+    legacyVisionShot = cap.visionShot;
     renderedTarget = serializeRendered(cap.dom);
     log(
       `    captured the legacy screen (${renderedTarget.length} chars; ended at ${cap.finalUrl})`,
@@ -143,14 +145,16 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
     }
   }
 
-  // The legacy screenshot (the visual TARGET) — fed to the model so it can SEE the screen, not just
-  // read its structure. Reuse the live-login capture, else grab it now (best-effort).
-  let legacyShot: Buffer | undefined = cachedLegacy?.shot;
+  // The legacy screenshot (the visual TARGET) — fed to the model so it can SEE the WHOLE screen
+  // (full-page, below the fold), not just read its structure. Reuse the live-login capture, else grab
+  // it now (best-effort).
+  let legacyShot: Buffer | undefined = legacyVisionShot;
   if (!legacyShot) {
     try {
       legacyShot = await captureScreenshot({
         url: opts.legacyUrl,
         viewport,
+        fullPage: true,
         ...(opts.storageStatePath ? { storageStatePath: opts.storageStatePath } : {}),
       });
     } catch {
@@ -223,7 +227,7 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
       log(`  🔍 checking ${replicaUrl}  vs  ${opts.legacyUrl}…`);
       // Stash the replica screenshot so the next build can SEE its own last output vs the target.
       try {
-        lastReplicaShot = await captureScreenshot({ url: replicaUrl, viewport });
+        lastReplicaShot = await captureScreenshot({ url: replicaUrl, viewport, fullPage: true });
       } catch {
         /* ignore — vision is best-effort */
       }

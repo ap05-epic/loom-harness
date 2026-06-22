@@ -96,7 +96,13 @@ export async function doLogin(
  */
 export async function loginAndCapture(
   opts: LoginConfig & { targetUrl?: string; viewport?: Viewport; onLog?: (msg: string) => void },
-): Promise<{ screenshot: Buffer; dom: DomSnapshot; text: string; finalUrl: string }> {
+): Promise<{
+  screenshot: Buffer;
+  visionShot: Buffer;
+  dom: DomSnapshot;
+  text: string;
+  finalUrl: string;
+}> {
   const log = opts.onLog ?? (() => {});
   const session = new CrawlSession(opts.viewport ? { viewport: opts.viewport } : {});
   await session.open();
@@ -110,8 +116,12 @@ export async function loginAndCapture(
       log(`  → capturing the post-login landing page (no navigation)`);
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-    const [screenshot, dom] = await Promise.all([session.screenshot(), session.captureDom()]);
-    return { screenshot, dom, text: flattenText(dom), finalUrl: session.currentUrl() };
+    const [screenshot, visionShot, dom] = await Promise.all([
+      session.screenshot(), // viewport — for the pixel diff (consistent size)
+      session.screenshot(true), // full-page — for the model's vision (sees the whole page)
+      session.captureDom(),
+    ]);
+    return { screenshot, visionShot, dom, text: flattenText(dom), finalUrl: session.currentUrl() };
   } finally {
     await session.close();
   }

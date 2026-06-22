@@ -324,8 +324,8 @@ export class CrawlSession {
     return { tag: 'html', attrs: {}, children };
   }
 
-  async screenshot(): Promise<Buffer> {
-    return this.active().screenshot();
+  async screenshot(fullPage = false): Promise<Buffer> {
+    return this.active().screenshot({ fullPage });
   }
 
   async fill(selector: string, value: string): Promise<void> {
