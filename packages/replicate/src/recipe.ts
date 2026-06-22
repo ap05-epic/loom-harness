@@ -10,6 +10,8 @@ export type ReactRecipeInput = {
   jspSource?: JspSource;
   /** Where to write the screen component, relative to the build root (default `src/App.tsx`). */
   componentPath?: string;
+  /** The legacy screen AS RENDERED (tags + computed styles) — the exact target the checker measures. */
+  renderedTarget?: string;
   /** On a retry: the concrete differences the deterministic checker found. */
   diffs?: string;
 };
@@ -50,6 +52,19 @@ export function buildReactWorkOrder(input: ReactRecipeInput): string {
     '- Reuse the legacy CSS/inline styles verbatim where present; you may add `.css`/`.module.css` files only to match the legacy.',
     '',
   ];
+
+  if (input.renderedTarget && input.renderedTarget.trim()) {
+    lines.push(
+      '## THE TARGET — the legacy screen exactly as the browser renders it',
+      "This is the live page's real tags, text, and COMPUTED styles (the font/color/size/spacing the " +
+        'browser actually applies). Reproduce THIS output exactly — it is the ground truth and is more ' +
+        'authoritative than the JSP template below (the template is server-side code; this is its result).',
+      '```html',
+      input.renderedTarget.trim(),
+      '```',
+      '',
+    );
+  }
 
   const doc = slice ? atlas.getNodeDoc(slice.action.id) : null;
   if (doc) lines.push('## What this screen does (recovered)', doc, '');

@@ -28,3 +28,4 @@ export {
   type JspSource,
   type ReactRecipeInput,
 } from './recipe.js';
+export { serializeRendered } from './rendered.js';

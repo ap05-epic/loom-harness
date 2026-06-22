@@ -1,12 +1,14 @@
 import { join } from 'node:path';
 import type { LlmGateway } from '@loom/agents';
-import type { Viewport } from '@loom/browser';
+import { captureDom, DEFAULT_VIEWPORT, type Viewport } from '@loom/browser';
 import type { CodeAtlas } from '@loom/cartographer';
 import { buildScreen } from '@loom/conductor';
+import { DEFAULT_STYLE_PROPS } from '@loom/evaluator';
 import { checkParity } from './check.js';
 import { replicateScreen, type BuildArgs, type ReplicateResult } from './loop.js';
 import { buildReactWorkOrder, REACT_SYSTEM_PROMPT, type JspSource } from './recipe.js';
 import { runAppBuild, serveStatic } from './react-target.js';
+import { serializeRendered } from './rendered.js';
 import { buildReport, diffsForLlm, printReport, type ParityReport } from './report.js';
 
 export type RunOptions = {
@@ -51,7 +53,28 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
   const serveSubdir = opts.serveSubdir ?? 'dist';
   const route = opts.route ?? '/';
   const threshold = opts.threshold ?? 1;
+  const viewport = opts.viewport ?? DEFAULT_VIEWPORT;
   let lastBuildError: string | undefined;
+
+  // Pre-read the live legacy screen once: its rendered tags + the exact computed styles the checker
+  // measures. This is the most precise target we can hand the model — better than the JSP template
+  // alone. Best-effort: if the legacy isn't reachable, fall back to JSP source only.
+  let renderedTarget: string | undefined;
+  try {
+    log('  📸 reading the live legacy screen (rendered DOM + computed styles)…');
+    const legacyDom = await captureDom({
+      url: opts.legacyUrl,
+      viewport,
+      styleProps: DEFAULT_STYLE_PROPS,
+      ...(opts.storageStatePath ? { storageStatePath: opts.storageStatePath } : {}),
+    });
+    renderedTarget = serializeRendered(legacyDom);
+    log(`    got the rendered target (${renderedTarget.length} chars)`);
+  } catch (e) {
+    log(
+      `  ⚠ couldn't pre-read the legacy DOM (${e instanceof Error ? e.message : String(e)}); using JSP source only`,
+    );
+  }
 
   const build = async ({ diffs }: BuildArgs): Promise<void> => {
     const workOrder = buildReactWorkOrder({
@@ -59,6 +82,7 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
       screen,
       jspSource: opts.jspSource,
       componentPath: opts.componentPath,
+      renderedTarget,
       diffs,
     });
     log(diffs ? '  ✎ fixing the flagged differences…' : '  ✎ writing the React screen…');
@@ -98,7 +122,7 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
         atlas: opts.atlas,
         screenKey: opts.screenKey,
         threshold,
-        viewport: opts.viewport,
+        viewport,
         storageStatePath: opts.storageStatePath,
       });
     } finally {
