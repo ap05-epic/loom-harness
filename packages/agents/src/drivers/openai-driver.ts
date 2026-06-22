@@ -56,8 +56,23 @@ type WireResponse = {
 function toWireMessage(message: ChatMessage): WireMessage {
   switch (message.role) {
     case 'system':
-    case 'user':
-      return { role: message.role, content: message.content };
+    case 'user': {
+      // String content passes through; a multimodal array becomes OpenAI's text/image_url parts.
+      const content =
+        typeof message.content === 'string'
+          ? message.content
+          : message.content.map((part) =>
+              part.type === 'text'
+                ? { type: 'text', text: part.text }
+                : {
+                    type: 'image_url',
+                    image_url: {
+                      url: `data:${part.mime ?? 'image/png'};base64,${part.data.toString('base64')}`,
+                    },
+                  },
+            );
+      return { role: message.role, content };
+    }
     case 'assistant': {
       const wire: WireMessage = { role: 'assistant', content: message.content };
       if (message.toolCalls?.length) {

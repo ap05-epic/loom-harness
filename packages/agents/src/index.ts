@@ -1,5 +1,6 @@
 export type {
   ChatMessage,
+  ContentPart,
   LlmGateway,
   LlmRequest,
   LlmResponse,
@@ -8,6 +9,7 @@ export type {
   ToolSchema,
   Usage,
 } from './types.js';
+export { textOf } from './types.js';
 export {
   resolveModelProfile,
   type ModelProfile,

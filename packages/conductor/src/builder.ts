@@ -5,6 +5,7 @@ import {
   buildSystemPrompt,
   runCopilotAgent,
   type ChatMessage,
+  type ContentPart,
   type CopilotBin,
   type CopilotExec,
   type GuardConfig,
@@ -128,6 +129,8 @@ export type BuildScreenOptions = {
   maxTokensPerTurn?: number;
   /** Cap each tool result at this many chars (default 20k); guards transcript hygiene. */
   maxToolOutputChars?: number;
+  /** Images to attach to the work order (vision) — e.g. a screenshot of the target screen. */
+  images?: Array<{ data: Buffer; caption?: string }>;
   now?: () => number;
 };
 
@@ -148,9 +151,24 @@ export type BuildScreenResult = {
  */
 export async function buildScreen(options: BuildScreenOptions): Promise<BuildScreenResult> {
   const { tool, written } = createWriteFileTool(options.bRepoDir);
+  // Attach any images (a screenshot of the target) as a multimodal user message so a vision model can
+  // SEE the screen, not just read its structure.
+  const userContent: string | ContentPart[] = options.images?.length
+    ? [
+        { type: 'text', text: options.workOrder },
+        ...options.images.flatMap((img): ContentPart[] =>
+          img.caption
+            ? [
+                { type: 'text', text: img.caption },
+                { type: 'image', data: img.data },
+              ]
+            : [{ type: 'image', data: img.data }],
+        ),
+      ]
+    : options.workOrder;
   const messages: ChatMessage[] = [
     { role: 'system', content: options.systemPrompt ?? DEFAULT_BUILDER_SYSTEM },
-    { role: 'user', content: options.workOrder },
+    { role: 'user', content: userContent },
   ];
   const result = await new AgentRunner(options.gateway).run({
     model: options.model,

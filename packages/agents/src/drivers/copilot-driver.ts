@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { textOf } from '../types.js';
 import type { ChatMessage, LlmGateway, LlmRequest, LlmResponse, ToolSchema } from '../types.js';
 
 export type CopilotExecResult = { stdout: string; stderr: string; exitCode: number };
@@ -68,8 +69,8 @@ export function renderCopilotPrompt(messages: ChatMessage[], tools?: ToolSchema[
     );
   }
   for (const m of messages) {
-    if (m.role === 'system') parts.push(`# Instructions\n${m.content}`);
-    else if (m.role === 'user') parts.push(m.content);
+    if (m.role === 'system') parts.push(`# Instructions\n${textOf(m.content)}`);
+    else if (m.role === 'user') parts.push(textOf(m.content));
     else if (m.role === 'assistant') {
       if (m.content) parts.push(`# Assistant\n${m.content}`);
       for (const tc of m.toolCalls ?? []) parts.push(`# Tool call: ${tc.name}(${tc.arguments})`);

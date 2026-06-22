@@ -6,10 +6,24 @@ export type ToolCall = {
   arguments: string;
 };
 
+/** A part of a multimodal user message — text or an image (for vision-capable models like gpt‑5.4). */
+export type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image'; data: Buffer; mime?: string };
+
 export type ChatMessage =
-  | { role: 'system' | 'user'; content: string }
+  | { role: 'system' | 'user'; content: string | ContentPart[] }
   | { role: 'assistant'; content: string | null; toolCalls?: ToolCall[] }
   | { role: 'tool'; toolCallId: string; content: string };
+
+/** Flatten message content to plain text (dropping images) — for drivers without vision support. */
+export function textOf(content: string | ContentPart[]): string {
+  if (typeof content === 'string') return content;
+  return content
+    .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
+    .map((p) => p.text)
+    .join('\n');
+}
 
 /** JSON-schema-shaped tool declaration, provider-agnostic. */
 export type ToolSchema = {

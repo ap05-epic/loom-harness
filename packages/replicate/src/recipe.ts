@@ -26,7 +26,10 @@ export const REACT_SYSTEM_PROMPT =
   'Your job is to REPRODUCE the legacy screen exactly — never improve, modernize, or tidy it up. ' +
   'Keep the legacy tags as they are (including <center>, <font>, and table-based layout); keep the exact ' +
   'fonts, sizes, colors, and spacing even when they look dated (e.g. a Times New Roman default, a blue bold ' +
-  'label). If the legacy sets no font, you set none — do not impose Arial or any reset. Reproduce every ' +
+  'label). If the legacy sets no font, you set none — do not impose Arial or any reset. ' +
+  'When a screenshot of the target is attached, MATCH WHAT YOU SEE in it — its colors, layout, fonts, ' +
+  'borders, and visual styling — by writing the CSS needed; a plain unstyled page of text is WRONG. ' +
+  'Reproduce every ' +
   'control, form field (name/type/options), and navigation link / form action exactly (same href/action). ' +
   'Write files with the write_file tool (paths relative to the build root). A deterministic machine — not ' +
   'you — judges parity; when it reports differences, fix exactly those and nothing else. Finish with a ' +

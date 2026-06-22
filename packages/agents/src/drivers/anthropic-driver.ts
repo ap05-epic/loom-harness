@@ -1,3 +1,4 @@
+import { textOf } from '../types.js';
 import type { LlmGateway, LlmRequest, LlmResponse, ToolCall } from '../types.js';
 
 export type AnthropicDriverOptions = {
@@ -32,11 +33,11 @@ export function buildAnthropicRequest(request: LlmRequest): AnthropicRequestBody
 
   for (const message of request.messages) {
     if (message.role === 'system') {
-      systemParts.push(message.content);
+      systemParts.push(textOf(message.content));
       continue;
     }
     if (message.role === 'user') {
-      messages.push({ role: 'user', content: message.content });
+      messages.push({ role: 'user', content: textOf(message.content) });
       continue;
     }
     if (message.role === 'assistant') {

@@ -118,6 +118,22 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
     }
   }
 
+  // The legacy screenshot (the visual TARGET) — fed to the model so it can SEE the screen, not just
+  // read its structure. Reuse the live-login capture, else grab it now (best-effort).
+  let legacyShot: Buffer | undefined = cachedLegacy?.shot;
+  if (!legacyShot) {
+    try {
+      legacyShot = await captureScreenshot({
+        url: opts.legacyUrl,
+        viewport,
+        ...(opts.storageStatePath ? { storageStatePath: opts.storageStatePath } : {}),
+      });
+    } catch {
+      /* best-effort — no screenshot, the model works from the rendered target text only */
+    }
+  }
+  let lastReplicaShot: Buffer | undefined;
+
   const build = async ({ diffs }: BuildArgs): Promise<void> => {
     const workOrder = buildReactWorkOrder({
       atlas: opts.atlas,
@@ -127,6 +143,20 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
       renderedTarget,
       diffs,
     });
+    const images: Array<{ data: Buffer; caption?: string }> = [];
+    if (legacyShot)
+      images.push({
+        data: legacyShot,
+        caption:
+          'TARGET — the legacy screen you must reproduce EXACTLY. Match its layout, colors, fonts, ' +
+          'spacing and styling, not just the text:',
+      });
+    if (lastReplicaShot)
+      images.push({
+        data: lastReplicaShot,
+        caption:
+          'YOUR LAST BUILD rendered like this — change your code so it matches the TARGET above:',
+      });
     log(diffs ? '  ✎ fixing the flagged differences…' : '  ✎ writing the React screen…');
     const r = await buildScreen({
       gateway: opts.gateway,
@@ -134,6 +164,7 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
       bRepoDir: opts.appDir,
       workOrder,
       systemPrompt: REACT_SYSTEM_PROMPT,
+      images: images.length ? images : undefined,
       // Give the agent room to do its best on one screen: more wall-clock, more no-progress
       // tolerance, and a high token budget — so a thorough reproduction is never cut off mid-write.
       guards: { maxWallClockMs: 12 * 60_000, noProgressLimit: 8, maxTokens: 400_000 },
@@ -164,6 +195,12 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
     try {
       const replicaUrl = served.url + (route.startsWith('/') ? route : `/${route}`);
       log(`  🔍 checking ${replicaUrl}  vs  ${opts.legacyUrl}…`);
+      // Stash the replica screenshot so the next build can SEE its own last output vs the target.
+      try {
+        lastReplicaShot = await captureScreenshot({ url: replicaUrl, viewport });
+      } catch {
+        /* ignore — vision is best-effort */
+      }
       return await checkParity({
         legacyUrl: opts.legacyUrl,
         replicaUrl,
