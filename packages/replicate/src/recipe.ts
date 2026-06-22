@@ -20,12 +20,15 @@ export type ReactRecipeInput = {
  * decides whether the result matches.
  */
 export const REACT_SYSTEM_PROMPT =
-  'You are a senior React engineer porting a legacy Struts/JSP screen to React, pixel- and ' +
-  'function-faithful. Reproduce the legacy layout, copy, controls, form fields (name/type/options), ' +
-  'styling, and navigation links EXACTLY. Reuse the legacy CSS/markup verbatim where you can (same ' +
-  'class names, colors, fonts, spacing). Write files with the write_file tool (paths relative to the ' +
-  'build root). A deterministic machine — not you — judges whether the result is a 1:1 match; when ' +
-  'it reports differences, fix exactly those and nothing else. Finish with a one-line text summary.';
+  'You are a senior React engineer porting a legacy Struts/JSP screen to React with ZERO visual change. ' +
+  'Your job is to REPRODUCE the legacy screen exactly — never improve, modernize, or tidy it up. ' +
+  'Keep the legacy tags as they are (including <center>, <font>, and table-based layout); keep the exact ' +
+  'fonts, sizes, colors, and spacing even when they look dated (e.g. a Times New Roman default, a blue bold ' +
+  'label). If the legacy sets no font, you set none — do not impose Arial or any reset. Reproduce every ' +
+  'control, form field (name/type/options), and navigation link / form action exactly (same href/action). ' +
+  'Write files with the write_file tool (paths relative to the build root). A deterministic machine — not ' +
+  'you — judges parity; when it reports differences, fix exactly those and nothing else. Finish with a ' +
+  'one-line text summary.';
 
 /**
  * Build the React work order for one screen from the atlas slice: legacy facts, every form field,
@@ -40,11 +43,11 @@ export function buildReactWorkOrder(input: ReactRecipeInput): string {
     `# Work order — replicate the "${screen.key}" legacy screen as a React component, 1:1`,
     '',
     '## Target',
-    `- Write the screen as the default-exported React component at \`${componentPath}\`.`,
-    '- The app mounts that component at the root route, so it must render and behave identically to the legacy screen.',
-    '- Reproduce every element, text, control, form field (name/type/options), and link (href) exactly.',
-    '- Keep navigation paths identical: every legacy link/form action must appear as the same href/route in your markup.',
-    '- Reuse the legacy CSS verbatim where possible; you may write extra `.css`/`.module.css` files and import them.',
+    `- Write the screen component at \`${componentPath}\` and export it. A \`export default\` is fine — the app entry mounts whatever you export (default or a named \`App\`), so do not worry about the import style.`,
+    '- It mounts at the root route and must render IDENTICALLY to the legacy screen — same tags, same fonts, colors, sizes, spacing.',
+    '- **REPRODUCE, do not modernize.** Keep legacy tags exactly (`<center>`, `<font>`, table-based layout); do NOT swap them for `<div>`/flexbox. Do NOT change fonts (if the legacy has no font set, leave it default/serif — never impose Arial or a CSS reset). Do NOT change colors/spacing. The goal is byte-for-byte visual sameness, not better code.',
+    "- Reproduce every element, text, control, form field (name/type/options), and link/form action exactly — including each form's `action` target, so navigation goes to the same place.",
+    '- Reuse the legacy CSS/inline styles verbatim where present; you may add `.css`/`.module.css` files only to match the legacy.',
     '',
   ];
 

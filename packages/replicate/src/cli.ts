@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { OpenAiDriver } from '@loom/agents';
 import { discoverLegacyWebapp, mapProject, openCodeAtlas } from '@loom/cartographer';
 import { checkParity } from './check.js';
@@ -37,6 +37,7 @@ function map(): number {
     console.error(MAP_USAGE);
     return 2;
   }
+  mkdirSync(dirname(out), { recursive: true }); // so `--out .loom/atlas.db` works without a pre-made dir
   const d = discoverLegacyWebapp(struts);
   const atlas = mapProject({
     atlasPath: out,
@@ -146,7 +147,7 @@ async function run(): Promise<number> {
       componentPath: arg('component'),
       jspSource,
       threshold: arg('threshold') ? Number(arg('threshold')) : 1,
-      maxIterations: arg('max-iterations') ? Number(arg('max-iterations')) : 6,
+      maxIterations: arg('max-iterations') ? Number(arg('max-iterations')) : 8,
       storageStatePath: arg('storage'),
       onLog: (m) => console.error(m),
     });
