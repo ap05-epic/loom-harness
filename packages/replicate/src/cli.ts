@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { OpenAiDriver } from '@loom/agents';
 import { discoverLegacyWebapp, mapProject, openCodeAtlas } from '@loom/cartographer';
 import { checkParity } from './check.js';
+import { doLogin, type LoginField } from './login.js';
 import { legacyNavTargets, normalizePath } from './paths.js';
 import { diffsForLlm, printReport } from './report.js';
 import { runReplicate } from './run.js';
@@ -18,6 +19,9 @@ function has(name: string): boolean {
 }
 
 const MAP_USAGE = 'usage: replicate map --struts <struts-config.xml> --out <codeatlas.db>';
+const LOGIN_USAGE =
+  'usage: replicate login --legacy <loginUrl> [--out .loom/auth.json] [--user-sel <css>] [--pass-sel <css>] ' +
+  '[--fa-sel <css>] [--submit-sel <css>] [--success-sel <css>]  (creds from env: BAA_USER, BAA_PASS, BAA_FA)';
 const CHECK_USAGE =
   'usage: replicate check --legacy <url> --replica <url> [--atlas <codeatlas.db> --screen <key>] [--storage <auth.json>] [--threshold 1] [--visual-gate] [--llm-diff]';
 const RUN_USAGE =
@@ -60,6 +64,54 @@ function map(): number {
     return 0;
   } finally {
     atlas.close();
+  }
+}
+
+/**
+ * `replicate login` — log into the legacy app once (creds from env) and save the session to
+ * `--out`, so `run`/`check` can reach post‑login screens via `--storage`. Field selectors are
+ * configurable; print what it filled so you can adjust. No LLM.
+ */
+async function login(): Promise<number> {
+  const legacy = arg('legacy');
+  if (!legacy) {
+    console.error(LOGIN_USAGE);
+    return 2;
+  }
+  const out = arg('out') ?? '.loom/auth.json';
+  const user = process.env.BAA_USER;
+  const pass = process.env.BAA_PASS;
+  const fa = process.env.BAA_FA;
+  const faSel = arg('fa-sel');
+  const fields: LoginField[] = [];
+  if (user) fields.push({ selector: arg('user-sel') ?? 'input[type=text]', value: user });
+  if (pass) fields.push({ selector: arg('pass-sel') ?? 'input[type=password]', value: pass });
+  if (fa && faSel) fields.push({ selector: faSel, value: fa });
+  if (fields.length === 0) {
+    console.error(
+      'set BAA_USER and BAA_PASS in the environment (and BAA_FA with --fa-sel for the FA number).',
+    );
+    return 2;
+  }
+  mkdirSync(dirname(out), { recursive: true });
+  try {
+    const { landedUrl } = await doLogin({
+      legacyUrl: legacy,
+      outPath: out,
+      fields,
+      submitSelector: arg('submit-sel') ?? 'input[type=submit], button[type=submit]',
+      successSelector: arg('success-sel'),
+      onLog: (m) => console.error(m),
+    });
+    console.log(`✓ logged in (landed at ${landedUrl}); session saved → ${out}`);
+    console.log(`  reuse it on any post-login screen with:  --storage ${out}`);
+    return 0;
+  } catch (e) {
+    console.error(`login failed: ${e instanceof Error ? e.message : String(e)}`);
+    console.error(
+      'tip: open the login page and check the field selectors; pass --user-sel/--pass-sel/--fa-sel/--submit-sel to match.',
+    );
+    return 1;
   }
 }
 
@@ -170,14 +222,16 @@ const cmd = process.argv[2];
 const handler =
   cmd === 'map'
     ? async (): Promise<number> => map()
-    : cmd === 'check'
-      ? check
-      : cmd === 'run'
-        ? run
-        : async (): Promise<number> => {
-            console.error(`${MAP_USAGE}\n${CHECK_USAGE}\n${RUN_USAGE}`);
-            return 2;
-          };
+    : cmd === 'login'
+      ? login
+      : cmd === 'check'
+        ? check
+        : cmd === 'run'
+          ? run
+          : async (): Promise<number> => {
+              console.error(`${MAP_USAGE}\n${LOGIN_USAGE}\n${CHECK_USAGE}\n${RUN_USAGE}`);
+              return 2;
+            };
 
 handler().then(
   (code) => process.exit(code),
