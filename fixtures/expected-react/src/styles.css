@@ -1,51 +1,5 @@
-* {
-  box-sizing: border-box;
-}
-body {
-  margin: 0;
-  font-family: Arial, sans-serif;
-  background: #f4f4f4;
-}
-.card {
-  width: 320px;
-  margin: 60px auto;
-  padding: 24px;
-  background: #ffffff;
-  border: 1px solid #cccccc;
-}
-.title {
-  margin: 0 0 16px;
-  font-size: 20px;
-  color: #333333;
-}
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 13px;
-  color: #555555;
-}
-.field input {
-  padding: 6px;
-  border: 1px solid #bbbbbb;
-  font-size: 14px;
-}
-.btn {
-  padding: 8px;
-  border: none;
-  background: #11aa55;
-  color: #ffffff;
-  font-size: 14px;
-  cursor: pointer;
-}
-.link {
-  display: inline-block;
-  margin-top: 12px;
-  font-size: 13px;
-  color: #11aa55;
-}
+/*
+ * Intentionally empty. This scaffold imposes NO global styles, so a converted screen's computed
+ * styles come entirely from the component the model writes — nothing here can fight it. (The demo
+ * App.tsx carries its own styling inline for the local 1:1 proof.)
+ */
