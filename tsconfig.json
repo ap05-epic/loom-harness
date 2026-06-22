@@ -12,8 +12,8 @@
     { "path": "packages/browser" },
     { "path": "packages/cartographer" },
     { "path": "packages/surveyor" },
-    { "path": "packages/replicate" },
     { "path": "packages/conductor" },
+    { "path": "packages/replicate" },
     { "path": "packages/mission-control" },
     { "path": "packages/cli" }
   ]

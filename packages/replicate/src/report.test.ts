@@ -49,6 +49,17 @@ describe('diffsForLlm', () => {
   });
 });
 
+describe('build errors', () => {
+  test('a build error makes it unmatched and short-circuits the fix list to the compile error', () => {
+    const r = buildReport({ ...empty, build: ["src/App.tsx:3:1 - error TS1005: ';' expected"] });
+    expect(r.matched).toBe(false);
+    const text = diffsForLlm(r);
+    expect(text).toMatch(/BUILD ERROR/);
+    expect(text).toMatch(/TS1005/);
+    expect(printReport(r)).toMatch(/build/i);
+  });
+});
+
 describe('printReport', () => {
   test('prints a 1:1-match line when matched', () => {
     expect(printReport(buildReport(empty))).toMatch(/1:1|match/i);

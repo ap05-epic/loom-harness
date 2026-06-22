@@ -17,8 +17,10 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@loom/agents": "workspace:*",
     "@loom/browser": "workspace:*",
     "@loom/cartographer": "workspace:*",
+    "@loom/conductor": "workspace:*",
     "@loom/evaluator": "workspace:*",
     "@loom/surveyor": "workspace:*"
   }

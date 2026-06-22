@@ -22,6 +22,8 @@ export type CheckOptions = {
   /** When given with `screenKey`, also checks path/route equivalence from the legacy nav graph. */
   atlas?: CodeAtlas;
   screenKey?: string;
+  /** Saved Playwright auth state (cookies/localStorage) for the legacy side — the SSO bootstrap. */
+  storageStatePath?: string;
 };
 
 /**
@@ -33,9 +35,11 @@ export type CheckOptions = {
 export async function checkParity(opts: CheckOptions): Promise<ParityReport> {
   const viewport = opts.viewport ?? DEFAULT_VIEWPORT;
   const threshold = opts.threshold ?? 1;
+  // The legacy side may be behind SSO — reuse a saved auth state. The replica is localhost, no auth.
+  const legacyAuth = opts.storageStatePath ? { storageStatePath: opts.storageStatePath } : {};
 
   const [aShot, bShot] = await Promise.all([
-    captureScreenshot({ url: opts.legacyUrl, viewport }),
+    captureScreenshot({ url: opts.legacyUrl, viewport, ...legacyAuth }),
     captureScreenshot({ url: opts.replicaUrl, viewport }),
   ]);
   const visual = evaluateVisual(
@@ -44,7 +48,7 @@ export async function checkParity(opts: CheckOptions): Promise<ParityReport> {
   );
 
   const [domA, domB] = await Promise.all([
-    captureDom({ url: opts.legacyUrl, viewport, styleProps: DEFAULT_STYLE_PROPS }),
+    captureDom({ url: opts.legacyUrl, viewport, styleProps: DEFAULT_STYLE_PROPS, ...legacyAuth }),
     captureDom({ url: opts.replicaUrl, viewport, styleProps: DEFAULT_STYLE_PROPS }),
   ]);
   const dom = diffDom(domA, domB);

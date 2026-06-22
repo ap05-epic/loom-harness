@@ -8,8 +8,10 @@
   "include": ["src/**/*"],
   "exclude": ["src/**/*.test.ts"],
   "references": [
+    { "path": "../agents" },
     { "path": "../browser" },
     { "path": "../cartographer" },
+    { "path": "../conductor" },
     { "path": "../evaluator" },
     { "path": "../surveyor" }
   ]

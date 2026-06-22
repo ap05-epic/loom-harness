@@ -20,3 +20,11 @@ export {
   replicaNavTargets,
   type PathFinding,
 } from './paths.js';
+export { runReplicate, type RunOptions } from './run.js';
+export { runAppBuild, serveStatic } from './react-target.js';
+export {
+  buildReactWorkOrder,
+  REACT_SYSTEM_PROMPT,
+  type JspSource,
+  type ReactRecipeInput,
+} from './recipe.js';

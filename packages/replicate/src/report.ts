@@ -11,6 +11,8 @@ export type ParityInput = {
   style: StyleFinding[];
   forms: FunctionalFinding[];
   paths: PathFinding[];
+  /** Build/compile errors — the replica didn't build, so there's nothing to compare yet. */
+  build?: string[];
 };
 
 /** The combined verdict: 1:1 only when every gate is clean and visual is within threshold. */
@@ -19,6 +21,7 @@ export type ParityReport = ParityInput & { matched: boolean };
 /** Combine the gate results into the verdict. The machine decides `matched` — no LLM. */
 export function buildReport(input: ParityInput): ParityReport {
   const matched =
+    (input.build ?? []).length === 0 &&
     input.visualPct <= input.threshold &&
     input.dom.length === 0 &&
     input.style.length === 0 &&
@@ -34,6 +37,14 @@ export function buildReport(input: ParityInput): ParityReport {
  */
 export function diffsForLlm(r: ParityReport): string {
   if (r.matched) return '';
+  // A build error short-circuits everything: nothing rendered, so the other gates are meaningless.
+  const buildErrors = r.build ?? [];
+  if (buildErrors.length > 0) {
+    return (
+      buildErrors.map((b) => `BUILD ERROR: ${b}`).join('\n\n') +
+      '\n\nFix the code so it builds; then we re-check.'
+    );
+  }
   const lines: string[] = [];
   if (r.visualPct > r.threshold) {
     lines.push(
@@ -53,6 +64,10 @@ export function diffsForLlm(r: ParityReport): string {
 export function printReport(r: ParityReport): string {
   if (r.matched) {
     return `✓ 1:1 match — visual ${r.visualPct.toFixed(1)}%, structure/style/forms/routes all clean.`;
+  }
+  const buildErrors = r.build ?? [];
+  if (buildErrors.length > 0) {
+    return `✗ build failed — ${buildErrors.length} error(s); the replica didn't compile.`;
   }
   return (
     `✗ not yet 1:1 — visual ${r.visualPct.toFixed(1)}% (target ≤ ${r.threshold}%) · ` +
