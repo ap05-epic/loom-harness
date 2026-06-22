@@ -1,7 +1,7 @@
-import { CrawlSession, type DomSnapshot } from '@loom/browser';
+import { CrawlSession, type DomSnapshot, type Viewport } from '@loom/browser';
 
-/** Flatten a DOM snapshot to its visible text — so we can see what page the login landed on. */
-function flattenText(node: DomSnapshot): string {
+/** Flatten a DOM snapshot to its visible text — so we can see what page we're on from the terminal. */
+export function flattenText(node: DomSnapshot): string {
   const parts: string[] = [];
   const visit = (n: DomSnapshot): void => {
     if (n.text) parts.push(n.text);
@@ -14,72 +14,99 @@ function flattenText(node: DomSnapshot): string {
 /** One field to fill on the login form: a CSS selector + the value (from env). */
 export type LoginField = { selector: string; value: string };
 
-export type LoginOptions = {
-  /** The login page URL. */
-  legacyUrl: string;
-  /** Where to save the Playwright auth state (cookies/localStorage). */
-  outPath: string;
-  /** Fields to fill, in order (username, password, FA number, …). */
+/** How to log in: the login page, the fields to fill, how to submit, and how long to settle. */
+export type LoginConfig = {
+  loginUrl: string;
   fields: LoginField[];
-  /** Selector to click to submit (default: a submit input/button). */
   submitSelector?: string;
-  /** Wait for this selector after submit — proof you reached the landing page (e.g. `#pmenu`). */
   successSelector?: string;
-  /** Settle delay after submit, ms (covers post-login redirects + slow menu hydration). Default 6000. */
+  /** Settle delay after submit, ms (post-login redirect + slow hydration). Default 6000. */
   waitMs?: number;
-  onLog?: (msg: string) => void;
 };
 
+/** Whether a page's text looks like a login/error page rather than a real screen. */
+export function looksLikeFailure(text: string): boolean {
+  return /error|session timeout|please restart|log\s?in|sign\s?in|invalid|denied/i.test(text);
+}
+
+/** Fill the login form + submit + settle, inside an already-open session (navigates to the login page first). */
+async function loginInSession(
+  session: CrawlSession,
+  cfg: LoginConfig,
+  log: (m: string) => void,
+): Promise<void> {
+  log(`→ opening ${cfg.loginUrl}`);
+  await session.navigate(cfg.loginUrl);
+  for (const f of cfg.fields) {
+    log(`  ✎ fill ${f.selector}`);
+    await session.fill(f.selector, f.value);
+  }
+  if (cfg.submitSelector) {
+    log(`  ⏎ submit (${cfg.submitSelector})`);
+    await session.click(cfg.submitSelector);
+  }
+  if (cfg.successSelector) {
+    await session
+      .waitForSelector(cfg.successSelector)
+      .catch(() => log(`    (${cfg.successSelector} not found in the main frame — continuing)`));
+  }
+  const settleMs = cfg.waitMs ?? 6000;
+  log(`  ⏳ settling ${settleMs}ms for the post-login page…`);
+  await new Promise((resolve) => setTimeout(resolve, settleMs));
+}
+
 /**
- * Log into the legacy app once and save the session, so the converter/checker can reach post‑login
- * screens with `--storage`. Deterministic (no LLM): it fills the configured fields, submits, waits
- * for the landing page, and persists cookies/localStorage. Reuses the same `CrawlSession` that already
- * authenticates the crawler — frame‑aware context, real browser.
+ * Log in and SAVE the session to a file (the `--storage` path). Note: some apps (BAA) won't honour a
+ * restored-cookie session for a cold request — for those use {@link loginAndCapture} instead, which
+ * stays in one live session.
  */
 export async function doLogin(
-  opts: LoginOptions,
+  opts: LoginConfig & { outPath: string; onLog?: (msg: string) => void },
 ): Promise<{ landedUrl: string; bodyText: string; looksFailed: boolean }> {
   const log = opts.onLog ?? (() => {});
   const session = new CrawlSession({});
   await session.open();
   try {
-    log(`→ opening ${opts.legacyUrl}`);
-    await session.navigate(opts.legacyUrl);
-    for (const f of opts.fields) {
-      log(`  ✎ fill ${f.selector}`);
-      await session.fill(f.selector, f.value);
-    }
-    if (opts.submitSelector) {
-      log(`  ⏎ submit (${opts.submitSelector})`);
-      await session.click(opts.submitSelector);
-    }
-    if (opts.successSelector) {
-      log(`  ⏳ waiting for ${opts.successSelector} (the landing page)…`);
-      await session
-        .waitForSelector(opts.successSelector)
-        .catch(() => log(`    (${opts.successSelector} not found in the main frame — continuing)`));
-    }
-    const settleMs = opts.waitMs ?? 6000;
-    log(`  ⏳ settling ${settleMs}ms for the post-login page…`);
-    await new Promise((resolve) => setTimeout(resolve, settleMs));
+    await loginInSession(session, opts, log);
     const landedUrl = session.currentUrl();
     log(`  landed at ${landedUrl}`);
     let bodyText = '';
     try {
       bodyText = flattenText(await session.captureDom()).slice(0, 400);
     } catch {
-      /* frameset / mid-nav — leave empty */
+      /* frameset / mid-nav */
     }
     log(`  page says: ${bodyText || '(no visible body text — maybe a frameset)'}`);
-    const looksFailed = /error|log\s?in|sign\s?in|invalid|denied/i.test(bodyText);
+    const looksFailed = looksLikeFailure(bodyText);
     if (looksFailed) {
-      log(
-        '  ⚠ this looks like a FAILED login (still on a login/error page) — session NOT trustworthy.',
-      );
+      log('  ⚠ this looks like a FAILED login (login/error page) — session NOT trustworthy.');
     }
     await session.saveStorageState(opts.outPath);
     log(`  ✓ session saved → ${opts.outPath}`);
     return { landedUrl, bodyText, looksFailed };
+  } finally {
+    await session.close();
+  }
+}
+
+/**
+ * Log in and, **in the same live session**, navigate to a target URL and capture it — screenshot +
+ * DOM. This is what BAA needs: the server only trusts a session you established live and then moved
+ * within, not a restored cookie. The session is closed at the end.
+ */
+export async function loginAndCapture(
+  opts: LoginConfig & { targetUrl: string; viewport?: Viewport; onLog?: (msg: string) => void },
+): Promise<{ screenshot: Buffer; dom: DomSnapshot; text: string; finalUrl: string }> {
+  const log = opts.onLog ?? (() => {});
+  const session = new CrawlSession(opts.viewport ? { viewport: opts.viewport } : {});
+  await session.open();
+  try {
+    await loginInSession(session, opts, log);
+    log(`  → navigating to target: ${opts.targetUrl}`);
+    await session.navigate(opts.targetUrl);
+    await new Promise((resolve) => setTimeout(resolve, 3000)); // let the target settle
+    const [screenshot, dom] = await Promise.all([session.screenshot(), session.captureDom()]);
+    return { screenshot, dom, text: flattenText(dom), finalUrl: session.currentUrl() };
   } finally {
     await session.close();
   }

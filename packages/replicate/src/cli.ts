@@ -4,7 +4,7 @@ import { OpenAiDriver } from '@loom/agents';
 import { captureDom, captureScreenshot, DEFAULT_VIEWPORT, type DomSnapshot } from '@loom/browser';
 import { discoverLegacyWebapp, mapProject, openCodeAtlas } from '@loom/cartographer';
 import { checkParity } from './check.js';
-import { doLogin, type LoginField } from './login.js';
+import { doLogin, loginAndCapture, looksLikeFailure, type LoginField } from './login.js';
 import { legacyNavTargets, normalizePath } from './paths.js';
 import { diffsForLlm, printReport } from './report.js';
 import { runReplicate } from './run.js';
@@ -19,12 +19,28 @@ function has(name: string): boolean {
   return process.argv.includes(`--${name}`);
 }
 
+/** Build the login fields from env (BAA_USER / BAA_PASS / BAA_FA) + configurable selectors. */
+function loginFieldsFromEnv(): LoginField[] {
+  const fields: LoginField[] = [];
+  if (process.env.BAA_USER)
+    fields.push({ selector: arg('user-sel') ?? 'input[type=text]', value: process.env.BAA_USER });
+  if (process.env.BAA_PASS)
+    fields.push({
+      selector: arg('pass-sel') ?? 'input[type=password]',
+      value: process.env.BAA_PASS,
+    });
+  const fa = process.env.BAA_FA;
+  const faSel = arg('fa-sel');
+  if (fa && faSel) fields.push({ selector: faSel, value: fa });
+  return fields;
+}
+
 const MAP_USAGE = 'usage: replicate map --struts <struts-config.xml> --out <codeatlas.db>';
 const LOGIN_USAGE =
   'usage: replicate login --legacy <loginUrl> [--out .loom/auth.json] [--user-sel <css>] [--pass-sel <css>] ' +
   '[--fa-sel <css>] [--submit-sel <css>] [--success-sel <css>]  (creds from env: BAA_USER, BAA_PASS, BAA_FA)';
 const SHOT_USAGE =
-  'usage: replicate shot --legacy <url> [--storage <auth.json>] [--out .loom/shots/probe.png]';
+  'usage: replicate shot --legacy <url> [--login <loginUrl> (live login, creds from env) | --storage <auth.json>] [--out .loom/shots/probe.png]';
 const CHECK_USAGE =
   'usage: replicate check --legacy <url> --replica <url> [--atlas <codeatlas.db> --screen <key>] [--storage <auth.json>] [--threshold 1] [--visual-gate] [--llm-diff]';
 const RUN_USAGE =
@@ -93,9 +109,40 @@ async function shot(): Promise<number> {
     return 2;
   }
   const out = arg('out') ?? '.loom/shots/probe.png';
+  mkdirSync(dirname(out), { recursive: true });
+
+  // `--login <loginUrl>`: log in and navigate to the target in ONE live session (what BAA needs —
+  // a restored cookie won't survive a cold request).
+  const loginUrl = arg('login');
+  if (loginUrl) {
+    const fields = loginFieldsFromEnv();
+    if (fields.length === 0) {
+      console.error('set BAA_USER and BAA_PASS in the environment to use --login.');
+      return 2;
+    }
+    const { screenshot, text, finalUrl } = await loginAndCapture({
+      loginUrl,
+      targetUrl: legacy,
+      fields,
+      submitSelector: arg('submit-sel') ?? 'input[type=submit], button[type=submit]',
+      successSelector: arg('success-sel'),
+      waitMs: arg('wait-ms') ? Number(arg('wait-ms')) : undefined,
+      onLog: (m) => console.error(m),
+    });
+    writeFileSync(out, screenshot);
+    console.log(`✓ ${legacy}  (via live login; ended at ${finalUrl})`);
+    console.log(`  screenshot → ${out}`);
+    console.log(`  page text  : ${text.slice(0, 600) || '(no visible text — likely a FRAMESET)'}`);
+    console.log(
+      looksLikeFailure(text)
+        ? '  ⚠ still a login/error/timeout page — a plain GET to this URL is not enough.'
+        : '  ✓ looks like a real screen — this URL works after a live login.',
+    );
+    return 0;
+  }
+
   const storage = arg('storage');
   const auth = storage ? { storageStatePath: storage } : {};
-  mkdirSync(dirname(out), { recursive: true });
   const [dom, png] = await Promise.all([
     captureDom({ url: legacy, viewport: DEFAULT_VIEWPORT, ...auth }),
     captureScreenshot({ url: legacy, viewport: DEFAULT_VIEWPORT, ...auth }),
@@ -122,14 +169,7 @@ async function login(): Promise<number> {
     return 2;
   }
   const out = arg('out') ?? '.loom/auth.json';
-  const user = process.env.BAA_USER;
-  const pass = process.env.BAA_PASS;
-  const fa = process.env.BAA_FA;
-  const faSel = arg('fa-sel');
-  const fields: LoginField[] = [];
-  if (user) fields.push({ selector: arg('user-sel') ?? 'input[type=text]', value: user });
-  if (pass) fields.push({ selector: arg('pass-sel') ?? 'input[type=password]', value: pass });
-  if (fa && faSel) fields.push({ selector: faSel, value: fa });
+  const fields = loginFieldsFromEnv();
   if (fields.length === 0) {
     console.error(
       'set BAA_USER and BAA_PASS in the environment (and BAA_FA with --fa-sel for the FA number).',
@@ -139,7 +179,7 @@ async function login(): Promise<number> {
   mkdirSync(dirname(out), { recursive: true });
   try {
     const { landedUrl, looksFailed } = await doLogin({
-      legacyUrl: legacy,
+      loginUrl: legacy,
       outPath: out,
       fields,
       submitSelector: arg('submit-sel') ?? 'input[type=submit], button[type=submit]',
