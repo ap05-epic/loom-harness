@@ -147,7 +147,7 @@ async function run(): Promise<number> {
       componentPath: arg('component'),
       jspSource,
       threshold: arg('threshold') ? Number(arg('threshold')) : 1,
-      maxIterations: arg('max-iterations') ? Number(arg('max-iterations')) : 8,
+      maxIterations: arg('max-iterations') ? Number(arg('max-iterations')) : 12,
       storageStatePath: arg('storage'),
       onLog: (m) => console.error(m),
     });

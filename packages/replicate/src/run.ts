@@ -92,6 +92,9 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
       bRepoDir: opts.appDir,
       workOrder,
       systemPrompt: REACT_SYSTEM_PROMPT,
+      // Give the agent room to do its best on one screen: more wall-clock, more no-progress
+      // tolerance, and a high token budget — so a thorough reproduction is never cut off mid-write.
+      guards: { maxWallClockMs: 12 * 60_000, noProgressLimit: 8, maxTokens: 400_000 },
     });
     log(`    wrote ${r.filesWritten.length} file(s) · ${r.usage.outputTokens ?? 0} out tok`);
     log(`  ⚙ ${buildCmd}…`);
