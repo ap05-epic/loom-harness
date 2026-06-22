@@ -12,6 +12,8 @@ export type ReactRecipeInput = {
   componentPath?: string;
   /** The legacy screen AS RENDERED (tags + computed styles) — the exact target the checker measures. */
   renderedTarget?: string;
+  /** The legacy stylesheets are already linked into the app — reproduce markup + class names only. */
+  reuseAssets?: boolean;
   /** On a retry: the concrete differences the deterministic checker found. */
   diffs?: string;
 };
@@ -52,7 +54,9 @@ export function buildReactWorkOrder(input: ReactRecipeInput): string {
     '- It mounts at the root route and must render IDENTICALLY to the legacy screen — same tags, same fonts, colors, sizes, spacing.',
     '- **REPRODUCE, do not modernize.** Keep legacy tags exactly (`<center>`, `<font>`, table-based layout); do NOT swap them for `<div>`/flexbox. Do NOT change fonts (if the legacy has no font set, leave it default/serif — never impose Arial or a CSS reset). Do NOT change colors/spacing. The goal is byte-for-byte visual sameness, not better code.',
     "- Reproduce every element, text, control, form field (name/type/options), and link/form action exactly — including each form's `action` target, so navigation goes to the same place.",
-    '- Reuse the legacy CSS/inline styles verbatim where present; you may add `.css`/`.module.css` files only to match the legacy.',
+    input.reuseAssets
+      ? "- **The legacy stylesheets are ALREADY linked into this app** (the real CSS/images are served at their original paths). So DON'T write your own CSS — instead reproduce the markup with the EXACT same `class` names, `id`s, and element structure as the legacy, and the real stylesheet will style it identically. Keep any inline `style=` attributes the legacy has."
+      : '- Reuse the legacy CSS/inline styles verbatim where present; you may add `.css`/`.module.css` files only to match the legacy.',
     '',
   ];
 

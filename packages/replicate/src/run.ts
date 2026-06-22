@@ -11,6 +11,7 @@ import {
 import type { CodeAtlas } from '@loom/cartographer';
 import { buildScreen } from '@loom/conductor';
 import { DEFAULT_STYLE_PROPS } from '@loom/evaluator';
+import { contextFromUrl, injectStylesheets, reuseLegacyAssets } from './assets.js';
 import { checkParity } from './check.js';
 import { loginAndCapture, type LoginConfig } from './login.js';
 import { replicateScreen, type BuildArgs, type ReplicateResult } from './loop.js';
@@ -44,6 +45,11 @@ export type RunOptions = {
   componentPath?: string;
   /** Supplies legacy JSP source (e.g. read from the webapp dir). */
   jspSource?: JspSource;
+  /** The legacy webapp root — used to mirror its static assets when `reuseAssets` is set. */
+  webappDir?: string;
+  /** Copy the legacy CSS/images/fonts into the React app + link them, so the model reuses the real
+   * styling instead of recreating it. The model then reproduces markup + class names only. */
+  reuseAssets?: boolean;
   threshold?: number;
   maxIterations?: number;
   viewport?: Viewport;
@@ -83,6 +89,25 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
   const threshold = opts.threshold ?? 1;
   const viewport = opts.viewport ?? DEFAULT_VIEWPORT;
   let lastBuildError: string | undefined;
+
+  // Reuse the legacy's real CSS/assets instead of recreating them: mirror them into the app's public/
+  // dir + link them, so the model only has to reproduce markup + class names (the real CSS styles it).
+  let reusedCss = false;
+  if (opts.reuseAssets && opts.webappDir) {
+    try {
+      const context = contextFromUrl(opts.login?.loginUrl ?? opts.legacyUrl);
+      const cssUrls = reuseLegacyAssets({
+        webappDir: opts.webappDir,
+        appDir: opts.appDir,
+        context,
+        log,
+      });
+      injectStylesheets(join(opts.appDir, 'index.html'), cssUrls);
+      reusedCss = cssUrls.length > 0;
+    } catch (e) {
+      log(`  ⚠ couldn't reuse legacy assets: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   // Pre-read the live legacy screen once: its rendered tags + the exact computed styles the checker
   // measures. This is the most precise target we can hand the model — better than the JSP template
@@ -141,6 +166,7 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
       jspSource: opts.jspSource,
       componentPath: opts.componentPath,
       renderedTarget,
+      reuseAssets: reusedCss,
       diffs,
     });
     const images: Array<{ data: Buffer; caption?: string }> = [];

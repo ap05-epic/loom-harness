@@ -46,7 +46,7 @@ const CHECK_USAGE =
 const RUN_USAGE =
   'usage: replicate run --screen <key> --atlas <codeatlas.db> --app <reactAppDir> ' +
   '(--legacy <url> | --login <loginUrl> [--legacy <post-login target>]) ' +
-  '[--webapp <dir>] [--build "npx vite build"] [--serve dist] [--route /] ' +
+  '[--webapp <dir>] [--reuse-assets] [--build "npx vite build"] [--serve dist] [--route /] ' +
   '[--component src/App.tsx] [--threshold 1] [--max-iterations 12] [--visual-gate] [--shots .loom/shots | --no-shots] [--model gpt-5.4]';
 
 /**
@@ -294,6 +294,8 @@ async function run(): Promise<number> {
       route: arg('route'),
       componentPath: arg('component'),
       jspSource,
+      webappDir: webapp,
+      reuseAssets: has('reuse-assets'),
       threshold: arg('threshold') ? Number(arg('threshold')) : 1,
       maxIterations: arg('max-iterations') ? Number(arg('max-iterations')) : 12,
       storageStatePath: arg('storage'),
