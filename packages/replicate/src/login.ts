@@ -14,6 +14,8 @@ export type LoginOptions = {
   submitSelector?: string;
   /** Wait for this selector after submit — proof you reached the landing page (e.g. `#pmenu`). */
   successSelector?: string;
+  /** Settle delay after submit, ms (covers post-login redirects + slow menu hydration). Default 6000. */
+  waitMs?: number;
   onLog?: (msg: string) => void;
 };
 
@@ -40,8 +42,13 @@ export async function doLogin(opts: LoginOptions): Promise<{ landedUrl: string }
     }
     if (opts.successSelector) {
       log(`  ⏳ waiting for ${opts.successSelector} (the landing page)…`);
-      await session.waitForSelector(opts.successSelector);
+      await session
+        .waitForSelector(opts.successSelector)
+        .catch(() => log(`    (${opts.successSelector} not found in the main frame — continuing)`));
     }
+    const settleMs = opts.waitMs ?? 6000;
+    log(`  ⏳ settling ${settleMs}ms for the post-login page…`);
+    await new Promise((resolve) => setTimeout(resolve, settleMs));
     const landedUrl = session.currentUrl();
     log(`  ✓ landed at ${landedUrl}`);
     await session.saveStorageState(opts.outPath);

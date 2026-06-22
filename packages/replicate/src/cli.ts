@@ -101,6 +101,7 @@ async function login(): Promise<number> {
       fields,
       submitSelector: arg('submit-sel') ?? 'input[type=submit], button[type=submit]',
       successSelector: arg('success-sel'),
+      waitMs: arg('wait-ms') ? Number(arg('wait-ms')) : undefined,
       onLog: (m) => console.error(m),
     });
     console.log(`✓ logged in (landed at ${landedUrl}); session saved → ${out}`);
