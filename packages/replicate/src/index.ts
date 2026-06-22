@@ -29,4 +29,4 @@ export {
   type ReactRecipeInput,
 } from './recipe.js';
 export { serializeRendered } from './rendered.js';
-export { doLogin, type LoginField, type LoginOptions } from './login.js';
+export { doLogin, loginAndCapture, type LoginField, type LoginConfig } from './login.js';
