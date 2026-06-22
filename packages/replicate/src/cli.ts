@@ -1,6 +1,7 @@
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { OpenAiDriver } from '@loom/agents';
+import { captureDom, captureScreenshot, DEFAULT_VIEWPORT, type DomSnapshot } from '@loom/browser';
 import { discoverLegacyWebapp, mapProject, openCodeAtlas } from '@loom/cartographer';
 import { checkParity } from './check.js';
 import { doLogin, type LoginField } from './login.js';
@@ -22,6 +23,8 @@ const MAP_USAGE = 'usage: replicate map --struts <struts-config.xml> --out <code
 const LOGIN_USAGE =
   'usage: replicate login --legacy <loginUrl> [--out .loom/auth.json] [--user-sel <css>] [--pass-sel <css>] ' +
   '[--fa-sel <css>] [--submit-sel <css>] [--success-sel <css>]  (creds from env: BAA_USER, BAA_PASS, BAA_FA)';
+const SHOT_USAGE =
+  'usage: replicate shot --legacy <url> [--storage <auth.json>] [--out .loom/shots/probe.png]';
 const CHECK_USAGE =
   'usage: replicate check --legacy <url> --replica <url> [--atlas <codeatlas.db> --screen <key>] [--storage <auth.json>] [--threshold 1] [--visual-gate] [--llm-diff]';
 const RUN_USAGE =
@@ -65,6 +68,46 @@ function map(): number {
   } finally {
     atlas.close();
   }
+}
+
+/** Flatten a DOM snapshot to its visible text — for identifying a page from the terminal. */
+function collectText(node: DomSnapshot): string {
+  const parts: string[] = [];
+  const visit = (n: DomSnapshot): void => {
+    if (n.text) parts.push(n.text);
+    for (const c of n.children) visit(c);
+  };
+  visit(node);
+  return parts.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * `replicate shot` — screenshot a URL (with an optional saved session) and print its visible text, so
+ * you can identify a page from the terminal without a browser. No model. Great for finding the right
+ * post‑login URLs (which one is the dashboard vs an error page).
+ */
+async function shot(): Promise<number> {
+  const legacy = arg('legacy');
+  if (!legacy) {
+    console.error(SHOT_USAGE);
+    return 2;
+  }
+  const out = arg('out') ?? '.loom/shots/probe.png';
+  const storage = arg('storage');
+  const auth = storage ? { storageStatePath: storage } : {};
+  mkdirSync(dirname(out), { recursive: true });
+  const [dom, png] = await Promise.all([
+    captureDom({ url: legacy, viewport: DEFAULT_VIEWPORT, ...auth }),
+    captureScreenshot({ url: legacy, viewport: DEFAULT_VIEWPORT, ...auth }),
+  ]);
+  writeFileSync(out, png);
+  const text = collectText(dom).slice(0, 600);
+  console.log(`✓ ${legacy}`);
+  console.log(`  screenshot → ${out}`);
+  console.log(
+    `  page text  : ${text || '(no visible text in <body> — likely a FRAMESET; the real content is in child frames)'}`,
+  );
+  return 0;
 }
 
 /**
@@ -226,14 +269,18 @@ const handler =
     ? async (): Promise<number> => map()
     : cmd === 'login'
       ? login
-      : cmd === 'check'
-        ? check
-        : cmd === 'run'
-          ? run
-          : async (): Promise<number> => {
-              console.error(`${MAP_USAGE}\n${LOGIN_USAGE}\n${CHECK_USAGE}\n${RUN_USAGE}`);
-              return 2;
-            };
+      : cmd === 'shot'
+        ? shot
+        : cmd === 'check'
+          ? check
+          : cmd === 'run'
+            ? run
+            : async (): Promise<number> => {
+                console.error(
+                  `${MAP_USAGE}\n${LOGIN_USAGE}\n${SHOT_USAGE}\n${CHECK_USAGE}\n${RUN_USAGE}`,
+                );
+                return 2;
+              };
 
 handler().then(
   (code) => process.exit(code),
