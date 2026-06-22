@@ -19,11 +19,11 @@ function has(name: string): boolean {
 
 const MAP_USAGE = 'usage: replicate map --struts <struts-config.xml> --out <codeatlas.db>';
 const CHECK_USAGE =
-  'usage: replicate check --legacy <url> --replica <url> [--atlas <codeatlas.db> --screen <key>] [--storage <auth.json>] [--threshold 1] [--llm-diff]';
+  'usage: replicate check --legacy <url> --replica <url> [--atlas <codeatlas.db> --screen <key>] [--storage <auth.json>] [--threshold 1] [--visual-gate] [--llm-diff]';
 const RUN_USAGE =
   'usage: replicate run --screen <key> --atlas <codeatlas.db> --legacy <url> --app <reactAppDir> ' +
   '[--webapp <dir>] [--storage <auth.json>] [--build "npx vite build"] [--serve dist] [--route /] ' +
-  '[--component src/App.tsx] [--threshold 1] [--max-iterations 6] [--model gpt-5.4]';
+  '[--component src/App.tsx] [--threshold 1] [--max-iterations 12] [--visual-gate] [--model gpt-5.4]';
 
 /**
  * `replicate map` — deterministically map the legacy app from its struts-config (auto-discovering the
@@ -87,6 +87,7 @@ async function check(): Promise<number> {
       atlas,
       screenKey: screen,
       storageStatePath: arg('storage'),
+      gate: has('visual-gate') ? 'visual' : 'strict',
     });
     console.log(printReport(report));
     if (!report.matched && has('llm-diff')) {
@@ -149,6 +150,7 @@ async function run(): Promise<number> {
       threshold: arg('threshold') ? Number(arg('threshold')) : 1,
       maxIterations: arg('max-iterations') ? Number(arg('max-iterations')) : 12,
       storageStatePath: arg('storage'),
+      gate: has('visual-gate') ? 'visual' : 'strict',
       onLog: (m) => console.error(m),
     });
     console.log('');

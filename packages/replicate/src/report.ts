@@ -18,15 +18,23 @@ export type ParityInput = {
 /** The combined verdict: 1:1 only when every gate is clean and visual is within threshold. */
 export type ParityReport = ParityInput & { matched: boolean };
 
+/**
+ * Which gates must be clean for a 1:1 verdict.
+ * - `strict` (default): every gate — visual + DOM structure + computed style + forms + routes.
+ * - `visual`: the **visible + behavioural** bar — visual pixels + forms + routes (+ no build error).
+ *   DOM‑tag / per‑node computed‑style nuances stay advisory (still reported + fed to the model), so a
+ *   screen that looks and works identically counts as matched even if an invisible `<span>` style
+ *   differs. The visual pixel diff is the backstop for anything that actually looks different.
+ */
+export type ParityGate = 'strict' | 'visual';
+
 /** Combine the gate results into the verdict. The machine decides `matched` — no LLM. */
-export function buildReport(input: ParityInput): ParityReport {
-  const matched =
-    (input.build ?? []).length === 0 &&
-    input.visualPct <= input.threshold &&
-    input.dom.length === 0 &&
-    input.style.length === 0 &&
-    input.forms.length === 0 &&
-    input.paths.length === 0;
+export function buildReport(input: ParityInput, gate: ParityGate = 'strict'): ParityReport {
+  const noBuildError = (input.build ?? []).length === 0;
+  const visualOk = input.visualPct <= input.threshold;
+  const functionalOk = input.forms.length === 0 && input.paths.length === 0;
+  const structuralOk = input.dom.length === 0 && input.style.length === 0;
+  const matched = noBuildError && visualOk && functionalOk && (gate === 'visual' || structuralOk);
   return { ...input, matched };
 }
 
@@ -63,6 +71,10 @@ export function diffsForLlm(r: ParityReport): string {
 /** A one-line terminal summary of the parity verdict. */
 export function printReport(r: ParityReport): string {
   if (r.matched) {
+    const notes = r.dom.length + r.style.length;
+    if (notes > 0) {
+      return `✓ visible match — visual ${r.visualPct.toFixed(1)}%, forms/routes clean; ${notes} cosmetic style/structure note(s) remain (not blocking under the visible gate).`;
+    }
     return `✓ 1:1 match — visual ${r.visualPct.toFixed(1)}%, structure/style/forms/routes all clean.`;
   }
   const buildErrors = r.build ?? [];

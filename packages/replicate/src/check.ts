@@ -1,4 +1,10 @@
-import { captureDom, captureScreenshot, DEFAULT_VIEWPORT, type Viewport } from '@loom/browser';
+import {
+  captureDom,
+  captureScreenshot,
+  DEFAULT_VIEWPORT,
+  type DomSnapshot,
+  type Viewport,
+} from '@loom/browser';
 import type { CodeAtlas } from '@loom/cartographer';
 import {
   DEFAULT_STYLE_PROPS,
@@ -9,7 +15,23 @@ import {
 } from '@loom/evaluator';
 import { extractForms } from '@loom/surveyor';
 import { comparePaths, legacyNavTargets, replicaNavTargets } from './paths.js';
-import { buildReport, type ParityReport } from './report.js';
+import { buildReport, type ParityGate, type ParityReport } from './report.js';
+
+/**
+ * Lift a single SPA mount container (`<div id="root">` / `<div id="app">`) so the replica's real
+ * content aligns with the legacy `<body>`. The mount wrapper is a framework artifact the legacy page
+ * doesn't have — without this it shows up as a phantom `center → div` and shifts the whole tree one
+ * level, poisoning the structural + style diffs.
+ */
+function unwrapMount(body: DomSnapshot): DomSnapshot {
+  if (body.children.length === 1) {
+    const only = body.children[0]!;
+    if (only.tag === 'div' && (only.attrs.id === 'root' || only.attrs.id === 'app')) {
+      return { ...body, children: only.children };
+    }
+  }
+  return body;
+}
 
 export type CheckOptions = {
   /** The live legacy screen. */
@@ -24,6 +46,8 @@ export type CheckOptions = {
   screenKey?: string;
   /** Saved Playwright auth state (cookies/localStorage) for the legacy side — the SSO bootstrap. */
   storageStatePath?: string;
+  /** Which gates must be clean for a match (default `strict`; `visual` = looks + works the same). */
+  gate?: ParityGate;
 };
 
 /**
@@ -47,10 +71,13 @@ export async function checkParity(opts: CheckOptions): Promise<ParityReport> {
     { threshold },
   );
 
-  const [domA, domB] = await Promise.all([
+  const [rawA, rawB] = await Promise.all([
     captureDom({ url: opts.legacyUrl, viewport, styleProps: DEFAULT_STYLE_PROPS, ...legacyAuth }),
     captureDom({ url: opts.replicaUrl, viewport, styleProps: DEFAULT_STYLE_PROPS }),
   ]);
+  // Unwrap the SPA mount container on both sides so the replica's content aligns with the legacy body.
+  const domA = unwrapMount(rawA);
+  const domB = unwrapMount(rawB);
   const dom = diffDom(domA, domB);
   const style = diffStyles(domA, domB);
   const forms = diffForms(extractForms(domA), extractForms(domB));
@@ -59,12 +86,15 @@ export async function checkParity(opts: CheckOptions): Promise<ParityReport> {
       ? comparePaths(legacyNavTargets(opts.atlas, opts.screenKey), replicaNavTargets(domB))
       : [];
 
-  return buildReport({
-    visualPct: visual.verdict.worst.diffPercent,
-    threshold,
-    dom: dom.findings,
-    style: style.findings,
-    forms,
-    paths,
-  });
+  return buildReport(
+    {
+      visualPct: visual.verdict.worst.diffPercent,
+      threshold,
+      dom: dom.findings,
+      style: style.findings,
+      forms,
+      paths,
+    },
+    opts.gate,
+  );
 }

@@ -9,7 +9,13 @@ import { replicateScreen, type BuildArgs, type ReplicateResult } from './loop.js
 import { buildReactWorkOrder, REACT_SYSTEM_PROMPT, type JspSource } from './recipe.js';
 import { runAppBuild, serveStatic } from './react-target.js';
 import { serializeRendered } from './rendered.js';
-import { buildReport, diffsForLlm, printReport, type ParityReport } from './report.js';
+import {
+  buildReport,
+  diffsForLlm,
+  printReport,
+  type ParityGate,
+  type ParityReport,
+} from './report.js';
 
 export type RunOptions = {
   atlas: CodeAtlas;
@@ -35,6 +41,8 @@ export type RunOptions = {
   viewport?: Viewport;
   /** Saved Playwright auth state for the legacy side (SSO). */
   storageStatePath?: string;
+  /** Parity gate: `strict` (every gate) or `visual` (looks + works the same). Default strict. */
+  gate?: ParityGate;
   /** Verbose terminal streaming. */
   onLog?: (msg: string) => void;
 };
@@ -105,15 +113,18 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
 
   const check = async (): Promise<ParityReport> => {
     if (lastBuildError) {
-      return buildReport({
-        visualPct: 100,
-        threshold,
-        dom: [],
-        style: [],
-        forms: [],
-        paths: [],
-        build: [lastBuildError],
-      });
+      return buildReport(
+        {
+          visualPct: 100,
+          threshold,
+          dom: [],
+          style: [],
+          forms: [],
+          paths: [],
+          build: [lastBuildError],
+        },
+        opts.gate,
+      );
     }
     const served = await serveStatic(join(opts.appDir, serveSubdir));
     try {
@@ -127,6 +138,7 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
         threshold,
         viewport,
         storageStatePath: opts.storageStatePath,
+        gate: opts.gate,
       });
     } finally {
       await served.stop();

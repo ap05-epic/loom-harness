@@ -60,6 +60,20 @@ describe('build errors', () => {
   });
 });
 
+describe('parity gate', () => {
+  test('visual gate matches when visual+forms+routes are clean, despite style/structure notes', () => {
+    const withNotes: ParityInput = { ...empty, dom, style };
+    expect(buildReport(withNotes, 'strict').matched).toBe(false);
+    expect(buildReport(withNotes, 'visual').matched).toBe(true);
+  });
+
+  test('visual gate still fails on a real visual / forms / routes difference', () => {
+    expect(buildReport({ ...empty, visualPct: 5 }, 'visual').matched).toBe(false);
+    expect(buildReport({ ...empty, forms }, 'visual').matched).toBe(false);
+    expect(buildReport({ ...empty, paths }, 'visual').matched).toBe(false);
+  });
+});
+
 describe('printReport', () => {
   test('prints a 1:1-match line when matched', () => {
     expect(printReport(buildReport(empty))).toMatch(/1:1|match/i);
