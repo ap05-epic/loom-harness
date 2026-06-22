@@ -44,8 +44,9 @@ const SHOT_USAGE =
 const CHECK_USAGE =
   'usage: replicate check --legacy <url> --replica <url> [--atlas <codeatlas.db> --screen <key>] [--storage <auth.json>] [--threshold 1] [--visual-gate] [--llm-diff]';
 const RUN_USAGE =
-  'usage: replicate run --screen <key> --atlas <codeatlas.db> --legacy <url> --app <reactAppDir> ' +
-  '[--webapp <dir>] [--storage <auth.json>] [--build "npx vite build"] [--serve dist] [--route /] ' +
+  'usage: replicate run --screen <key> --atlas <codeatlas.db> --app <reactAppDir> ' +
+  '(--legacy <url> | --login <loginUrl> [--legacy <post-login target>]) ' +
+  '[--webapp <dir>] [--build "npx vite build"] [--serve dist] [--route /] ' +
   '[--component src/App.tsx] [--threshold 1] [--max-iterations 12] [--visual-gate] [--shots .loom/shots | --no-shots] [--model gpt-5.4]';
 
 /**
@@ -255,7 +256,8 @@ async function run(): Promise<number> {
   const atlasPath = arg('atlas');
   const legacy = arg('legacy');
   const app = arg('app');
-  if (!screen || !atlasPath || !legacy || !app) {
+  const loginUrl = arg('login');
+  if (!screen || !atlasPath || !app || (!legacy && !loginUrl)) {
     console.error(RUN_USAGE);
     return 2;
   }
@@ -283,7 +285,7 @@ async function run(): Promise<number> {
     const result = await runReplicate({
       atlas,
       screenKey: screen,
-      legacyUrl: legacy,
+      legacyUrl: legacy ?? loginUrl!,
       appDir: app,
       gateway: new OpenAiDriver({ baseUrl, apiKey }),
       model: arg('model') ?? process.env.LLM_MODEL ?? 'gpt-5.4',
@@ -295,6 +297,18 @@ async function run(): Promise<number> {
       threshold: arg('threshold') ? Number(arg('threshold')) : 1,
       maxIterations: arg('max-iterations') ? Number(arg('max-iterations')) : 12,
       storageStatePath: arg('storage'),
+      // Live-login capture (BAA): log in + grab the legacy screen in one session. --legacy is the
+      // post-login screen to navigate to; omit it to capture the landing/dashboard.
+      login: loginUrl
+        ? {
+            loginUrl,
+            fields: loginFieldsFromEnv(),
+            submitSelector: arg('submit-sel') ?? 'input[type=submit], button[type=submit]',
+            successSelector: arg('success-sel'),
+            waitMs: arg('wait-ms') ? Number(arg('wait-ms')) : undefined,
+            targetUrl: legacy,
+          }
+        : undefined,
       gate: has('visual-gate') ? 'visual' : 'strict',
       shotsDir: has('no-shots') ? undefined : (arg('shots') ?? '.loom/shots'),
       onLog: (m) => console.error(m),

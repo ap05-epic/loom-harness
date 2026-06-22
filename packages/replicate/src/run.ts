@@ -1,11 +1,18 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { LlmGateway } from '@loom/agents';
-import { captureDom, captureScreenshot, DEFAULT_VIEWPORT, type Viewport } from '@loom/browser';
+import {
+  captureDom,
+  captureScreenshot,
+  DEFAULT_VIEWPORT,
+  type DomSnapshot,
+  type Viewport,
+} from '@loom/browser';
 import type { CodeAtlas } from '@loom/cartographer';
 import { buildScreen } from '@loom/conductor';
 import { DEFAULT_STYLE_PROPS } from '@loom/evaluator';
 import { checkParity } from './check.js';
+import { loginAndCapture, type LoginConfig } from './login.js';
 import { replicateScreen, type BuildArgs, type ReplicateResult } from './loop.js';
 import { buildReactWorkOrder, REACT_SYSTEM_PROMPT, type JspSource } from './recipe.js';
 import { runAppBuild, serveStatic } from './react-target.js';
@@ -42,6 +49,12 @@ export type RunOptions = {
   viewport?: Viewport;
   /** Saved Playwright auth state for the legacy side (SSO). */
   storageStatePath?: string;
+  /**
+   * Live-login capture: log in and capture the legacy screen in ONE session (for apps like BAA that
+   * reject a restored cookie). `targetUrl` is the post-login screen to navigate to; omit to capture
+   * the landing page. When set, the legacy is captured once up front and reused every iteration.
+   */
+  login?: LoginConfig & { targetUrl?: string };
   /** Parity gate: `strict` (every gate) or `visual` (looks + works the same). Default strict. */
   gate?: ParityGate;
   /**
@@ -75,20 +88,34 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
   // measures. This is the most precise target we can hand the model — better than the JSP template
   // alone. Best-effort: if the legacy isn't reachable, fall back to JSP source only.
   let renderedTarget: string | undefined;
-  try {
-    log('  📸 reading the live legacy screen (rendered DOM + computed styles)…');
-    const legacyDom = await captureDom({
-      url: opts.legacyUrl,
-      viewport,
-      styleProps: DEFAULT_STYLE_PROPS,
-      ...(opts.storageStatePath ? { storageStatePath: opts.storageStatePath } : {}),
-    });
-    renderedTarget = serializeRendered(legacyDom);
-    log(`    got the rendered target (${renderedTarget.length} chars)`);
-  } catch (e) {
+  let cachedLegacy: { shot: Buffer; dom: DomSnapshot } | undefined;
+  if (opts.login) {
+    // Log in and capture the legacy screen in ONE live session; reuse it every iteration.
+    log('  🔑 logging in + capturing the legacy screen (one live session)…');
+    const cap = await loginAndCapture({ ...opts.login, viewport, onLog: log });
+    cachedLegacy = { shot: cap.screenshot, dom: cap.dom };
+    renderedTarget = serializeRendered(cap.dom);
     log(
-      `  ⚠ couldn't pre-read the legacy DOM (${e instanceof Error ? e.message : String(e)}); using JSP source only`,
+      `    captured the legacy screen (${renderedTarget.length} chars; ended at ${cap.finalUrl})`,
     );
+  } else {
+    // Pre-read the live legacy screen once: its rendered tags + the exact computed styles the checker
+    // measures — better than the JSP template alone. Best-effort: fall back to JSP source only.
+    try {
+      log('  📸 reading the live legacy screen (rendered DOM + computed styles)…');
+      const legacyDom = await captureDom({
+        url: opts.legacyUrl,
+        viewport,
+        styleProps: DEFAULT_STYLE_PROPS,
+        ...(opts.storageStatePath ? { storageStatePath: opts.storageStatePath } : {}),
+      });
+      renderedTarget = serializeRendered(legacyDom);
+      log(`    got the rendered target (${renderedTarget.length} chars)`);
+    } catch (e) {
+      log(
+        `  ⚠ couldn't pre-read the legacy DOM (${e instanceof Error ? e.message : String(e)}); using JSP source only`,
+      );
+    }
   }
 
   const build = async ({ diffs }: BuildArgs): Promise<void> => {
@@ -146,6 +173,7 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
         viewport,
         storageStatePath: opts.storageStatePath,
         gate: opts.gate,
+        cachedLegacy,
       });
     } finally {
       await served.stop();
@@ -182,14 +210,15 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
       const served = await serveStatic(join(opts.appDir, serveSubdir));
       try {
         const replicaUrl = served.url + (route.startsWith('/') ? route : `/${route}`);
-        const [replica, original] = await Promise.all([
-          captureScreenshot({ url: replicaUrl, viewport }),
-          captureScreenshot({
-            url: opts.legacyUrl,
-            viewport,
-            ...(opts.storageStatePath ? { storageStatePath: opts.storageStatePath } : {}),
-          }),
-        ]);
+        const replica = await captureScreenshot({ url: replicaUrl, viewport });
+        // Original: reuse the live-login capture if we have one; else capture the legacy now.
+        const original = cachedLegacy
+          ? cachedLegacy.shot
+          : await captureScreenshot({
+              url: opts.legacyUrl,
+              viewport,
+              ...(opts.storageStatePath ? { storageStatePath: opts.storageStatePath } : {}),
+            });
         const replicaPath = join(opts.shotsDir, `${opts.screenKey}.png`);
         const originalPath = join(opts.shotsDir, `${opts.screenKey}.original.png`);
         writeFileSync(replicaPath, replica);

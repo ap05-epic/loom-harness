@@ -48,6 +48,12 @@ export type CheckOptions = {
   storageStatePath?: string;
   /** Which gates must be clean for a match (default `strict`; `visual` = looks + works the same). */
   gate?: ParityGate;
+  /**
+   * Pre-captured legacy snapshot (screenshot + DOM). When given, the legacy side is NOT re-captured —
+   * essential for apps (BAA) where the screen only exists inside a live login session, so we capture
+   * it once up front and reuse it every iteration.
+   */
+  cachedLegacy?: { shot: Buffer; dom: DomSnapshot };
 };
 
 /**
@@ -62,19 +68,30 @@ export async function checkParity(opts: CheckOptions): Promise<ParityReport> {
   // The legacy side may be behind SSO — reuse a saved auth state. The replica is localhost, no auth.
   const legacyAuth = opts.storageStatePath ? { storageStatePath: opts.storageStatePath } : {};
 
-  const [aShot, bShot] = await Promise.all([
-    captureScreenshot({ url: opts.legacyUrl, viewport, ...legacyAuth }),
-    captureScreenshot({ url: opts.replicaUrl, viewport }),
-  ]);
+  // Legacy side: reuse a pre-captured snapshot when given (BAA won't serve a cold GET); else capture
+  // it now (optionally with a saved storage state). Replica side: always captured fresh.
+  const aShot = opts.cachedLegacy
+    ? opts.cachedLegacy.shot
+    : await captureScreenshot({ url: opts.legacyUrl, viewport, ...legacyAuth });
+  const rawA = opts.cachedLegacy
+    ? opts.cachedLegacy.dom
+    : await captureDom({
+        url: opts.legacyUrl,
+        viewport,
+        styleProps: DEFAULT_STYLE_PROPS,
+        ...legacyAuth,
+      });
+  const bShot = await captureScreenshot({ url: opts.replicaUrl, viewport });
+  const rawB = await captureDom({
+    url: opts.replicaUrl,
+    viewport,
+    styleProps: DEFAULT_STYLE_PROPS,
+  });
+
   const visual = evaluateVisual(
     [{ state: opts.screenKey ?? 'screen', viewport: 'desktop', a: aShot, b: bShot }],
     { threshold },
   );
-
-  const [rawA, rawB] = await Promise.all([
-    captureDom({ url: opts.legacyUrl, viewport, styleProps: DEFAULT_STYLE_PROPS, ...legacyAuth }),
-    captureDom({ url: opts.replicaUrl, viewport, styleProps: DEFAULT_STYLE_PROPS }),
-  ]);
   // Unwrap the SPA mount container on both sides so the replica's content aligns with the legacy body.
   const domA = unwrapMount(rawA);
   const domB = unwrapMount(rawB);
