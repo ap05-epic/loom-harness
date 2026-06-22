@@ -138,7 +138,7 @@ async function login(): Promise<number> {
   }
   mkdirSync(dirname(out), { recursive: true });
   try {
-    const { landedUrl } = await doLogin({
+    const { landedUrl, looksFailed } = await doLogin({
       legacyUrl: legacy,
       outPath: out,
       fields,
@@ -147,6 +147,13 @@ async function login(): Promise<number> {
       waitMs: arg('wait-ms') ? Number(arg('wait-ms')) : undefined,
       onLog: (m) => console.error(m),
     });
+    if (looksFailed) {
+      console.log(`✗ login appears to have FAILED (landed at ${landedUrl} on a login/error page).`);
+      console.log(
+        '  the session was still saved, but it is NOT authenticated. See "page says:" above.',
+      );
+      return 1;
+    }
     console.log(`✓ logged in (landed at ${landedUrl}); session saved → ${out}`);
     console.log(`  reuse it on any post-login screen with:  --storage ${out}`);
     return 0;

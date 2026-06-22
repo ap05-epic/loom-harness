@@ -1,4 +1,15 @@
-import { CrawlSession } from '@loom/browser';
+import { CrawlSession, type DomSnapshot } from '@loom/browser';
+
+/** Flatten a DOM snapshot to its visible text — so we can see what page the login landed on. */
+function flattenText(node: DomSnapshot): string {
+  const parts: string[] = [];
+  const visit = (n: DomSnapshot): void => {
+    if (n.text) parts.push(n.text);
+    for (const c of n.children) visit(c);
+  };
+  visit(node);
+  return parts.join(' ').replace(/\s+/g, ' ').trim();
+}
 
 /** One field to fill on the login form: a CSS selector + the value (from env). */
 export type LoginField = { selector: string; value: string };
@@ -25,7 +36,9 @@ export type LoginOptions = {
  * for the landing page, and persists cookies/localStorage. Reuses the same `CrawlSession` that already
  * authenticates the crawler — frame‑aware context, real browser.
  */
-export async function doLogin(opts: LoginOptions): Promise<{ landedUrl: string }> {
+export async function doLogin(
+  opts: LoginOptions,
+): Promise<{ landedUrl: string; bodyText: string; looksFailed: boolean }> {
   const log = opts.onLog ?? (() => {});
   const session = new CrawlSession({});
   await session.open();
@@ -50,10 +63,23 @@ export async function doLogin(opts: LoginOptions): Promise<{ landedUrl: string }
     log(`  ⏳ settling ${settleMs}ms for the post-login page…`);
     await new Promise((resolve) => setTimeout(resolve, settleMs));
     const landedUrl = session.currentUrl();
-    log(`  ✓ landed at ${landedUrl}`);
+    log(`  landed at ${landedUrl}`);
+    let bodyText = '';
+    try {
+      bodyText = flattenText(await session.captureDom()).slice(0, 400);
+    } catch {
+      /* frameset / mid-nav — leave empty */
+    }
+    log(`  page says: ${bodyText || '(no visible body text — maybe a frameset)'}`);
+    const looksFailed = /error|log\s?in|sign\s?in|invalid|denied/i.test(bodyText);
+    if (looksFailed) {
+      log(
+        '  ⚠ this looks like a FAILED login (still on a login/error page) — session NOT trustworthy.',
+      );
+    }
     await session.saveStorageState(opts.outPath);
     log(`  ✓ session saved → ${opts.outPath}`);
-    return { landedUrl };
+    return { landedUrl, bodyText, looksFailed };
   } finally {
     await session.close();
   }
