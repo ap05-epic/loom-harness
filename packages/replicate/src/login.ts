@@ -95,16 +95,21 @@ export async function doLogin(
  * within, not a restored cookie. The session is closed at the end.
  */
 export async function loginAndCapture(
-  opts: LoginConfig & { targetUrl: string; viewport?: Viewport; onLog?: (msg: string) => void },
+  opts: LoginConfig & { targetUrl?: string; viewport?: Viewport; onLog?: (msg: string) => void },
 ): Promise<{ screenshot: Buffer; dom: DomSnapshot; text: string; finalUrl: string }> {
   const log = opts.onLog ?? (() => {});
   const session = new CrawlSession(opts.viewport ? { viewport: opts.viewport } : {});
   await session.open();
   try {
     await loginInSession(session, opts, log);
-    log(`  → navigating to target: ${opts.targetUrl}`);
-    await session.navigate(opts.targetUrl);
-    await new Promise((resolve) => setTimeout(resolve, 3000)); // let the target settle
+    if (opts.targetUrl) {
+      log(`  → navigating to target: ${opts.targetUrl}`);
+      await session.navigate(opts.targetUrl);
+      await new Promise((resolve) => setTimeout(resolve, 3000)); // let the target settle
+    } else {
+      log(`  → capturing the post-login landing page (no navigation)`);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
     const [screenshot, dom] = await Promise.all([session.screenshot(), session.captureDom()]);
     return { screenshot, dom, text: flattenText(dom), finalUrl: session.currentUrl() };
   } finally {

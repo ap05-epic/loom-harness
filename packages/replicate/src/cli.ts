@@ -103,16 +103,11 @@ function collectText(node: DomSnapshot): string {
  * post‑login URLs (which one is the dashboard vs an error page).
  */
 async function shot(): Promise<number> {
-  const legacy = arg('legacy');
-  if (!legacy) {
-    console.error(SHOT_USAGE);
-    return 2;
-  }
   const out = arg('out') ?? '.loom/shots/probe.png';
   mkdirSync(dirname(out), { recursive: true });
 
-  // `--login <loginUrl>`: log in and navigate to the target in ONE live session (what BAA needs —
-  // a restored cookie won't survive a cold request).
+  // `--login <loginUrl>`: log in and (optionally) navigate to a target in ONE live session — what BAA
+  // needs (a restored cookie won't survive a cold request). Omit --legacy to capture the landing page.
   const loginUrl = arg('login');
   if (loginUrl) {
     const fields = loginFieldsFromEnv();
@@ -122,7 +117,7 @@ async function shot(): Promise<number> {
     }
     const { screenshot, text, finalUrl } = await loginAndCapture({
       loginUrl,
-      targetUrl: legacy,
+      targetUrl: arg('legacy'),
       fields,
       submitSelector: arg('submit-sel') ?? 'input[type=submit], button[type=submit]',
       successSelector: arg('success-sel'),
@@ -130,17 +125,24 @@ async function shot(): Promise<number> {
       onLog: (m) => console.error(m),
     });
     writeFileSync(out, screenshot);
-    console.log(`✓ ${legacy}  (via live login; ended at ${finalUrl})`);
+    console.log(
+      `✓ ${arg('legacy') ?? 'post-login landing'}  (via live login; ended at ${finalUrl})`,
+    );
     console.log(`  screenshot → ${out}`);
     console.log(`  page text  : ${text.slice(0, 600) || '(no visible text — likely a FRAMESET)'}`);
     console.log(
       looksLikeFailure(text)
         ? '  ⚠ still a login/error/timeout page — a plain GET to this URL is not enough.'
-        : '  ✓ looks like a real screen — this URL works after a live login.',
+        : '  ✓ looks like a real screen — this works after a live login.',
     );
     return 0;
   }
 
+  const legacy = arg('legacy');
+  if (!legacy) {
+    console.error(SHOT_USAGE);
+    return 2;
+  }
   const storage = arg('storage');
   const auth = storage ? { storageStatePath: storage } : {};
   const [dom, png] = await Promise.all([
