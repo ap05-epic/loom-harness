@@ -27,7 +27,7 @@ const CHECK_USAGE =
 const RUN_USAGE =
   'usage: replicate run --screen <key> --atlas <codeatlas.db> --legacy <url> --app <reactAppDir> ' +
   '[--webapp <dir>] [--storage <auth.json>] [--build "npx vite build"] [--serve dist] [--route /] ' +
-  '[--component src/App.tsx] [--threshold 1] [--max-iterations 12] [--visual-gate] [--model gpt-5.4]';
+  '[--component src/App.tsx] [--threshold 1] [--max-iterations 12] [--visual-gate] [--shots .loom/shots | --no-shots] [--model gpt-5.4]';
 
 /**
  * `replicate map` — deterministically map the legacy app from its struts-config (auto-discovering the
@@ -204,6 +204,7 @@ async function run(): Promise<number> {
       maxIterations: arg('max-iterations') ? Number(arg('max-iterations')) : 12,
       storageStatePath: arg('storage'),
       gate: has('visual-gate') ? 'visual' : 'strict',
+      shotsDir: has('no-shots') ? undefined : (arg('shots') ?? '.loom/shots'),
       onLog: (m) => console.error(m),
     });
     console.log('');

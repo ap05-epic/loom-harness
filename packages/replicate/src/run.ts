@@ -1,6 +1,7 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { LlmGateway } from '@loom/agents';
-import { captureDom, DEFAULT_VIEWPORT, type Viewport } from '@loom/browser';
+import { captureDom, captureScreenshot, DEFAULT_VIEWPORT, type Viewport } from '@loom/browser';
 import type { CodeAtlas } from '@loom/cartographer';
 import { buildScreen } from '@loom/conductor';
 import { DEFAULT_STYLE_PROPS } from '@loom/evaluator';
@@ -43,6 +44,12 @@ export type RunOptions = {
   storageStatePath?: string;
   /** Parity gate: `strict` (every gate) or `visual` (looks + works the same). Default strict. */
   gate?: ParityGate;
+  /**
+   * Save a screenshot of the final replica (and the original) into this folder when the run ends —
+   * for viewing without a browser. Named by screen key, so re-running a screen overwrites rather than
+   * piling up copies. Undefined = don't capture.
+   */
+  shotsDir?: string;
   /** Verbose terminal streaming. */
   onLog?: (msg: string) => void;
 };
@@ -145,7 +152,7 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
     }
   };
 
-  return replicateScreen({
+  const result = await replicateScreen({
     build,
     check,
     maxIterations: opts.maxIterations,
@@ -166,4 +173,37 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
       }
     },
   });
+
+  // Snap the final replica (and the original) for viewing without a browser. Named by screen key, so
+  // re-running a screen overwrites it rather than leaving 20 copies.
+  if (opts.shotsDir) {
+    try {
+      mkdirSync(opts.shotsDir, { recursive: true });
+      const served = await serveStatic(join(opts.appDir, serveSubdir));
+      try {
+        const replicaUrl = served.url + (route.startsWith('/') ? route : `/${route}`);
+        const [replica, original] = await Promise.all([
+          captureScreenshot({ url: replicaUrl, viewport }),
+          captureScreenshot({
+            url: opts.legacyUrl,
+            viewport,
+            ...(opts.storageStatePath ? { storageStatePath: opts.storageStatePath } : {}),
+          }),
+        ]);
+        const replicaPath = join(opts.shotsDir, `${opts.screenKey}.png`);
+        const originalPath = join(opts.shotsDir, `${opts.screenKey}.original.png`);
+        writeFileSync(replicaPath, replica);
+        writeFileSync(originalPath, original);
+        log(`\n📷 saved for viewing:`);
+        log(`   replica  → ${replicaPath}`);
+        log(`   original → ${originalPath}`);
+      } finally {
+        await served.stop();
+      }
+    } catch (e) {
+      log(`  ⚠ couldn't save screenshots: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  return result;
 }
