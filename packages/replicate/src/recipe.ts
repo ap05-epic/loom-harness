@@ -1,3 +1,4 @@
+import type { NetworkRequest } from '@loom/browser';
 import type { CodeAtlas, Screen } from '@loom/cartographer';
 
 /** Resolve a JSP's raw legacy source by its logical path (e.g. `/jsp/login.jsp`). */
@@ -14,6 +15,8 @@ export type ReactRecipeInput = {
   renderedTarget?: string;
   /** The legacy stylesheets are already linked into the app — reproduce markup + class names only. */
   reuseAssets?: boolean;
+  /** The backend endpoints this screen pulls data from (redacted) — fetch live, never hardcode. */
+  endpoints?: NetworkRequest[];
   /** On a retry: the concrete differences the deterministic checker found. */
   diffs?: string;
 };
@@ -33,6 +36,10 @@ export const REACT_SYSTEM_PROMPT =
   'borders, and visual styling — by writing the CSS needed; a plain unstyled page of text is WRONG. ' +
   'Reproduce every ' +
   'control, form field (name/type/options), and navigation link / form action exactly (same href/action). ' +
+  'The captured DOM/screenshot shows the LAYOUT, not the data: NEVER hardcode the numbers/text/rows you ' +
+  'see — they belong to one test account. Fetch the live data from the SAME backend endpoint the screen ' +
+  'uses (given in the work order; the app proxies it to the real backend) and render whatever comes back, ' +
+  'so a different account shows its own data. ' +
   'Write files with the write_file tool (paths relative to the build root). A deterministic machine — not ' +
   'you — judges parity; when it reports differences, fix exactly those and nothing else. Finish with a ' +
   'one-line text summary.';
@@ -69,6 +76,20 @@ export function buildReactWorkOrder(input: ReactRecipeInput): string {
       '```html',
       input.renderedTarget.trim(),
       '```',
+      '',
+    );
+  }
+
+  if (input.endpoints && input.endpoints.length > 0) {
+    lines.push(
+      '## DATA SOURCE — fetch this live, NEVER hardcode',
+      'The numbers/text/rows in the target above belong to ONE test account — they are DATA, not layout.',
+      'Do NOT inline them. Fetch from the SAME backend endpoint(s) the legacy screen uses (same-origin —',
+      'the dev/prod server proxies them to the real backend with the live session) and render whatever',
+      'comes back, so a different account shows ITS data. The endpoints this screen called:',
+      ...input.endpoints.slice(0, 20).map((e) => `- ${e.method} ${e.url}`),
+      'JSON → consume it; HTML → request it and read the same fields the JSP binds. Treat every captured',
+      'value as a placeholder to REPLACE with the live fetch.',
       '',
     );
   }

@@ -1,8 +1,10 @@
 import {
   captureDom,
   captureScreenshot,
+  CrawlSession,
   DEFAULT_VIEWPORT,
   type DomSnapshot,
+  type NetworkRequest,
   type Viewport,
 } from '@loom/browser';
 import type { CodeAtlas } from '@loom/cartographer';
@@ -33,6 +35,37 @@ function unwrapMount(body: DomSnapshot): DomSnapshot {
   return body;
 }
 
+/**
+ * The anti-hardcoding gate (pure): did the replica fetch its data from the real backend (any request
+ * under the proxied context prefix), or did it render hardcoded values (no backend fetch)? A snapshot
+ * fails. No LLM.
+ */
+export function liveDataGate(
+  requests: NetworkRequest[],
+  contextPrefix: string,
+): { fetchedLive: boolean; hits: string[] } {
+  const hits = requests.filter((r) => r.url.includes(contextPrefix)).map((r) => r.url);
+  return { fetchedLive: hits.length > 0, hits };
+}
+
+/** Load the served replica, record its network calls, and run {@link liveDataGate} against them. */
+async function replicaFetchedLive(
+  replicaUrl: string,
+  contextPrefix: string,
+  viewport: Viewport,
+): Promise<{ fetchedLive: boolean; hits: string[] }> {
+  const session = new CrawlSession({ viewport });
+  await session.open();
+  try {
+    session.startNetworkLog();
+    await session.navigate(replicaUrl);
+    await session.awaitStable(8000);
+    return liveDataGate(session.drainNetworkLog(), contextPrefix);
+  } finally {
+    await session.close();
+  }
+}
+
 export type CheckOptions = {
   /** The live legacy screen. */
   legacyUrl: string;
@@ -54,6 +87,12 @@ export type CheckOptions = {
    * it once up front and reuse it every iteration.
    */
   cachedLegacy?: { shot: Buffer; dom: DomSnapshot };
+  /**
+   * Anti-hardcoding gate: when set, verify the replica fetched its data from the real backend (a
+   * request under `contextPrefix`, e.g. `/BAA`) rather than rendering hardcoded values. Fails the
+   * match if it didn't.
+   */
+  liveData?: { contextPrefix: string };
 };
 
 /**
@@ -103,6 +142,16 @@ export async function checkParity(opts: CheckOptions): Promise<ParityReport> {
       ? comparePaths(legacyNavTargets(opts.atlas, opts.screenKey), replicaNavTargets(domB))
       : [];
 
+  // Anti-hardcoding gate: confirm the replica actually fetched live data from the real backend.
+  let live: string[] = [];
+  if (opts.liveData) {
+    const r = await replicaFetchedLive(opts.replicaUrl, opts.liveData.contextPrefix, viewport);
+    if (!r.fetchedLive)
+      live = [
+        `the replica made no request to the backend (expected a fetch under ${opts.liveData.contextPrefix})`,
+      ];
+  }
+
   return buildReport(
     {
       visualPct: visual.verdict.worst.diffPercent,
@@ -111,6 +160,7 @@ export async function checkParity(opts: CheckOptions): Promise<ParityReport> {
       style: style.findings,
       forms,
       paths,
+      live,
     },
     opts.gate,
   );

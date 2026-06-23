@@ -243,10 +243,15 @@ export type CrawlSessionOptions = SessionOptions & {
  * navigations so **login cookies/session carry over**. This is what lets the
  * surveyor authenticate once and then walk the protected screens.
  */
+/** A single network request the page made — for learning which backend endpoints a screen pulls from. */
+export type NetworkRequest = { method: string; url: string; resourceType: string; status?: number };
+
 export class CrawlSession {
   private browser?: Browser;
   private context?: BrowserContext;
   private page?: Page;
+  private netLog: NetworkRequest[] = [];
+  private netListening = false;
   constructor(private readonly options: CrawlSessionOptions = {}) {}
 
   async open(): Promise<void> {
@@ -293,6 +298,64 @@ export class CrawlSession {
     const page = this.active();
     await page.waitForLoadState('domcontentloaded').catch(() => undefined);
     await page.waitForLoadState('networkidle').catch(() => undefined);
+  }
+
+  /**
+   * Wait for the page to FULLY load its data before reading/acting — for backends (BAA's mainframe)
+   * where a screen paints in stages over several seconds. Waits networkidle, then polls a cheap
+   * whole-document element count (across all frames) until it stops changing or `loadMs` elapses, so we
+   * never capture a half-loaded / spinner page.
+   */
+  async awaitStable(loadMs = 15000): Promise<void> {
+    const page = this.active();
+    await page.waitForLoadState('domcontentloaded').catch(() => undefined);
+    await page.waitForLoadState('networkidle').catch(() => undefined);
+    const deadline = Date.now() + loadMs;
+    let prev = -1;
+    while (Date.now() < deadline) {
+      const sig = await this.domLoadSignature();
+      if (sig === prev) return; // two equal reads in a row → the data has finished painting
+      prev = sig;
+      await page.waitForTimeout(800);
+    }
+  }
+
+  /** Whole-document element count across all frames — a cheap stability proxy for "data finished loading". */
+  private async domLoadSignature(): Promise<number> {
+    let total = 0;
+    for (const frame of this.active().frames()) {
+      try {
+        total += await frame.evaluate(() => document.querySelectorAll('*').length);
+      } catch {
+        // cross-origin / detached / navigating frame — contributes nothing
+      }
+    }
+    return total;
+  }
+
+  /**
+   * Start recording the page's network requests (clears any prior log). Used to learn which backend
+   * endpoints a screen pulls its data from — the bridge to live data binding. Listeners attach once.
+   */
+  startNetworkLog(): void {
+    this.netLog = [];
+    if (this.netListening) return;
+    this.netListening = true;
+    const page = this.active();
+    page.on('request', (req) => {
+      this.netLog.push({ method: req.method(), url: req.url(), resourceType: req.resourceType() });
+    });
+    page.on('response', (res) => {
+      const hit = this.netLog.find((r) => r.url === res.url() && r.status === undefined);
+      if (hit) hit.status = res.status();
+    });
+  }
+
+  /** Take and clear the network requests recorded since the last drain/start. */
+  drainNetworkLog(): NetworkRequest[] {
+    const out = this.netLog;
+    this.netLog = [];
+    return out;
   }
 
   async captureDom(styleProps?: string[]): Promise<DomSnapshot> {

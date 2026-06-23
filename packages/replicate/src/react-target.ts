@@ -1,6 +1,12 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { createServer } from 'node:http';
+import {
+  createServer,
+  request as httpRequest,
+  type IncomingMessage,
+  type ServerResponse,
+} from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import type { AddressInfo } from 'node:net';
 import { extname, join, normalize } from 'node:path';
 
@@ -28,16 +34,66 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 /**
+ * Forward requests under a path prefix to the real legacy backend — so the replica's live data fetches
+ * (e.g. `fetch('/BAA/...Action.do')`) hit the SAME endpoints the JSP uses, with the captured session
+ * cookie attached. This is what makes the React a real client pulling live data, not a snapshot.
+ */
+export type StaticProxy = {
+  /** Path prefix to forward (e.g. `/BAA`). */
+  prefix: string;
+  /** Backend origin to forward to (e.g. `http://localhost:8080`). */
+  target: string;
+  /** Headers to attach to forwarded requests (notably the session `cookie`). */
+  headers?: Record<string, string>;
+};
+
+function forwardToBackend(req: IncomingMessage, res: ServerResponse, proxy: StaticProxy): void {
+  const target = new URL(proxy.target);
+  const reqFn = target.protocol === 'https:' ? httpsRequest : httpRequest;
+  const path = req.url ?? '/';
+  const headers = { ...req.headers, host: target.host, ...(proxy.headers ?? {}) };
+  delete headers['content-length']; // recomputed by piping
+  const upstream = reqFn(
+    {
+      protocol: target.protocol,
+      hostname: target.hostname,
+      port: target.port,
+      method: req.method,
+      path,
+      headers,
+    },
+    (up) => {
+      res.statusCode = up.statusCode ?? 502;
+      for (const [k, v] of Object.entries(up.headers)) {
+        if (v !== undefined && k.toLowerCase() !== 'transfer-encoding') res.setHeader(k, v);
+      }
+      up.pipe(res);
+    },
+  );
+  upstream.on('error', () => {
+    res.statusCode = 502;
+    res.end('proxy error');
+  });
+  req.pipe(upstream);
+}
+
+/**
  * Serve a built static directory (a Vite/React `dist`) with SPA fallback — unknown paths return
- * `index.html` so client‑side routes render. Returns the base URL + a stop handle. Used to host the
+ * `index.html` so client‑side routes render. When `proxy` is given, requests under its prefix are
+ * forwarded to the real backend (live data). Returns the base URL + a stop handle. Used to host the
  * replica so the deterministic checker can capture it.
  */
 export async function serveStatic(
   dir: string,
+  proxy?: StaticProxy,
 ): Promise<{ url: string; stop: () => Promise<void> }> {
   const indexHtml = join(dir, 'index.html');
   const server = createServer((req, res) => {
     const rawPath = decodeURIComponent((req.url ?? '/').split('?')[0]!);
+    if (proxy && rawPath.startsWith(proxy.prefix)) {
+      forwardToBackend(req, res, proxy);
+      return;
+    }
     // Resolve within dir; strip any leading ../ so a request can't escape the served root.
     const safe = normalize(rawPath).replace(/^(\.\.[/\\])+/, '');
     let file = join(dir, safe);

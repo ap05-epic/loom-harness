@@ -1,4 +1,4 @@
-export { checkParity, type CheckOptions } from './check.js';
+export { checkParity, liveDataGate, type CheckOptions } from './check.js';
 export {
   replicateScreen,
   type BuildArgs,
@@ -20,6 +20,8 @@ export {
   replicaNavTargets,
   type PathFinding,
 } from './paths.js';
+export { buildNavTree, navTreeToDot, printNavTree, type NavNode, type NavTree } from './graph.js';
+export { extractNavigation, compareNavigation, type NavLink } from './nav.js';
 export { runReplicate, type RunOptions } from './run.js';
 export { runAppBuild, serveStatic } from './react-target.js';
 export {
@@ -29,4 +31,12 @@ export {
   type ReactRecipeInput,
 } from './recipe.js';
 export { serializeRendered } from './rendered.js';
-export { doLogin, loginAndCapture, type LoginField, type LoginConfig } from './login.js';
+export {
+  doLogin,
+  loginAndCapture,
+  redactFa,
+  dataEndpoints,
+  type LoginField,
+  type LoginConfig,
+  type FaGateway,
+} from './login.js';

@@ -13,6 +13,8 @@ export type ParityInput = {
   paths: PathFinding[];
   /** Build/compile errors — the replica didn't build, so there's nothing to compare yet. */
   build?: string[];
+  /** Live-data gate failures — the replica rendered WITHOUT fetching the real backend (hardcoded data). */
+  live?: string[];
 };
 
 /** The combined verdict: 1:1 only when every gate is clean and visual is within threshold. */
@@ -31,10 +33,12 @@ export type ParityGate = 'strict' | 'visual';
 /** Combine the gate results into the verdict. The machine decides `matched` — no LLM. */
 export function buildReport(input: ParityInput, gate: ParityGate = 'strict'): ParityReport {
   const noBuildError = (input.build ?? []).length === 0;
+  const liveOk = (input.live ?? []).length === 0;
   const visualOk = input.visualPct <= input.threshold;
   const functionalOk = input.forms.length === 0 && input.paths.length === 0;
   const structuralOk = input.dom.length === 0 && input.style.length === 0;
-  const matched = noBuildError && visualOk && functionalOk && (gate === 'visual' || structuralOk);
+  const matched =
+    noBuildError && liveOk && visualOk && functionalOk && (gate === 'visual' || structuralOk);
   return { ...input, matched };
 }
 
@@ -54,6 +58,11 @@ export function diffsForLlm(r: ParityReport): string {
     );
   }
   const lines: string[] = [];
+  for (const l of r.live ?? [])
+    lines.push(
+      `DATA (live): ${l} — fetch the screen's data from the real backend endpoint and render the ` +
+        `response; do not hardcode the captured values.`,
+    );
   if (r.visualPct > r.threshold) {
     lines.push(
       `VISUAL: ${r.visualPct.toFixed(1)}% pixel difference vs the original (target ≤ ${r.threshold}%). ` +
@@ -81,8 +90,9 @@ export function printReport(r: ParityReport): string {
   if (buildErrors.length > 0) {
     return `✗ build failed — ${buildErrors.length} error(s); the replica didn't compile.`;
   }
+  const livePrefix = (r.live ?? []).length > 0 ? '✗ data not live (hardcoded) · ' : '';
   return (
-    `✗ not yet 1:1 — visual ${r.visualPct.toFixed(1)}% (target ≤ ${r.threshold}%) · ` +
+    `✗ not yet 1:1 — ${livePrefix}visual ${r.visualPct.toFixed(1)}% (target ≤ ${r.threshold}%) · ` +
     `structure ${r.dom.length} · style ${r.style.length} · forms ${r.forms.length} · routes ${r.paths.length}`
   );
 }

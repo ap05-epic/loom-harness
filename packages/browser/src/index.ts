@@ -11,5 +11,6 @@ export {
   type Viewport,
   type DomSnapshot,
   type SessionDiagnosis,
+  type NetworkRequest,
 } from './capture.js';
 export { normalizeCookieDomain, normalizeCookies } from './cookies.js';

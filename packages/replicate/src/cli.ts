@@ -4,6 +4,7 @@ import { OpenAiDriver } from '@loom/agents';
 import { captureDom, captureScreenshot, DEFAULT_VIEWPORT, type DomSnapshot } from '@loom/browser';
 import { discoverLegacyWebapp, mapProject, openCodeAtlas } from '@loom/cartographer';
 import { checkParity } from './check.js';
+import { buildNavTree, navTreeToDot, printNavTree } from './graph.js';
 import { doLogin, loginAndCapture, looksLikeFailure, type LoginField } from './login.js';
 import { extractNavigation } from './nav.js';
 import { legacyNavTargets, normalizePath } from './paths.js';
@@ -37,6 +38,8 @@ function loginFieldsFromEnv(): LoginField[] {
 }
 
 const MAP_USAGE = 'usage: replicate map --struts <struts-config.xml> --out <codeatlas.db>';
+const GRAPH_USAGE =
+  'usage: replicate graph --atlas <codeatlas.db> [--json <out.json>] [--dot <out.dot>]  (prints the nav tree by default)';
 const LOGIN_USAGE =
   'usage: replicate login --legacy <loginUrl> [--out .loom/auth.json] [--user-sel <css>] [--pass-sel <css>] ' +
   '[--fa-sel <css>] [--submit-sel <css>] [--success-sel <css>]  (creds from env: BAA_USER, BAA_PASS, BAA_FA)';
@@ -49,8 +52,9 @@ const CHECK_USAGE =
 const RUN_USAGE =
   'usage: replicate run --screen <key> --atlas <codeatlas.db> --app <reactAppDir> ' +
   '(--legacy <url> | --login <loginUrl> [--legacy <post-login target>]) ' +
-  '[--webapp <dir>] [--reuse-assets] [--build "npx vite build"] [--serve dist] [--route /] ' +
-  '[--component src/App.tsx] [--threshold 1] [--max-iterations 12] [--visual-gate] [--shots .loom/shots | --no-shots] [--model gpt-5.4]';
+  '[--webapp <dir>] [--reuse-assets] [--fa-hint <regex>] [--load-ms 15000] [--screens .loom/screens | --no-screens] ' +
+  '[--build "npx vite build"] [--serve dist] [--route /] ' +
+  '[--component src/App.tsx] [--threshold 1] [--max-iterations 12] [--visual-gate] [--shots .loom/shots | --no-shots] [--model gpt-5.4]  (FA from env BAA_FA)';
 
 /**
  * `replicate map` — deterministically map the legacy app from its struts-config (auto-discovering the
@@ -84,6 +88,39 @@ function map(): number {
       if (s.viewJsps.length) console.log(`    views:  ${s.viewJsps.join(', ')}`);
       if (routes.length) console.log(`    routes: ${routes.join(', ')}`);
     }
+    return 0;
+  } finally {
+    atlas.close();
+  }
+}
+
+/**
+ * `replicate graph` — print (or export JSON/DOT) the navigation tree from the static map: every screen
+ * → the screens it links/submits/forwards to. This IS the "tree of all user paths," already complete in
+ * the atlas from struts-config — no crawling. No model.
+ */
+function graph(): number {
+  const atlasPath = arg('atlas');
+  if (!atlasPath) {
+    console.error(GRAPH_USAGE);
+    return 2;
+  }
+  const atlas = openCodeAtlas(atlasPath);
+  try {
+    const tree = buildNavTree(atlas);
+    const json = arg('json');
+    const dot = arg('dot');
+    if (json) {
+      mkdirSync(dirname(json), { recursive: true });
+      writeFileSync(json, JSON.stringify(tree, null, 2));
+      console.log(`✓ ${tree.screenCount} screen(s) · ${tree.edgeCount} edge(s) → ${json}`);
+    }
+    if (dot) {
+      mkdirSync(dirname(dot), { recursive: true });
+      writeFileSync(dot, navTreeToDot(tree));
+      console.log(`✓ DOT → ${dot}`);
+    }
+    if (!json && !dot) console.log(printNavTree(tree));
     return 0;
   } finally {
     atlas.close();
@@ -350,6 +387,17 @@ async function run(): Promise<number> {
       threshold: arg('threshold') ? Number(arg('threshold')) : 1,
       maxIterations: arg('max-iterations') ? Number(arg('max-iterations')) : 12,
       storageStatePath: arg('storage'),
+      // The FA gateway (BAA): BAA_FA from env → the FA-selected (data-filled) state. --fa-hint tunes
+      // how the FA box is found. Never a flag — the FA stays in env, redacted in artifacts.
+      fa: process.env.BAA_FA
+        ? {
+            value: process.env.BAA_FA,
+            hint: arg('fa-hint') ? new RegExp(arg('fa-hint')!, 'i') : undefined,
+            submitSelector: arg('fa-submit-sel'),
+          }
+        : undefined,
+      loadMs: arg('load-ms') ? Number(arg('load-ms')) : undefined,
+      screensDir: has('no-screens') ? undefined : (arg('screens') ?? '.loom/screens'),
       // Live-login capture (BAA): log in + grab the legacy screen in one session. --legacy is the
       // post-login screen to navigate to; omit it to capture the landing/dashboard.
       login: loginUrl
@@ -383,22 +431,24 @@ const cmd = process.argv[2];
 const handler =
   cmd === 'map'
     ? async (): Promise<number> => map()
-    : cmd === 'login'
-      ? login
-      : cmd === 'shot'
-        ? shot
-        : cmd === 'nav'
-          ? nav
-          : cmd === 'check'
-            ? check
-            : cmd === 'run'
-              ? run
-              : async (): Promise<number> => {
-                  console.error(
-                    `${MAP_USAGE}\n${LOGIN_USAGE}\n${SHOT_USAGE}\n${NAV_USAGE}\n${CHECK_USAGE}\n${RUN_USAGE}`,
-                  );
-                  return 2;
-                };
+    : cmd === 'graph'
+      ? async (): Promise<number> => graph()
+      : cmd === 'login'
+        ? login
+        : cmd === 'shot'
+          ? shot
+          : cmd === 'nav'
+            ? nav
+            : cmd === 'check'
+              ? check
+              : cmd === 'run'
+                ? run
+                : async (): Promise<number> => {
+                    console.error(
+                      `${MAP_USAGE}\n${GRAPH_USAGE}\n${LOGIN_USAGE}\n${SHOT_USAGE}\n${NAV_USAGE}\n${CHECK_USAGE}\n${RUN_USAGE}`,
+                    );
+                    return 2;
+                  };
 
 handler().then(
   (code) => process.exit(code),

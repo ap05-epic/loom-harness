@@ -6,6 +6,7 @@ import {
   captureScreenshot,
   DEFAULT_VIEWPORT,
   type DomSnapshot,
+  type NetworkRequest,
   type Viewport,
 } from '@loom/browser';
 import type { CodeAtlas } from '@loom/cartographer';
@@ -13,10 +14,12 @@ import { buildScreen } from '@loom/conductor';
 import { DEFAULT_STYLE_PROPS } from '@loom/evaluator';
 import { contextFromUrl, injectStylesheets, reuseLegacyAssets } from './assets.js';
 import { checkParity } from './check.js';
-import { loginAndCapture, type LoginConfig } from './login.js';
+import { loginAndCapture, type FaGateway, type LoginConfig } from './login.js';
 import { replicateScreen, type BuildArgs, type ReplicateResult } from './loop.js';
+import { extractNavigation } from './nav.js';
+import { legacyNavTargets, normalizePath, replicaNavTargets } from './paths.js';
 import { buildReactWorkOrder, REACT_SYSTEM_PROMPT, type JspSource } from './recipe.js';
-import { runAppBuild, serveStatic } from './react-target.js';
+import { runAppBuild, serveStatic, type StaticProxy } from './react-target.js';
 import { serializeRendered } from './rendered.js';
 import {
   buildReport,
@@ -61,6 +64,12 @@ export type RunOptions = {
    * the landing page. When set, the legacy is captured once up front and reused every iteration.
    */
   login?: LoginConfig & { targetUrl?: string };
+  /** The FA gateway — reach the real application + capture the FA-selected (data-filled) state. */
+  fa?: FaGateway;
+  /** Max wait for the mainframe to finish loading a page before capture (ms, default 15000). */
+  loadMs?: number;
+  /** Save a per-screen prep artifact (data endpoints + runtime links + states) into this folder. */
+  screensDir?: string;
   /** Parity gate: `strict` (every gate) or `visual` (looks + works the same). Default strict. */
   gate?: ParityGate;
   /**
@@ -72,6 +81,71 @@ export type RunOptions = {
   /** Verbose terminal streaming. */
   onLog?: (msg: string) => void;
 };
+
+/**
+ * Reconcile the live DOM's links against the static map (flag AJAX/dynamic links struts-config doesn't
+ * know) and save a per-screen prep artifact — the data endpoints, runtime links, and which states
+ * exist — so the converter (and the user) know each screen's data source + navigation up front.
+ */
+function recordScreenPrep(p: {
+  atlas: CodeAtlas;
+  screenKey: string;
+  dom: DomSnapshot;
+  endpoints: NetworkRequest[];
+  finalUrl: string;
+  hasNoFa: boolean;
+  hasFa: boolean;
+  screensDir?: string;
+  log: (m: string) => void;
+}): void {
+  const staticSet = new Set(
+    legacyNavTargets(p.atlas, p.screenKey)
+      .map(normalizePath)
+      .filter((x): x is string => Boolean(x)),
+  );
+  const runtimeLinks = extractNavigation(p.dom);
+  const ajaxOnly = [
+    ...new Set(
+      replicaNavTargets(p.dom)
+        .map(normalizePath)
+        .filter((x): x is string => Boolean(x)),
+    ),
+  ].filter((t) => !staticSet.has(t));
+  if (ajaxOnly.length > 0)
+    p.log(
+      `  ⓘ ${ajaxOnly.length} runtime link(s) not in the static map (AJAX/dynamic): ${ajaxOnly.slice(0, 8).join(', ')}`,
+    );
+  if (p.endpoints.length > 0)
+    p.log(
+      `  🔌 ${p.endpoints.length} data endpoint(s): ${p.endpoints
+        .slice(0, 6)
+        .map((e) => `${e.method} ${e.url}`)
+        .join(' · ')}`,
+    );
+  if (!p.screensDir) return;
+  try {
+    mkdirSync(p.screensDir, { recursive: true });
+    const out = join(p.screensDir, `${p.screenKey}.json`);
+    writeFileSync(
+      out,
+      JSON.stringify(
+        {
+          screen: p.screenKey,
+          finalUrl: p.finalUrl,
+          states: { noFa: p.hasNoFa, faSelected: p.hasFa },
+          endpoints: p.endpoints,
+          runtimeLinks,
+          ajaxOnlyLinks: ajaxOnly,
+        },
+        null,
+        2,
+      ),
+    );
+    p.log(`  📝 prep artifact → ${out}`);
+  } catch (e) {
+    p.log(`  ⚠ couldn't save the prep artifact: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
 
 /**
  * The full per‑screen loop: the model writes/fixes the React, we build + serve it, the deterministic
@@ -115,16 +189,48 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
   let renderedTarget: string | undefined;
   let cachedLegacy: { shot: Buffer; dom: DomSnapshot } | undefined;
   let legacyVisionShot: Buffer | undefined;
+  let legacyEndpoints: NetworkRequest[] = [];
+  let proxy: StaticProxy | undefined;
   if (opts.login) {
-    // Log in and capture the legacy screen in ONE live session; reuse it every iteration.
+    // Log in and capture the legacy screen in ONE live session; reuse it every iteration. When an FA
+    // gateway is set, the primary capture is the FA-selected (data-filled) state.
     log('  🔑 logging in + capturing the legacy screen (one live session)…');
-    const cap = await loginAndCapture({ ...opts.login, viewport, onLog: log });
+    const cap = await loginAndCapture({
+      ...opts.login,
+      viewport,
+      onLog: log,
+      fa: opts.fa,
+      loadMs: opts.loadMs,
+    });
     cachedLegacy = { shot: cap.screenshot, dom: cap.dom };
     legacyVisionShot = cap.visionShot;
+    legacyEndpoints = cap.endpoints;
     renderedTarget = serializeRendered(cap.dom);
     log(
       `    captured the legacy screen (${renderedTarget.length} chars; ended at ${cap.finalUrl})`,
     );
+    // Proxy the legacy context path to the real backend (with this session's cookie) so the served
+    // replica fetches LIVE data from the same endpoints the JSP uses — not a hardcoded snapshot.
+    const ctx = contextFromUrl(opts.login.loginUrl);
+    if (ctx) {
+      proxy = {
+        prefix: `/${ctx}`,
+        target: new URL(opts.login.loginUrl).origin,
+        headers: cap.cookieHeader ? { cookie: cap.cookieHeader } : undefined,
+      };
+      log(`  🔌 live-data proxy: ${proxy.prefix}/* → ${proxy.target}`);
+    }
+    recordScreenPrep({
+      atlas: opts.atlas,
+      screenKey: opts.screenKey,
+      dom: cap.dom,
+      endpoints: cap.endpoints,
+      finalUrl: cap.finalUrl,
+      hasNoFa: Boolean(cap.preFa),
+      hasFa: Boolean(opts.fa),
+      screensDir: opts.screensDir,
+      log,
+    });
   } else {
     // Pre-read the live legacy screen once: its rendered tags + the exact computed styles the checker
     // measures — better than the JSP template alone. Best-effort: fall back to JSP source only.
@@ -171,6 +277,7 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
       componentPath: opts.componentPath,
       renderedTarget,
       reuseAssets: reusedCss,
+      endpoints: legacyEndpoints,
       diffs,
     });
     const images: Array<{ data: Buffer; caption?: string }> = [];
@@ -221,7 +328,7 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
         opts.gate,
       );
     }
-    const served = await serveStatic(join(opts.appDir, serveSubdir));
+    const served = await serveStatic(join(opts.appDir, serveSubdir), proxy);
     try {
       const replicaUrl = served.url + (route.startsWith('/') ? route : `/${route}`);
       log(`  🔍 checking ${replicaUrl}  vs  ${opts.legacyUrl}…`);
@@ -241,6 +348,8 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
         storageStatePath: opts.storageStatePath,
         gate: opts.gate,
         cachedLegacy,
+        // Anti-hardcoding gate: require the replica to fetch live data through the backend proxy.
+        liveData: proxy ? { contextPrefix: proxy.prefix } : undefined,
       });
     } finally {
       await served.stop();
@@ -274,7 +383,7 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
   if (opts.shotsDir) {
     try {
       mkdirSync(opts.shotsDir, { recursive: true });
-      const served = await serveStatic(join(opts.appDir, serveSubdir));
+      const served = await serveStatic(join(opts.appDir, serveSubdir), proxy);
       try {
         const replicaUrl = served.url + (route.startsWith('/') ? route : `/${route}`);
         const replica = await captureScreenshot({ url: replicaUrl, viewport });
