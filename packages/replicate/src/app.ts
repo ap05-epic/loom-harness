@@ -72,9 +72,11 @@ ${routes}
 
 const hashRoute = () => decodeURIComponent(location.hash.replace(/^#\\/?/, ''));
 
-/** The connected app: renders the current screen, intercepts in-app links to navigate without reloading. */
+/** The connected app: renders the current screen, intercepts in-app links + forms so navigation (and
+ *  the FA search) stays in React, hitting the same backend endpoints — no full-page reloads. */
 export default function App() {
   const [route, setRoute] = useState<string>(() => hashRoute() || ${JSON.stringify(first)});
+  const [reload, setReload] = useState(0); // bump to re-mount the screen so it re-fetches live data
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       const a = (e.target as Element | null)?.closest?.('a');
@@ -86,16 +88,51 @@ export default function App() {
         history.replaceState(null, '', '#/' + key);
       }
     };
+    const onSubmit = async (e: Event) => {
+      const form = e.target as HTMLFormElement;
+      if (!form || form.tagName !== 'FORM') return;
+      const action = form.getAttribute('action') || '';
+      // Let truly external forms submit normally; intercept same-app ones (e.g. the FA search).
+      if (/^https?:\\/\\//i.test(action) && !action.includes(location.host)) return;
+      e.preventDefault();
+      const method = (form.getAttribute('method') || 'get').toUpperCase();
+      const fd = new FormData(form);
+      const qs = [...fd.entries()]
+        .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(String(v)))
+        .join('&');
+      try {
+        if (method === 'GET') {
+          await fetch(action + (action.includes('?') ? '&' : '?') + qs, { credentials: 'include' });
+        } else {
+          await fetch(action, { method, body: fd, credentials: 'include' });
+        }
+      } catch {
+        /* the screen's own fetch surfaces any error */
+      }
+      const key = routeKey(action);
+      if (key && ROUTES[key]) {
+        setRoute(key);
+        history.replaceState(null, '', '#/' + key);
+      }
+      // Re-mount the current screen so it re-fetches with the new server state (e.g. the selected FA).
+      setReload((n) => n + 1);
+    };
     const onHash = () => setRoute(hashRoute());
     document.addEventListener('click', onClick);
+    document.addEventListener('submit', onSubmit, true);
     window.addEventListener('hashchange', onHash);
     return () => {
       document.removeEventListener('click', onClick);
+      document.removeEventListener('submit', onSubmit, true);
       window.removeEventListener('hashchange', onHash);
     };
   }, []);
   const Screen = ROUTES[route];
-  return Screen ? <Screen /> : <div style={{ padding: 20 }}>Screen "{route}" not converted yet.</div>;
+  return Screen ? (
+    <Screen key={reload} />
+  ) : (
+    <div style={{ padding: 20 }}>Screen "{route}" not converted yet.</div>
+  );
 }
 `;
 }

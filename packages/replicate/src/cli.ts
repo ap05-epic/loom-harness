@@ -4,6 +4,7 @@ import { OpenAiDriver } from '@loom/agents';
 import { captureDom, captureScreenshot, DEFAULT_VIEWPORT, type DomSnapshot } from '@loom/browser';
 import { discoverLegacyWebapp, mapProject, openCodeAtlas } from '@loom/cartographer';
 import { assembleApp, screenComponentPath } from './app.js';
+import { contextFromUrl } from './assets.js';
 import { checkParity } from './check.js';
 import { runCrawl } from './crawl.js';
 import { openCrawlDb } from './crawl-db.js';
@@ -12,6 +13,7 @@ import { doLogin, loginAndCapture, looksLikeFailure, type LoginField } from './l
 import { extractNavigation } from './nav.js';
 import { legacyNavTargets, normalizePath } from './paths.js';
 import { diffsForLlm, printReport } from './report.js';
+import { runAppBuild, serveStatic, type StaticProxy } from './react-target.js';
 import { runReplicate } from './run.js';
 
 /** Read `--name value`. */
@@ -45,6 +47,8 @@ const GRAPH_USAGE =
   'usage: replicate graph --atlas <codeatlas.db> [--json <out.json>] [--dot <out.dot>]  (prints the nav tree by default)';
 const APP_USAGE =
   'usage: replicate app --atlas <codeatlas.db> --app <reactAppDir>  (assembles the converted src/screens/* into a navigable App.tsx router)';
+const SERVE_USAGE =
+  'usage: replicate serve --app <reactAppDir> [--login <loginUrl>] [--serve dist] [--build "pnpm exec vite build"]  (login → proxies the legacy context for live data; creds + BAA_FA from env)';
 const LOGIN_USAGE =
   'usage: replicate login --legacy <loginUrl> [--out .loom/auth.json] [--user-sel <css>] [--pass-sel <css>] ' +
   '[--fa-sel <css>] [--submit-sel <css>] [--success-sel <css>]  (creds from env: BAA_USER, BAA_PASS, BAA_FA)';
@@ -162,6 +166,65 @@ function app(): number {
   } finally {
     atlas.close();
   }
+}
+
+/**
+ * `replicate serve` — build + serve the connected app, logging in once to proxy the legacy context so
+ * the React screens fetch LIVE data from the real backend (with the session). Open it in a browser
+ * (port-forward if on the pod) to navigate the converted app for real. Ctrl-C to stop.
+ */
+async function serve(): Promise<number> {
+  const appDir = arg('app');
+  if (!appDir) {
+    console.error(SERVE_USAGE);
+    return 2;
+  }
+  const serveSubdir = arg('serve') ?? 'dist';
+  const buildCmd = arg('build') ?? 'pnpm exec vite build';
+  console.error(`building (${buildCmd})…`);
+  const b = runAppBuild(appDir, buildCmd);
+  if (!b.ok) {
+    console.error(`build failed:\n${b.output.slice(-1500)}`);
+    return 1;
+  }
+  let proxy: StaticProxy | undefined;
+  const loginUrl = arg('login');
+  if (loginUrl) {
+    const fields = loginFieldsFromEnv();
+    if (fields.length === 0) {
+      console.error('set BAA_USER and BAA_PASS for the live-data proxy.');
+      return 2;
+    }
+    console.error('logging in for the live-data proxy…');
+    const cap = await loginAndCapture({
+      loginUrl,
+      fields,
+      submitSelector: arg('submit-sel') ?? 'input[type=submit], button[type=submit]',
+      fa: process.env.BAA_FA
+        ? {
+            value: process.env.BAA_FA,
+            hint: arg('fa-hint') ? new RegExp(arg('fa-hint')!, 'i') : undefined,
+            fieldSelector: arg('fa-sel'),
+            submitSelector: arg('fa-submit-sel'),
+          }
+        : undefined,
+      onLog: (m) => console.error(m),
+    });
+    const ctx = contextFromUrl(loginUrl);
+    if (ctx)
+      proxy = {
+        prefix: `/${ctx}`,
+        target: new URL(loginUrl).origin,
+        headers: cap.cookieHeader ? { cookie: cap.cookieHeader } : undefined,
+      };
+  }
+  const served = await serveStatic(join(appDir, serveSubdir), proxy);
+  console.log(
+    `\n▶ connected app: ${served.url}${proxy ? `  (live data: ${proxy.prefix}/* → ${proxy.target})` : ''}`,
+  );
+  console.log('  open it in a browser (port-forward if on the pod); Ctrl-C to stop.');
+  await new Promise<void>(() => {}); // serve until Ctrl-C
+  return 0;
 }
 
 /** Flatten a DOM snapshot to its visible text — for identifying a page from the terminal. */
@@ -570,24 +633,26 @@ const handler =
       ? async (): Promise<number> => graph()
       : cmd === 'app'
         ? async (): Promise<number> => app()
-        : cmd === 'login'
-          ? login
-          : cmd === 'shot'
-            ? shot
-            : cmd === 'nav'
-              ? nav
-              : cmd === 'crawl'
-                ? crawl
-                : cmd === 'check'
-                  ? check
-                  : cmd === 'run'
-                    ? run
-                    : async (): Promise<number> => {
-                        console.error(
-                          `${MAP_USAGE}\n${GRAPH_USAGE}\n${APP_USAGE}\n${LOGIN_USAGE}\n${SHOT_USAGE}\n${NAV_USAGE}\n${CRAWL_USAGE}\n${CHECK_USAGE}\n${RUN_USAGE}`,
-                        );
-                        return 2;
-                      };
+        : cmd === 'serve'
+          ? serve
+          : cmd === 'login'
+            ? login
+            : cmd === 'shot'
+              ? shot
+              : cmd === 'nav'
+                ? nav
+                : cmd === 'crawl'
+                  ? crawl
+                  : cmd === 'check'
+                    ? check
+                    : cmd === 'run'
+                      ? run
+                      : async (): Promise<number> => {
+                          console.error(
+                            `${MAP_USAGE}\n${GRAPH_USAGE}\n${APP_USAGE}\n${SERVE_USAGE}\n${LOGIN_USAGE}\n${SHOT_USAGE}\n${NAV_USAGE}\n${CRAWL_USAGE}\n${CHECK_USAGE}\n${RUN_USAGE}`,
+                          );
+                          return 2;
+                        };
 
 handler().then(
   (code) => process.exit(code),
