@@ -131,6 +131,8 @@ export type BuildScreenOptions = {
   maxToolOutputChars?: number;
   /** Images to attach to the work order (vision) — e.g. a screenshot of the target screen. */
   images?: Array<{ data: Buffer; caption?: string }>;
+  /** Extra (read-only) tools the builder can call — e.g. read_file, query_crawl over the legacy source + crawl DB. */
+  tools?: ToolDef[];
   now?: () => number;
 };
 
@@ -173,7 +175,7 @@ export async function buildScreen(options: BuildScreenOptions): Promise<BuildScr
   const result = await new AgentRunner(options.gateway).run({
     model: options.model,
     messages,
-    tools: [tool],
+    tools: [tool, ...(options.tools ?? [])],
     guards: { ...DEFAULT_BUILD_GUARDS, ...options.guards },
     maxTokensPerTurn: options.maxTokensPerTurn,
     maxToolOutputChars: options.maxToolOutputChars ?? DEFAULT_MAX_TOOL_OUTPUT_CHARS,

@@ -17,6 +17,11 @@ export type ReactRecipeInput = {
   reuseAssets?: boolean;
   /** The backend endpoints this screen pulls data from (redacted) — fetch live, never hardcode. */
   endpoints?: NetworkRequest[];
+  /** From the runtime crawl: the real user-path links + each value's backing endpoint (provenance). */
+  crawl?: {
+    interactions?: Array<{ label: string; target: string; kind: string }>;
+    provenance?: Array<{ value: string; endpointUrl: string; label?: string }>;
+  };
   /** On a retry: the concrete differences the deterministic checker found. */
   diffs?: string;
 };
@@ -90,6 +95,29 @@ export function buildReactWorkOrder(input: ReactRecipeInput): string {
       ...input.endpoints.slice(0, 20).map((e) => `- ${e.method} ${e.url}`),
       'JSON → consume it; HTML → request it and read the same fields the JSP binds. Treat every captured',
       'value as a placeholder to REPLACE with the live fetch.',
+      '',
+    );
+  }
+
+  if (input.crawl?.interactions && input.crawl.interactions.length > 0) {
+    lines.push(
+      '## USER PATHS — the real links/tabs this screen exposes (from the live crawl)',
+      'These are the runtime navigations + tabs the live app actually shows (the static map misses ' +
+        'data‑driven drill‑down links). Reproduce each as a link/control to the SAME target:',
+      ...input.crawl.interactions
+        .slice(0, 40)
+        .map((i) => `- ${i.label || '(no text)'} → ${i.target} [${i.kind}]`),
+      '',
+    );
+  }
+  if (input.crawl?.provenance && input.crawl.provenance.length > 0) {
+    lines.push(
+      "## DATA PROVENANCE — each value's backing endpoint (fetch live, NEVER hardcode)",
+      ...input.crawl.provenance
+        .slice(0, 30)
+        .map((p) => `- ${p.value}${p.label ? ` (${p.label})` : ''} ⇐ ${p.endpointUrl}`),
+      'Fetch from these endpoints and render their data; the captured numbers are placeholders. Use the ' +
+        '`query_crawl` + `read_file` tools to inspect the saved response bodies and find the exact fields.',
       '',
     );
   }

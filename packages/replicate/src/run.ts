@@ -1,7 +1,7 @@
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { LlmGateway } from '@loom/agents';
+import type { LlmGateway, ToolDef } from '@loom/agents';
 import {
   captureDom,
   captureScreenshot,
@@ -13,13 +13,21 @@ import {
 import type { CodeAtlas } from '@loom/cartographer';
 import { buildScreen } from '@loom/conductor';
 import { DEFAULT_STYLE_PROPS } from '@loom/evaluator';
+import { screenKey } from '@loom/surveyor';
 import { contextFromUrl, injectStylesheets, reuseLegacyAssets } from './assets.js';
+import { createCrawlQueryTool, createReadFileTool } from './builder-tools.js';
+import { openCrawlDb } from './crawl-db.js';
 import { checkParity } from './check.js';
 import { loginAndCapture, type FaGateway, type LoginConfig } from './login.js';
 import { replicateScreen, type BuildArgs, type ReplicateResult } from './loop.js';
 import { extractNavigation } from './nav.js';
 import { legacyNavTargets, normalizePath, replicaNavTargets } from './paths.js';
-import { buildReactWorkOrder, REACT_SYSTEM_PROMPT, type JspSource } from './recipe.js';
+import {
+  buildReactWorkOrder,
+  REACT_SYSTEM_PROMPT,
+  type JspSource,
+  type ReactRecipeInput,
+} from './recipe.js';
 import { runAppBuild, serveStatic, type StaticProxy } from './react-target.js';
 import { serializeRendered } from './rendered.js';
 import {
@@ -71,6 +79,10 @@ export type RunOptions = {
   loadMs?: number;
   /** Save a per-screen prep artifact (data endpoints + runtime links + states) into this folder. */
   screensDir?: string;
+  /** Runtime crawl DB (`rep crawl`) — feeds the builder the real user paths + data provenance + read tools. */
+  crawlDbPath?: string;
+  /** Where the crawl wrote response bodies (for the read_file tool). Default `.loom/crawl-bodies`. */
+  crawlBodiesDir?: string;
   /** Parity gate: `strict` (every gate) or `visual` (looks + works the same). Default strict. */
   gate?: ParityGate;
   /**
@@ -192,6 +204,8 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
   let legacyVisionShot: Buffer | undefined;
   let legacyEndpoints: NetworkRequest[] = [];
   let proxy: StaticProxy | undefined;
+  let crawlData: ReactRecipeInput['crawl'];
+  let builderTools: ToolDef[] | undefined;
   if (opts.login) {
     // Log in and capture the legacy screen in ONE live session; reuse it every iteration. When an FA
     // gateway is set, the primary capture is the FA-selected (data-filled) state.
@@ -221,6 +235,55 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
       };
       log(`  🔌 live-data proxy: ${proxy.prefix}/* → ${proxy.target}`);
     }
+
+    // Runtime crawl: match this screen to its crawled state (by live screenKey), feed the builder the
+    // real user paths + data provenance, and hand it read_file + query_crawl so it can dig in itself.
+    if (opts.crawlDbPath) {
+      const bodiesDir = opts.crawlBodiesDir ?? '.loom/crawl-bodies';
+      try {
+        const store = openCrawlDb(opts.crawlDbPath, { bodiesDir, secrets: [] });
+        try {
+          const liveKey = screenKey({ url: cap.finalUrl, dom: cap.dom });
+          const st =
+            store.graph().states.find((s) => s.key === liveKey) ??
+            store.graph().states.find((s) => s.url === cap.finalUrl);
+          if (st) {
+            crawlData = {
+              interactions: store
+                .interactionsFor(st.id)
+                .filter((e) => e.action_target)
+                .map((e) => ({
+                  label: e.label ?? '',
+                  target: e.action_target!,
+                  kind: e.kind ?? 'navigation',
+                })),
+              provenance: store
+                .provenanceFor(st.id)
+                .filter((p) => p.endpoint_url)
+                .map((p) => ({
+                  value: p.value,
+                  endpointUrl: p.endpoint_url!,
+                  label: p.label ?? undefined,
+                })),
+            };
+            log(
+              `  🗺 crawl: ${crawlData.interactions?.length ?? 0} user-path link(s), ${crawlData.provenance?.length ?? 0} provenance value(s)`,
+            );
+          } else {
+            log(
+              `  ⓘ no crawled state matched this screen (key ${liveKey}) — run \`rep crawl\` first`,
+            );
+          }
+        } finally {
+          store.close();
+        }
+      } catch (e) {
+        log(`  ⚠ couldn't read the crawl DB: ${e instanceof Error ? e.message : String(e)}`);
+      }
+      const roots = [opts.webappDir, bodiesDir].filter((x): x is string => Boolean(x));
+      builderTools = [createReadFileTool(roots), createCrawlQueryTool(opts.crawlDbPath, bodiesDir)];
+    }
+
     recordScreenPrep({
       atlas: opts.atlas,
       screenKey: opts.screenKey,
@@ -279,6 +342,7 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
       renderedTarget,
       reuseAssets: reusedCss,
       endpoints: legacyEndpoints,
+      crawl: crawlData,
       diffs,
     });
     const images: Array<{ data: Buffer; caption?: string }> = [];
@@ -303,6 +367,7 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
       workOrder,
       systemPrompt: REACT_SYSTEM_PROMPT,
       images: images.length ? images : undefined,
+      tools: builderTools,
       // Give the agent room to do its best on one screen: more wall-clock, more no-progress
       // tolerance, and a high token budget — so a thorough reproduction is never cut off mid-write.
       guards: { maxWallClockMs: 12 * 60_000, noProgressLimit: 8, maxTokens: 400_000 },

@@ -57,7 +57,7 @@ const CHECK_USAGE =
 const RUN_USAGE =
   'usage: replicate run --screen <key> --atlas <codeatlas.db> --app <reactAppDir> ' +
   '(--legacy <url> | --login <loginUrl> [--legacy <post-login target>]) ' +
-  '[--webapp <dir>] [--reuse-assets] [--fa-hint <regex>] [--load-ms 15000] [--screens .loom/screens | --no-screens] ' +
+  '[--webapp <dir>] [--reuse-assets] [--crawl-db .loom/crawl.db] [--fa-hint <regex>] [--load-ms 15000] [--screens .loom/screens | --no-screens] ' +
   '[--build "npx vite build"] [--serve dist] [--route /] ' +
   '[--component src/App.tsx] [--threshold 1] [--max-iterations 12] [--visual-gate] [--shots .loom/shots | --no-shots] [--model gpt-5.4]  (FA from env BAA_FA)';
 
@@ -482,6 +482,8 @@ async function run(): Promise<number> {
       jspSource,
       webappDir: webapp,
       reuseAssets: has('reuse-assets'),
+      crawlDbPath: arg('crawl-db'),
+      crawlBodiesDir: arg('crawl-bodies'),
       threshold: arg('threshold') ? Number(arg('threshold')) : 1,
       maxIterations: arg('max-iterations') ? Number(arg('max-iterations')) : 12,
       storageStatePath: arg('storage'),
