@@ -1,0 +1,413 @@
+================================================================================
+REPLICATE (@loom/replicate) — ARCHITECTURE, RATIONALE & TEST GUIDE
+A handoff document for whoever continues this on the pod.
+Branch: replicate-loop   ·   Package: packages/replicate   ·   No LLM in any gate.
+================================================================================
+
+This file is the single source of truth for the "convert the legacy BAA app to a
+verified-1:1 React replica" system. It explains WHAT each piece is, WHY it was
+built that way, the exact files/functions, the data artifacts, how to build &
+test on the code directly, the BAA-specific quirks we learned the hard way, and
+the open problems to fix next. Read it top to bottom once; then use the FILE MAP
+and TEST sections as a reference.
+
+(Secrets — real credentials, the real FA number, real on-screen data — are NOT in
+this file by design. They come from the pod environment: BAA_USER, BAA_PASS,
+BAA_FA. The store redacts the FA from everything it writes to disk.)
+
+
+================================================================================
+1. THE MISSION (and why)
+================================================================================
+
+Goal: take the legacy BAA web app (Struts 1.x + JSP, server-rendered, talks to a
+mainframe) and produce a React app that is a VERIFIED 1:1 replica:
+  - same LOOK (pixel/DOM/style identical),
+  - same NAVIGATION (clicking goes where the legacy goes),
+  - same LIVE DATA (every number is fetched from the SAME backend endpoint the
+    JSP uses — never hardcoded),
+  - and the BACKEND IS NEVER TOUCHED. We only build a new frontend that calls the
+    same endpoints. No modernization, no rewrites of server logic.
+
+Non-negotiable principles (these drove every design decision):
+  (P1) A MACHINE decides parity, never the LLM. An LLM eyeballing two screenshots
+       and saying "looks good" is unreliable. So a deterministic checker produces
+       the exact list of differences; the model only fixes those; loop until the
+       machine says 1:1. The model is a code-writer, never a judge.
+  (P2) NEVER hardcode data. The captured numbers belong to one test account; a
+       different account must show its own data. So the React must fetch live from
+       the same endpoint, and a deterministic gate FAILS the build if it didn't.
+  (P3) Map EVERYTHING first. The static XML map is not enough — pages render
+       20-30 data-driven drill-down links that exist nowhere in struts-config, and
+       the FA-selected state is a whole different, data-rich view. So a runtime
+       crawler clicks everything and records the real paths + data sources.
+  (P4) Never regress. The fix loop must keep the BEST iteration, not the last one.
+  (P5) Deterministic, terminal-only, resumable, secret-safe.
+
+
+================================================================================
+2. THE PIPELINE (big picture)
+================================================================================
+
+  rep map     →  static skeleton: every screen + declared links  (.loom/atlas.db)
+  rep graph   →  print/export that nav tree (no crawl)
+  rep crawl   →  RUNTIME truth: click everything in both FA states; record paths +
+                 data endpoints + payloads + provenance       (.loom/crawl.db)
+  rep run     →  convert ONE screen to React, machine-verified 1:1 (look+data+nav),
+                 fed by the atlas + the crawl + the live capture
+  rep app     →  assemble converted screens into a navigable router (App.tsx)
+  rep serve   →  run the connected app behind a live-session proxy (real data)
+
+Supporting: rep shot (screenshot a URL/landing), rep nav (one screen's live links),
+rep login (save a Playwright auth state), rep check (standalone 1:1 checker).
+
+Data flow at runtime (the converted React app):
+  React screen --fetch--> /<context>/*Action.do --(proxy w/ session cookie)-->
+  the REAL legacy backend --> same data the JSP would render. Backend untouched.
+
+
+================================================================================
+3. REPO / PACKAGE LAYOUT (what to reuse, where it lives)
+================================================================================
+
+Monorepo (pnpm workspaces). The conversion work is in packages/replicate, which
+reuses these sibling packages — DO NOT reinvent these:
+
+  @loom/browser    packages/browser/src/capture.ts
+      CrawlSession (one persistent authenticated browser): open, navigate,
+      currentUrl, goBack, fill, click, waitForSelector, captureDom,
+      captureCombined (all frames merged — for framesets), screenshot(fullPage),
+      enumerateCandidates() -> [{ref,label,kind}] (frame-prefixed refs, overlay-
+      proof), clickCandidate (dispatchEvent — survives flyover menus),
+      fillCandidate, unfilledTextboxes, awaitStable(loadMs) (networkidle + DOM-
+      stable poll — for slow mainframe pages), startNetworkLog/drainNetworkLog
+      (records {method,url,resourceType,status,responseBody}; bodies are opt-in via
+      CrawlSessionOptions.captureBodies). Also one-shot captureScreenshot/captureDom.
+  @loom/surveyor   packages/surveyor/src/state-identity.ts
+      screenKey(state) + domSignature(node): dedup a screen by URL-path + frame +
+      DOM STRUCTURE (ignores text/data; collapses identical sibling subtrees). So 30
+      data-variant rows of one template => ONE screen key. Critical for a finite crawl.
+  @loom/cartographer  packages/cartographer/src/codeatlas.ts, map.ts
+      CodeAtlas (SQLite graph of the legacy SOURCE): screens(), sliceForScreen(),
+      linked(id, edgeKind), nodesByKind(). Edge kinds: renders (action->jsp),
+      links_to (jsp->action), submits_to (form->action), forwards_to (action->action).
+      mapProject() builds it from struts-config (+ tiles/web.xml + every JSP).
+  @loom/conductor  packages/conductor/src/builder.ts
+      buildScreen(): runs the agent loop with a write_file tool until the model
+      finishes; supports images (vision) and a `tools` array (read tools — see §6).
+  @loom/agents     AgentRunner + OpenAiDriver (gpt-5.4 via Azure/OpenAI; text+image).
+      ToolDef = {name, description, parameters(JSON-schema), execute(args)=>string}.
+  @loom/core       packages/core/src/db: openDb(path) + runMigrations(db, Migration[]).
+      SQLite (better-sqlite3 with a node:sqlite fallback). Used for crawl.db.
+  @loom/evaluator  evaluateVisual (pixelmatch), diffDom, diffStyles, diffForms — the
+      deterministic comparators the checker combines.
+
+packages/replicate/src — the conversion system itself:
+  cli.ts          the `rep` CLI: arg()/has() argv helpers + a dispatch table.
+  paths.ts        normalizePath (href -> route slug), legacyNavTargets, comparePaths.
+  graph.ts        buildNavTree(atlas) + print/JSON/DOT — the static path tree.
+  login.ts        loginInSession, loginAndCapture (login + FA gateway + capture +
+                  endpoints + both FA states + session cookie), enterFaGateway,
+                  redactFa, dataEndpoints, looksLikeFailure, flattenText.
+  nav.ts          extractNavigation(dom) -> NavLink[] (incl. javascript: overlays),
+                  compareNavigation.
+  crawl-guard.ts  PURE brain (no browser/db): DEFAULT_DENY + isDestructive,
+                  redactSecret/redactBody, buildWorkList, interactionSig,
+                  correlateProvenance (value -> endpoint).
+  crawl-db.ts     CRAWL_MIGRATIONS + CrawlStore + openCrawlDb (the runtime graph DB).
+  crawl.ts        runCrawl(): the live exhaustive crawler (the only crawl file that
+                  drives a browser).
+  builder-tools.ts createReadFileTool, createListFilesTool, createCrawlQueryTool
+                  (the read-only tools the React builder can call).
+  recipe.ts       REACT_SYSTEM_PROMPT + buildReactWorkOrder (assembles the work order:
+                  target render, data endpoints, user paths, provenance, JSP source).
+  rendered.ts     serializeRendered(dom) — the legacy "as the browser renders it" target.
+  react-target.ts runAppBuild (vite build) + serveStatic (static server WITH an
+                  optional backend PROXY — this is what makes live data work).
+  assets.ts       reuseLegacyAssets (mirror legacy css/img/fonts into the React app),
+                  injectStylesheets, contextFromUrl.
+  loop.ts         replicateScreen (the build->check->fix loop) + isBetter (keep-best).
+  report.ts       buildReport / diffsForLlm / printReport — the ParityReport + the
+                  exact diffs handed back to the model. Gates: visual, dom, style,
+                  forms, paths, build, live.
+  check.ts        checkParity (the deterministic 1:1 checker) + liveDataGate.
+  run.ts          runReplicate (orchestration: capture -> build -> check -> fix loop
+                  -> keep-best -> save shots), the per-screen converter.
+  app.ts          generateAppShell / collectAppScreens / assembleApp / sanitizeKey /
+                  screenComponentPath — the connected-app router generator.
+
+  fixtures/expected-react/ — the React scaffold the model writes into (Vite + React
+  19). vite.config.ts has a dev proxy (LEGACY_BACKEND env). main.tsx mounts App
+  (default or named export). styles.css is intentionally EMPTY (so it imposes nothing).
+
+
+================================================================================
+4. COMMANDS — what each does and WHY
+================================================================================
+
+rep map --struts <struts-config.xml> --out .loom/atlas.db
+  Parses struts-config (+ siblings + JSPs) into the CodeAtlas. WHY: a free,
+  deterministic skeleton of every screen and every DECLARED link/form/forward.
+
+rep graph --atlas .loom/atlas.db [--json f | --dot f]
+  Prints/exports the static nav tree. WHY: "what links to what" from the source.
+  Limitation: misses runtime/data-driven links — that's what the crawl is for.
+
+rep crawl --login <loginUrl> [--start <path>] [--db .loom/crawl.db]
+          [--fa-hint <re>] [--fa-sel <css>] [--fa-submit-sel <css>] [--follow-js]
+          [--max-states N] [--max-actions N] [--max-depth N] [--load-ms 15000]
+          [--deny <re>] [--print]
+  THE runtime mapper. Logs in ONCE, then exhaustively clicks every candidate in
+  TWO phases (no-fa, then enters the FA gateway and crawls the data-rich fa: state),
+  recording into .loom/crawl.db: screens (deduped), user paths (state->click->state),
+  data endpoints + their response payloads, and value->endpoint provenance. Saves a
+  full-page screenshot per screen to .loom/crawl-shots/. --print dumps the map
+  without crawling (no login needed). Resumable: re-run to continue. Creds + BAA_FA
+  from env; the FA is redacted everywhere written.
+  WHY no LLM picks clicks: we want EXHAUSTIVE + reproducible, not "intelligent".
+
+rep run --screen <atlasKey> --atlas .loom/atlas.db --app <reactDir>
+        (--login <loginUrl> [--legacy <postLoginUrl>] | --legacy <url>)
+        [--webapp <dir>] [--reuse-assets] [--crawl-db .loom/crawl.db] [--into-app]
+        [--fa-hint <re>] [--fa-sel <css>] [--load-ms N] [--model gpt-5.4]
+        [--visual-gate] [--max-iterations N] [--component <path>] [--shots dir|--no-shots]
+  Converts ONE screen to React, looped until the machine reports 1:1. --screen is the
+  atlas key (from rep map, e.g. loginAction.do). --legacy = where to navigate after
+  login (OMIT = the post-login landing/dashboard). With BAA_FA set it enters the FA,
+  so it captures the FA-selected view. --reuse-assets mirrors the legacy CSS so the
+  look is by-construction. --crawl-db feeds the real paths + provenance and gives the
+  builder read tools. --into-app writes the screen to src/screens/<key>.tsx (for the
+  connected app) instead of overwriting App.tsx. --visual-gate = looks+works pass
+  (DOM/style advisory). WHY this shape: P1/P2/P4 — machine-verified, live data,
+  keep-best.
+
+rep app --atlas .loom/atlas.db --app <reactDir>
+  Deterministically generates src/App.tsx: a router that imports every converted
+  src/screens/*.tsx, maps each to its legacy action-path route, and INTERCEPTS link
+  clicks AND form submits to navigate in-React to the same endpoints (no reload).
+  WHY: turns N independent screens into the connected app that "navigates like the
+  legacy". Backend still untouched.
+
+rep serve --app <reactDir> [--login <loginUrl>] [--serve dist] [--build "<cmd>"]
+  Builds + serves the connected app. With --login it logs in once and PROXIES the
+  legacy context (/<context>/*) to the real backend with the live session cookie, so
+  the React screens fetch real data. Open in a browser (port-forward on the pod).
+
+rep shot / rep nav / rep check / rep login — diagnostics + the standalone checker.
+
+
+================================================================================
+5. DATA ARTIFACTS
+================================================================================
+
+.loom/atlas.db    — CodeAtlas (static source graph). ca_nodes + ca_edges.
+.loom/crawl.db    — runtime graph (schema below).
+.loom/crawl-shots/<screenKey>.<stateTag>.png — one full-page shot per crawled state.
+.loom/crawl-bodies/<hash>.txt — redacted response payloads (the data the builder reads).
+.loom/screens/<key>.json — per-screen prep artifact (endpoints + runtime links + states).
+.loom/shots/<key>.png  + <key>.original.png — the converted React vs the legacy (compare).
+fixtures/expected-react/src/screens/<key>.tsx — converted screens (--into-app).
+fixtures/expected-react/src/App.tsx — the generated router (rep app), or a per-screen
+   shim (rep run --into-app writes `import S from './screens/<key>'; export default S`
+   so the per-screen check renders just that screen).
+
+CRAWL.DB SCHEMA (packages/replicate/src/crawl-db.ts, CRAWL_MIGRATIONS v1):
+  crawl_states(id, key, url, frame_path, dom_signature, state_tag, screenshot_path,
+     dom_path, title, ..., UNIQUE(key,state_tag))
+     state_tag = 'no-fa' | 'fa:<sha8>'  (FA hashed, never stored raw). DEDUP IDENTITY
+     = (screenKey, state_tag) — so the same screen recurs once per FA state.
+  crawl_interactions(id, from_state_id, to_state_id NULL, action_kind, action_target
+     /*redacted*/, label, kind, is_new_state, is_destructive, followed, sig,
+     UNIQUE(from_state_id, sig))   the typed state->state USER PATHS.
+  crawl_endpoints(id, state_id, method, url /*redacted*/, resource_type, status,
+     body_path, body_bytes, UNIQUE(state_id,method,url))  the DATA SOURCES + payloads.
+  crawl_provenance(id, state_id, value /*redacted*/, endpoint_id, label, meta_json)
+     WHERE EACH NUMBER COMES FROM (value found verbatim in that endpoint's body).
+  crawl_runs(id, started_at, finished_at, status, start_url, budgets_json, ...).
+  SECURITY: CrawlStore is constructed with the secrets and redacts EVERY persisted
+  string (urls, targets, labels, values, body files) store-side. A unit test asserts
+  the raw FA appears in NO table and NO body file.
+
+
+================================================================================
+6. HOW A SCREEN IS CONVERTED (rep run internals — run.ts)
+================================================================================
+
+1. CAPTURE (login.ts loginAndCapture): one live session. Log in; if BAA_FA set,
+   enter the FA gateway and capture the FA-selected state (the primary capture); the
+   pre-FA capture is returned as preFa. awaitStable() waits out the mainframe load.
+   Returns: viewport shot (for the pixel diff), full-page shot (for vision), DOM,
+   the data endpoints (filtered xhr/fetch/document, FA-redacted), and the session
+   cookie (for the proxy).
+2. REUSE ASSETS (assets.ts): mirror the legacy css/img/fonts into the React app's
+   public/<context>/ and inject the <link> tags, so the look is the REAL CSS, not a
+   recreation. The model then only reproduces markup + class names.
+3. PROXY: serveStatic is given { prefix:/<context>, target: backend origin, cookie }
+   so the served replica's fetches reach the real backend with the session.
+4. CRAWL HOOKUP (--crawl-db): compute the live screenKey of the captured screen, find
+   that crawl state, pull its interactions (user paths) + provenance, feed them to the
+   work order, and give the builder createReadFileTool([webapp, bodies]) +
+   createCrawlQueryTool(crawlDb) so it can read the JSP source AND the crawl itself.
+5. BUILD (conductor buildScreen + recipe): the model writes React into the component
+   path. The recipe's REACT_SYSTEM_PROMPT enforces: reproduce exactly (keep <center>,
+   <font>, tables, exact fonts/colors), captured DOM is LAYOUT only — fetch data live
+   from the same endpoint, never hardcode. Vision: the legacy + last-replica
+   screenshots are attached so the model can SEE the target.
+6. CHECK (check.ts checkParity — NO LLM): build + serve the replica, then compare:
+   visual pixel % + DOM structure + computed styles + forms + routes + the live-data
+   gate (liveDataGate: load the replica, watch its network, FAIL unless it fetched a
+   request under /<context> — i.e. it actually hit the real backend, not hardcoded).
+7. FIX LOOP (loop.ts replicateScreen): if not 1:1, hand the model ONLY the concrete
+   diffs (report.ts diffsForLlm) and repeat. KEEP-BEST: isBetter ranks reports
+   (matched > no-build-error > lower visual% > fewer findings); it always fixes FROM
+   the best (run.ts snapshots <appDir>/src on each new best and rolls back before each
+   fix + at the end), so a fix that regresses is discarded, never returned.
+8. SHOTS: save the final replica + the legacy original to .loom/shots/ for viewing.
+
+
+================================================================================
+7. HOW THE WHOLE APP IS ASSEMBLED (the connected app)
+================================================================================
+
+rep run --into-app  -> each screen to src/screens/<sanitizeKey(key)>.tsx + a shim
+   App.tsx so the per-screen check still renders just that screen.
+rep app  -> app.ts generateAppShell writes src/App.tsx: imports every converted
+   screen, ROUTES maps routeKey(actionPath) -> Component, and a global handler
+   intercepts (a) link clicks whose href routeKey is a known route -> setRoute (no
+   reload), and (b) FORM submits -> fetch the action (credentials included) to the
+   real backend, route if the action targets a known screen, then re-mount the screen
+   (key=reload) so it re-fetches with the new server state (this is how the FA-search
+   form loads that advisor's data without leaving the SPA).
+rep serve -> serves the built app with the proxy + live session.
+
+Routing model: a React route == the legacy action path's last segment (lowercased).
+So clicking <a href="/creditLineAction.do"> routes to the CreditLineAction component.
+The per-screen components keep their legacy hrefs (good for the 1:1 visual check); the
+shell makes them navigate. Backend untouched throughout.
+
+
+================================================================================
+8. BAA-SPECIFIC INTEGRATION NOTES (hard-won; the chatbot needs these)
+================================================================================
+
+- LOGIN: POST-only. A restored cookie on a COLD request gives "session timeout please
+  restart" — so we must log in live and move within ONE session. login selectors used:
+  user-sel input[name=user], pass-sel input[name=password], submit input[type=submit].
+- THE FA GATEWAY is the key to the data: the landing dashboard has an FA Number / wire
+  box; typing the FA + Submit loads that advisor's data (a much richer view). In our
+  runs the no-FA view had ~35 provenance values; the FA view had ~360. The FA SEARCH
+  is an AJAX action (e.g. ajaxFaSearchAction.do / faSearchNext.do) — entering the FA
+  hits it and the same dashboard re-renders with data.
+- THE FA INPUT HAS NO LABEL. enterFaGateway (login.ts) now: awaitStable first, then
+  (a) use --fa-sel <css> if given (RELIABLE), else (b) hint match, else (c) the first
+  textbox that isn't a datatable search ("length/search/filter/page"). If it can't be
+  found it logs the visible textbox labels. RELIABLE PATH = pass --fa-sel. Find it by
+  grepping the webapp JSPs for the FA input's name/id.
+- THE DASHBOARD IS ONE PAGE WITH AJAX TABS. screenKey dedup correctly collapses the
+  tabs to ~3 distinct states per FA phase — that is NOT the crawler being stuck; the
+  richness is in the data/endpoints, not the screen count. More distinct SCREENS come
+  from the other action URLs (creditLineAction, latam, dispatcherAction, ...).
+- MAINFRAME LATENCY: pages paint in stages over seconds. awaitStable(loadMs, default
+  15000) waits networkidle + DOM-signature-stable before reading/acting. Bump --load-ms
+  if pages come back half-loaded.
+- BACKTRACK: because screens are POST-only/session-stateful, the crawl's returnTo does
+  goBack -> re-navigate -> re-login(+re-enter FA) -> abort-this-branch-keep-partial.
+  The repeated "opening login.jsp" lines in a crawl are this recovery firing; it works
+  but is slow (a known inefficiency — see §10).
+- FRAMESETS / OVERLAYS: captureCombined merges all frames; clickCandidate uses
+  dispatchEvent so flyover menus don't intercept. (The main dashboard is NOT a
+  frameset — its content is in the main document.)
+- DESTRUCTIVE GUARD (crawl-guard.ts isDestructive): NEVER clicks logout/sign-out/
+  delete/save/submit/print/export/wire/pay/... (session-killers matched boundary-free
+  so j_security_logout can't slip through). Such controls are RECORDED as edges but
+  never clicked.
+
+
+================================================================================
+9. BUILD & TEST LOCALLY (on the code directly — for the chatbot)
+================================================================================
+
+Build one package:        pnpm --filter @loom/replicate build      (tsc -b, follows refs)
+Build everything:         pnpm build:ts
+Run ALL tests:            pnpm exec vitest run                      (936 tests, ~33s)
+Run replicate tests:      pnpm exec vitest run packages/replicate
+Run one test file:        pnpm exec vitest run packages/replicate/src/crawl-guard.test.ts
+Lint:                     pnpm exec eslint packages/replicate
+Format:                   pnpm exec prettier --write "packages/replicate/src/**/*.ts"
+Secret gate:              grep -rniE "<forbidden-client-token>|<realFA>" packages/*/src  (clean)
+
+PURE vs LIVE: the deterministic brain is fully unit-tested with NO browser/pod —
+crawl-guard.test.ts (isDestructive, redact, buildWorkList, interactionSig,
+correlateProvenance), crawl-db.test.ts (upsert/resume/round-trip + the FA-never-on-
+disk guarantee), loop.test.ts (isBetter + keep-best), graph.test.ts, app.test.ts,
+builder-tools.test.ts, login.test.ts, nav.test.ts, live-gate.test.ts. The LIVE crawl
+loop (crawl.ts) and the live capture/checker are browser-gated / pod-validated — they
+have no unit test; they reuse the already-tested CrawlSession primitives.
+
+CLI without a pod:  node packages/replicate/dist/cli.js <cmd>  (alias rep=that).
+  `rep crawl --print` and `rep graph` and the usage strings need no login.
+
+KEY INVARIANTS to preserve when editing:
+  - No LLM in any gate (check.ts/report.ts/loop.ts/crawl*.ts are model-free).
+  - The FA + creds come ONLY from env; CrawlStore redacts store-side; keep the
+    "FA never on disk" test green (crawl-db.test.ts).
+  - The keep-best loop must always RETURN the best report and leave the best files on
+    disk (loop.test.ts).
+  - The anti-hardcoding gate must stay (check.ts liveDataGate) — it's the P2 enforcer.
+  - This is the PUBLIC repo loom-harness; the forbidden client token must never appear in source.
+
+
+================================================================================
+10. KNOWN ISSUES / WHERE TO IMPROVE NEXT (prioritized)
+================================================================================
+
+(A) FA box detection is heuristic without --fa-sel. The non-datatable-textbox fallback
+    can pick the wrong field if there are multiple unlabeled inputs. FIX IDEAS: detect
+    the input by proximity to the "FA Number"/Submit text; or read the field name from
+    the JSP and default --fa-sel; or a small per-app config.
+(B) Crawl depth on AJAX-tab pages. The dashboard collapses to ~3 states. To map the
+    tab sub-views as their own screens you'd either set --follow-js (click the
+    overlays; risky — can wedge) or add click-path replay so rep run can target an
+    AJAX sub-state (today rep run lands on the base URL only). DESIGN NEEDED.
+(C) returnTo re-logs-in per backtrack on POST-only screens — correct but slow. Improve
+    with breadcrumb replay (re-walk the recorded followed path) instead of re-login,
+    or per-phase budgets so one phase doesn't starve the other.
+(D) Forms in the connected app are freshly wired (App.tsx onSubmit). Validate the FA-
+    search-in-React end to end; some forms may need a redirect/parse step.
+(E) Provenance is best-effort (substring match, value->endpoint, bounded for pure
+    numbers, first-match-wins). It says WHICH endpoint backs a value, not the exact
+    JSON field — the builder opens the body to confirm. Good enough; could be tighter.
+(F) Viewing the live app needs a browser; rep serve + port-forward, or rely on the
+    per-screen .loom/shots PNGs.
+(G) .loom/ is NOT in .gitignore. FA redaction makes the artifacts safe, but consider
+    adding .loom/ to the pod clone's .gitignore so crawl artifacts aren't committed.
+(H) rep run targets a screen by where login/navigation LANDS + auto-matches the crawl
+    state by screenKey. A convenience --crawl-state <key> (navigate straight to a
+    crawled screen's URL) would make selecting URL-distinct screens cleaner.
+
+
+================================================================================
+11. THE EXACT WORKFLOW (end to end)
+================================================================================
+
+  export BAA_USER=... BAA_PASS=... BAA_FA=...        # never committed
+  export LLM_BASE_URL=... LLM_API_KEY=...            # gpt-5.4, for rep run only
+  alias rep='node packages/replicate/dist/cli.js'
+
+  rep map --struts <webapp>/WEB-INF/struts-config.xml --out .loom/atlas.db
+  rep graph --atlas .loom/atlas.db                                   # see the static tree
+  rep crawl --login <loginUrl> --user-sel ... --pass-sel ... --submit-sel ... \
+            [--fa-sel <css>] --max-states 60 --max-depth 10          # map everything
+  rep crawl --print                                                  # inspect the map
+  rep run --screen loginAction.do --atlas .loom/atlas.db --login <loginUrl> \
+          --user-sel ... --pass-sel ... --submit-sel ... \
+          --app fixtures/expected-react --webapp <webapp> --reuse-assets \
+          --crawl-db .loom/crawl.db --into-app --model gpt-5.4 --visual-gate
+  # ...repeat rep run --into-app for each screen (use --legacy <url> for non-landing)...
+  rep app --atlas .loom/atlas.db --app fixtures/expected-react       # wire the router
+  rep serve --app fixtures/expected-react --login <loginUrl> --user-sel ... ...  # run it
+
+================================================================================
+END. Keep this file in sync if the architecture changes. The model is a code-writer;
+the machine is the judge; the backend is never touched; data is always live.
+================================================================================
