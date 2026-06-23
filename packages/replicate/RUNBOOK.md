@@ -47,6 +47,27 @@ rep graph --atlas .loom/atlas.db --dot  .loom/tree.dot    # export Graphviz DOT
 
 This is "what page links to what," already complete from the source — your prep map.
 
+## 2b. Crawl the live app — map EVERY click + where each number comes from  _(the deep map)_
+
+The static tree misses data‑driven drill‑downs. `rep crawl` logs in and clicks **every** link/tab/button
+across both FA states, recording all user paths + each screen's data endpoints + which endpoint backs
+each rendered value — into `.loom/crawl.db`. Deterministic, resumable, never clicks logout/save/delete.
+
+```bash
+# bounded first run to prove it (raise/remove caps once it looks right):
+rep crawl --login "http://localhost:8080/BAA/jsp/login.jsp" \
+  --user-sel "input[name=user]" --pass-sel "input[name=password]" --submit-sel "input[type=submit]" \
+  --max-states 150 --max-depth 15 --load-ms 15000
+#   → ✓ crawled N screen(s) · A action(s) · E endpoint(s) · V value(s) → .loom/crawl.db
+
+rep crawl --print            # read the mapped paths + endpoints (no crawling, no login)
+```
+Tune `--fa-hint "fa.?number|wire|quick"` if the FA phase doesn't unlock; `--follow-js` to also click
+overlays (off by default — they can wedge). Re‑running resumes where it stopped.
+
+Then feed the crawl to the converter so the React reproduces navigation 1:1 **and** pulls each number
+from the same endpoint — add `--crawl-db .loom/crawl.db` to the `rep run` command in step 4.
+
 ## 3. Probe a screen without the model  _(optional, free)_
 
 ```bash
@@ -118,11 +139,13 @@ rep map    --struts <xml> --out .loom/atlas.db
 rep graph  --atlas .loom/atlas.db [--json <f> | --dot <f>]
 rep shot   --login <url> [--legacy <screen>] [--user-sel/--pass-sel/--submit-sel <css>]
 rep nav    --login <url> [--legacy <screen>] --out <f>
+rep crawl  --login <url> [--start <path>] [--db .loom/crawl.db] [--fa-hint <re>] [--follow-js]
+           [--max-states N] [--max-actions N] [--max-depth N] [--load-ms 15000] [--print]
 rep check  --legacy <url> --replica <url> [--atlas .loom/atlas.db --screen <key>] [--visual-gate]
 rep run    --screen <key> --atlas .loom/atlas.db --login <url> --app <dir>
-           [--webapp <dir>] [--reuse-assets] [--fa-hint <regex>] [--load-ms 15000]
-           [--screens .loom/screens | --no-screens] [--visual-gate] [--max-iterations N]
-           [--model gpt-5.4] [--shots .loom/shots | --no-shots]
+           [--webapp <dir>] [--reuse-assets] [--crawl-db .loom/crawl.db] [--fa-hint <regex>]
+           [--load-ms 15000] [--screens .loom/screens | --no-screens] [--visual-gate]
+           [--max-iterations N] [--model gpt-5.4] [--shots .loom/shots | --no-shots]
 ```
 
 Credentials always come from the env (`BAA_USER`, `BAA_PASS`, `BAA_FA`). **The FA is never a flag** and
