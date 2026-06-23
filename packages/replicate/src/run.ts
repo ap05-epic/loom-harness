@@ -1,4 +1,5 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { LlmGateway } from '@loom/agents';
 import {
@@ -356,10 +357,34 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
     }
   };
 
+  // Keep-best: snapshot the written `src` on each new best, roll back to it before a fix and at the
+  // end, so the loop never finishes on a worse result than it already had.
+  const srcDir = join(opts.appDir, 'src');
+  const bestSnap = mkdtempSync(join(tmpdir(), 'rep-best-'));
+  const snapshotBest = (iteration: number): void => {
+    try {
+      rmSync(bestSnap, { recursive: true, force: true });
+      cpSync(srcDir, bestSnap, { recursive: true });
+      log(`  ★ new best — keeping iteration ${iteration}`);
+    } catch {
+      /* snapshot is best-effort */
+    }
+  };
+  const restoreBest = (): void => {
+    try {
+      rmSync(srcDir, { recursive: true, force: true });
+      cpSync(bestSnap, srcDir, { recursive: true });
+    } catch {
+      /* restore is best-effort */
+    }
+  };
+
   const result = await replicateScreen({
     build,
     check,
     maxIterations: opts.maxIterations,
+    onSnapshotBest: snapshotBest,
+    onRestoreBest: restoreBest,
     onStep: (step) => {
       if (step.phase === 'build') log(`\n— iteration ${step.iteration} —`);
       else {
@@ -377,6 +402,13 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
       }
     },
   });
+  // If it stopped without a match, the loop restored the best `src`, but `dist` is still the last
+  // (possibly regressed) build — rebuild so the served replica + the saved shots reflect the best.
+  if (!result.matched) {
+    log('  ⚙ rebuilding the best-kept version…');
+    runAppBuild(opts.appDir, buildCmd);
+  }
+  rmSync(bestSnap, { recursive: true, force: true });
 
   // Snap the final replica (and the original) for viewing without a browser. Named by screen key, so
   // re-running a screen overwrites it rather than leaving 20 copies.

@@ -1,6 +1,7 @@
 export { checkParity, liveDataGate, type CheckOptions } from './check.js';
 export {
   replicateScreen,
+  isBetter,
   type BuildArgs,
   type LoopStep,
   type ReplicateOptions,

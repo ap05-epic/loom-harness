@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
-import { replicateScreen } from './loop.js';
+import { isBetter, replicateScreen } from './loop.js';
 import { buildReport, type ParityReport } from './report.js';
 
 const matched: ParityReport = buildReport({
@@ -49,5 +49,67 @@ describe('replicateScreen loop', () => {
     expect(r.matched).toBe(false);
     expect(r.iterations).toBe(3);
     expect(r.report.paths).toHaveLength(1);
+  });
+});
+
+const rep = (visualPct: number, extra: Partial<ParityReport> = {}): ParityReport =>
+  buildReport({ visualPct, threshold: 1, dom: [], style: [], forms: [], paths: [], ...extra });
+
+describe('keep-best (never regress)', () => {
+  test('returns the BEST iteration, not the last (worse) one', async () => {
+    const seq = [rep(10), rep(30), rep(25)]; // iter1 best, then two regressions
+    let i = 0;
+    let snapshots = 0;
+    let restores = 0;
+    const r = await replicateScreen({
+      build: async () => {},
+      check: async () => seq[i++]!,
+      maxIterations: 3,
+      onSnapshotBest: () => {
+        snapshots++;
+      },
+      onRestoreBest: () => {
+        restores++;
+      },
+    });
+    expect(r.report.visualPct).toBe(10); // the best, never the last (25)
+    expect(r.iterations).toBe(3);
+    expect(snapshots).toBe(1); // only iteration 1 was ever the best
+    expect(restores).toBeGreaterThanOrEqual(2); // rolled back before each fix + at the end
+  });
+
+  test("fixes are handed the BEST report's diffs, not the regression's", async () => {
+    const best = rep(10, { paths: [{ code: 'missing_route', target: 'fromBest', detail: 'x' }] });
+    const worse = rep(40, { paths: [{ code: 'missing_route', target: 'fromWorse', detail: 'y' }] });
+    const seq = [best, worse, worse];
+    let i = 0;
+    const seen: Array<string | undefined> = [];
+    await replicateScreen({
+      build: async (a) => {
+        seen.push(a.diffs);
+      },
+      check: async () => seq[i++]!,
+      maxIterations: 3,
+    });
+    expect(seen[0]).toBeUndefined();
+    expect(seen[1]).toMatch(/fromBest/); // fix #1 targets the best's diff
+    expect(seen[2]).toMatch(/fromBest/); // fix #2 still from best (iter2 regressed, discarded)
+    expect(seen[2]).not.toMatch(/fromWorse/);
+  });
+});
+
+describe('isBetter', () => {
+  test('a 1:1 match beats anything', () => {
+    expect(isBetter(matched, rep(50))).toBe(true);
+    expect(isBetter(rep(50), matched)).toBe(false);
+  });
+  test('a build error is worse than any non-build-error', () => {
+    expect(isBetter(rep(80), rep(5, { build: ['boom'] }))).toBe(true);
+  });
+  test('lower visual wins, then fewer findings', () => {
+    expect(isBetter(rep(10), rep(30))).toBe(true);
+    expect(isBetter(rep(30), rep(10))).toBe(false);
+    const oneFinding = rep(10, { paths: [{ code: 'missing_route', target: 'a', detail: 'b' }] });
+    expect(isBetter(rep(10), oneFinding)).toBe(true); // 0 findings beats 1 at the same visual
   });
 });
