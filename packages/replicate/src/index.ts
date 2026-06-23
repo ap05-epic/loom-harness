@@ -42,6 +42,7 @@ export {
   type CrawlEndpointRow,
   type CrawlProvenanceRow,
 } from './crawl-db.js';
+export { runCrawl, type CrawlOptions, type CrawlSummary } from './crawl.js';
 export { runReplicate, type RunOptions } from './run.js';
 export { runAppBuild, serveStatic } from './react-target.js';
 export {

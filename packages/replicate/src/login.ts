@@ -30,7 +30,7 @@ export function looksLikeFailure(text: string): boolean {
 }
 
 /** Fill the login form + submit + settle, inside an already-open session (navigates to the login page first). */
-async function loginInSession(
+export async function loginInSession(
   session: CrawlSession,
   cfg: LoginConfig,
   log: (m: string) => void,
@@ -137,7 +137,7 @@ async function captureScreen(session: CrawlSession): Promise<ScreenCapture> {
  * and submit. Returns false (with a diagnostic) if no FA box is found — the caller then keeps the no-FA
  * capture rather than failing the run.
  */
-async function enterFaGateway(
+export async function enterFaGateway(
   session: CrawlSession,
   fa: FaGateway,
   log: (m: string) => void,

@@ -4,6 +4,8 @@ import { OpenAiDriver } from '@loom/agents';
 import { captureDom, captureScreenshot, DEFAULT_VIEWPORT, type DomSnapshot } from '@loom/browser';
 import { discoverLegacyWebapp, mapProject, openCodeAtlas } from '@loom/cartographer';
 import { checkParity } from './check.js';
+import { runCrawl } from './crawl.js';
+import { openCrawlDb } from './crawl-db.js';
 import { buildNavTree, navTreeToDot, printNavTree } from './graph.js';
 import { doLogin, loginAndCapture, looksLikeFailure, type LoginField } from './login.js';
 import { extractNavigation } from './nav.js';
@@ -47,6 +49,9 @@ const SHOT_USAGE =
   'usage: replicate shot --legacy <url> [--login <loginUrl> (live login, creds from env) | --storage <auth.json>] [--out .loom/shots/probe.png]';
 const NAV_USAGE =
   'usage: replicate nav --login <loginUrl> [--legacy <post-login screen>] [--out .loom/nav.json]  (creds from env: BAA_USER, BAA_PASS)';
+const CRAWL_USAGE =
+  'usage: replicate crawl --login <loginUrl> [--start <path>] [--db .loom/crawl.db] [--bodies <dir>] [--shots <dir>] ' +
+  '[--fa-hint <regex>] [--follow-js] [--max-states N] [--max-actions N] [--max-depth N] [--load-ms 15000] [--deny <regex>] [--print]  (creds + BAA_FA from env)';
 const CHECK_USAGE =
   'usage: replicate check --legacy <url> --replica <url> [--atlas <codeatlas.db> --screen <key>] [--storage <auth.json>] [--threshold 1] [--visual-gate] [--llm-diff]';
 const RUN_USAGE =
@@ -249,6 +254,99 @@ async function nav(): Promise<number> {
 }
 
 /**
+ * `replicate crawl` — exhaustively click every link/tab/button across the live app (both FA states),
+ * mapping all user paths + each screen's data endpoints/payloads + value→endpoint provenance into
+ * `.loom/crawl.db`. Deterministic, no LLM, resumable. `--print` dumps the map without crawling.
+ */
+async function crawl(): Promise<number> {
+  const loginUrl = arg('login');
+  if (!loginUrl && !has('print')) {
+    console.error(CRAWL_USAGE);
+    return 2;
+  }
+  const dbPath = arg('db') ?? '.loom/crawl.db';
+  const bodiesDir = arg('bodies') ?? '.loom/crawl-bodies';
+  const shotsDir = arg('shots') ?? '.loom/crawl-shots';
+  const faValue = process.env.BAA_FA;
+  const secrets = [faValue, process.env.BAA_PASS].filter((x): x is string => Boolean(x));
+  mkdirSync(dirname(dbPath), { recursive: true });
+  const store = openCrawlDb(dbPath, { bodiesDir, secrets });
+
+  // --print: read the mapped graph without crawling.
+  if (has('print')) {
+    const g = store.graph();
+    console.log(`crawl graph — ${g.states.length} state(s), ${g.edges.length} edge(s)`);
+    for (const s of g.states) {
+      console.log(`\n${s.key} [${s.state_tag}]  ${s.url}`);
+      for (const e of store.interactionsFor(s.id)) {
+        const to = e.to_state_id
+          ? (g.states.find((x) => x.id === e.to_state_id)?.key ?? '?')
+          : e.followed
+            ? 'dead'
+            : 'record-only';
+        console.log(
+          `   ${e.action_kind} "${e.label ?? ''}" → ${to}${e.is_destructive ? ' (destructive)' : ''}`,
+        );
+      }
+      const eps = store.endpointsFor(s.id);
+      if (eps.length > 0)
+        console.log(`   🔌 ${eps.map((x) => `${x.method} ${x.url}`).join(' · ')}`);
+    }
+    store.close();
+    return 0;
+  }
+
+  if (!loginUrl) {
+    console.error(CRAWL_USAGE);
+    store.close();
+    return 2;
+  }
+  const fields = loginFieldsFromEnv();
+  if (fields.length === 0) {
+    console.error('set BAA_USER and BAA_PASS in the environment.');
+    store.close();
+    return 2;
+  }
+  try {
+    const summary = await runCrawl({
+      login: {
+        loginUrl,
+        fields,
+        submitSelector: arg('submit-sel') ?? 'input[type=submit], button[type=submit]',
+        successSelector: arg('success-sel'),
+        waitMs: arg('wait-ms') ? Number(arg('wait-ms')) : undefined,
+      },
+      startPath: arg('start'),
+      fa: faValue
+        ? {
+            value: faValue,
+            hint: arg('fa-hint') ? new RegExp(arg('fa-hint')!, 'i') : undefined,
+            submitSelector: arg('fa-submit-sel'),
+          }
+        : undefined,
+      followJs: has('follow-js'),
+      deny: arg('deny') ? new RegExp(arg('deny')!, 'i') : undefined,
+      loadMs: arg('load-ms') ? Number(arg('load-ms')) : undefined,
+      maxStates: arg('max-states') ? Number(arg('max-states')) : undefined,
+      maxActions: arg('max-actions') ? Number(arg('max-actions')) : undefined,
+      maxDepth: arg('max-depth') ? Number(arg('max-depth')) : undefined,
+      store,
+      shotsDir,
+      secrets,
+      onLog: (m) => console.error(m),
+    });
+    console.log(
+      `\n✓ crawled ${summary.states} screen(s) · ${summary.interactions} action(s) · ` +
+        `${summary.endpoints} endpoint(s) · ${summary.provenance} value(s) → ${dbPath}` +
+        (summary.truncated ? ' (hit a budget cap — resumable, run again)' : ''),
+    );
+    return 0;
+  } finally {
+    store.close();
+  }
+}
+
+/**
  * `replicate login` — log into the legacy app once (creds from env) and save the session to
  * `--out`, so `run`/`check` can reach post‑login screens via `--storage`. Field selectors are
  * configurable; print what it filled so you can adjust. No LLM.
@@ -439,16 +537,18 @@ const handler =
           ? shot
           : cmd === 'nav'
             ? nav
-            : cmd === 'check'
-              ? check
-              : cmd === 'run'
-                ? run
-                : async (): Promise<number> => {
-                    console.error(
-                      `${MAP_USAGE}\n${GRAPH_USAGE}\n${LOGIN_USAGE}\n${SHOT_USAGE}\n${NAV_USAGE}\n${CHECK_USAGE}\n${RUN_USAGE}`,
-                    );
-                    return 2;
-                  };
+            : cmd === 'crawl'
+              ? crawl
+              : cmd === 'check'
+                ? check
+                : cmd === 'run'
+                  ? run
+                  : async (): Promise<number> => {
+                      console.error(
+                        `${MAP_USAGE}\n${GRAPH_USAGE}\n${LOGIN_USAGE}\n${SHOT_USAGE}\n${NAV_USAGE}\n${CRAWL_USAGE}\n${CHECK_USAGE}\n${RUN_USAGE}`,
+                      );
+                      return 2;
+                    };
 
 handler().then(
   (code) => process.exit(code),
