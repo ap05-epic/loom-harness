@@ -3,7 +3,7 @@ import type { CodeAtlas } from '@loom/cartographer';
 
 /**
  * Normalize a legacy action path (e.g. `/wizard.do`, `/BAA/jsp/list.jsp`) or a replica href
- * (e.g. `/wizard`, `https://app/x/creditLine.do?fa=AB10`) into a comparable route slug — the last
+ * (e.g. `/wizard`, `https://app/x/creditLine.do?fa=ZZ99`) into a comparable route slug — the last
  * path segment, lowercased, with query/fragment and the struts/jsp suffix stripped. Returns null for
  * non-navigations (`#`, `javascript:`, `mailto:`, `tel:`, empty).
  */

@@ -48,10 +48,10 @@ describe('exploreOptionsFrom', () => {
   test('builds secrets (user/pass/fa) from env, a chooser, and the start URL', () => {
     const p = profile({
       crawl: authCrawl,
-      env: { ...creds, BAA_USER: 'alice', BAA_PASS: 'pw', fa_numbers: 'AB10' },
+      env: { ...creds, BAA_USER: 'alice', BAA_PASS: 'pw', fa_numbers: 'ZZ99' },
     });
     const opts = exploreOptionsFrom(p, 3);
-    expect(opts.secrets).toEqual({ user: 'alice', pass: 'pw', fa: 'AB10' });
+    expect(opts.secrets).toEqual({ user: 'alice', pass: 'pw', fa: 'ZZ99' });
     expect(typeof opts.chooser).toBe('function'); // an LLM chooser was wired
     expect(opts.startUrl).toBe('http://127.0.0.1:8090/BAA/'); // startPath '.' keeps the /BAA/ context
     expect(opts.maxStates).toBe(3); // the --max-states override wins

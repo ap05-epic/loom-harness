@@ -8,7 +8,7 @@ describe('normalizePath', () => {
     expect(normalizePath('/popup?id=7')).toBe('popup');
     expect(normalizePath('wizard')).toBe('wizard');
     expect(normalizePath('/BAA/jsp/list.jsp')).toBe('list');
-    expect(normalizePath('https://app/x/creditLine.do?fa=AB10')).toBe('creditline');
+    expect(normalizePath('https://app/x/creditLine.do?fa=ZZ99')).toBe('creditline');
   });
 
   test('drops non-navigations', () => {

@@ -165,12 +165,12 @@ describe('exploreApp (live AI-explorer)', () => {
       const result = await exploreApp({
         startUrl,
         chooser,
-        secrets: { fa: 'AB10' },
+        secrets: { fa: 'ZZ99' },
         maxStates: 5,
         maxVisits: 5,
       });
       const texts = result.states.flatMap((s) => collectText(s.dom));
-      expect(texts.some((t) => t.includes('Loaded AB10'))).toBe(true); // auto-submit fired with the real FA
+      expect(texts.some((t) => t.includes('Loaded ZZ99'))).toBe(true); // auto-submit fired with the real FA
     },
     30_000,
   );
