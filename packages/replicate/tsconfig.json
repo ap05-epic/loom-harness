@@ -12,6 +12,7 @@
     { "path": "../browser" },
     { "path": "../cartographer" },
     { "path": "../conductor" },
+    { "path": "../core" },
     { "path": "../evaluator" },
     { "path": "../surveyor" }
   ]

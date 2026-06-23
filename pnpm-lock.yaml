@@ -307,6 +307,9 @@ importers:
       '@loom/conductor':
         specifier: workspace:*
         version: link:../conductor
+      '@loom/core':
+        specifier: workspace:*
+        version: link:../core
       '@loom/evaluator':
         specifier: workspace:*
         version: link:../evaluator

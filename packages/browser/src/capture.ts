@@ -235,6 +235,12 @@ export type CrawlSessionOptions = SessionOptions & {
    * fresh each run, so refreshing the file is all that's needed when the session expires.
    */
   cookiesPath?: string;
+  /** Capture response bodies (data payloads) in the network log — for data-provenance crawling. */
+  captureBodies?: boolean;
+  /** Max response-body bytes to keep (default 100_000). */
+  bodyMaxBytes?: number;
+  /** Resource types whose bodies to capture (default ['xhr','fetch','document']). */
+  bodyResourceTypes?: string[];
 };
 
 /**
@@ -244,7 +250,14 @@ export type CrawlSessionOptions = SessionOptions & {
  * surveyor authenticate once and then walk the protected screens.
  */
 /** A single network request the page made — for learning which backend endpoints a screen pulls from. */
-export type NetworkRequest = { method: string; url: string; resourceType: string; status?: number };
+export type NetworkRequest = {
+  method: string;
+  url: string;
+  resourceType: string;
+  status?: number;
+  /** Response body (the data payload) — present only when body capture is on and the response qualified. */
+  responseBody?: string;
+};
 
 export class CrawlSession {
   private browser?: Browser;
@@ -291,6 +304,15 @@ export class CrawlSession {
 
   currentUrl(): string {
     return this.active().url();
+  }
+
+  /** Browser back, then settle. Returns false when there's no back-entry (for the crawler backtrack). */
+  async goBack(): Promise<boolean> {
+    const resp = await this.active()
+      .goBack({ waitUntil: 'domcontentloaded' })
+      .catch(() => null);
+    await this.settle();
+    return resp !== null;
   }
 
   /** Best-effort wait for the page to settle after an action that may or may not have navigated. */
@@ -342,12 +364,30 @@ export class CrawlSession {
     if (this.netListening) return;
     this.netListening = true;
     const page = this.active();
+    const captureBodies = this.options.captureBodies ?? false;
+    const bodyMax = this.options.bodyMaxBytes ?? 100_000;
+    const bodyTypes = this.options.bodyResourceTypes ?? ['xhr', 'fetch', 'document'];
     page.on('request', (req) => {
       this.netLog.push({ method: req.method(), url: req.url(), resourceType: req.resourceType() });
     });
     page.on('response', (res) => {
       const hit = this.netLog.find((r) => r.url === res.url() && r.status === undefined);
       if (hit) hit.status = res.status();
+      if (!captureBodies || !hit) return;
+      // Best-effort, async: capture the data payload (filtered + size-capped). A late/evicted body
+      // simply stays undefined — never wrong. Bodies resolve before the crawler drains (post-awaitStable).
+      void (async () => {
+        try {
+          if (!bodyTypes.includes(res.request().resourceType())) return;
+          const ct = res.headers()['content-type'] ?? '';
+          if (!/(json|text|html|xml|javascript|csv|x-www-form-urlencoded|plain)/i.test(ct)) return;
+          if (Number(res.headers()['content-length'] ?? '0') > bodyMax) return;
+          const body = await res.text();
+          hit.responseBody = body.slice(0, bodyMax);
+        } catch {
+          /* body evicted by a navigation / streaming / none — leave undefined */
+        }
+      })();
     });
   }
 

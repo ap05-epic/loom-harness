@@ -23,6 +23,25 @@ export {
 } from './paths.js';
 export { buildNavTree, navTreeToDot, printNavTree, type NavNode, type NavTree } from './graph.js';
 export { extractNavigation, compareNavigation, type NavLink } from './nav.js';
+export {
+  buildWorkList,
+  correlateProvenance,
+  interactionSig,
+  isDestructive,
+  redactSecret,
+  redactBody,
+  DEFAULT_DENY,
+  type WorkItem,
+} from './crawl-guard.js';
+export {
+  openCrawlDb,
+  CrawlStore,
+  CRAWL_MIGRATIONS,
+  type CrawlStateRow,
+  type CrawlInteractionRow,
+  type CrawlEndpointRow,
+  type CrawlProvenanceRow,
+} from './crawl-db.js';
 export { runReplicate, type RunOptions } from './run.js';
 export { runAppBuild, serveStatic } from './react-target.js';
 export {

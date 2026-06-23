@@ -21,6 +21,7 @@
     "@loom/browser": "workspace:*",
     "@loom/cartographer": "workspace:*",
     "@loom/conductor": "workspace:*",
+    "@loom/core": "workspace:*",
     "@loom/evaluator": "workspace:*",
     "@loom/surveyor": "workspace:*"
   }
