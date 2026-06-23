@@ -68,8 +68,10 @@ the model → repeat. Exit 0 = 1:1.
 
 > **The legacy app is behind SSO.** The checker captures the live legacy screen, so it needs a session.
 > Provide a Playwright **storage state** via `--storage` (cookies/localStorage saved after a login).
-> The pod's existing `loom explore` login flow (AB10 → `#pmenu` hydration → families) can produce the
+> The pod's existing `loom explore` login flow (FA → `#pmenu` hydration → families) can produce the
 > screenshots/atlas; the same saved session works here.
+>
+> **For the live‑data + FA‑state workflow (the current path), follow [`RUNBOOK.md`](./RUNBOOK.md).**
 
 ## 3. Check any conversion (deterministic — no model)
 
