@@ -43,6 +43,14 @@ export {
   type CrawlProvenanceRow,
 } from './crawl-db.js';
 export { runCrawl, type CrawlOptions, type CrawlSummary } from './crawl.js';
+export {
+  assembleApp,
+  collectAppScreens,
+  generateAppShell,
+  sanitizeKey,
+  screenComponentPath,
+  type AppScreen,
+} from './app.js';
 export { createReadFileTool, createListFilesTool, createCrawlQueryTool } from './builder-tools.js';
 export { runReplicate, type RunOptions } from './run.js';
 export { runAppBuild, serveStatic } from './react-target.js';

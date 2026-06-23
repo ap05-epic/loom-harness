@@ -14,6 +14,7 @@ import type { CodeAtlas } from '@loom/cartographer';
 import { buildScreen } from '@loom/conductor';
 import { DEFAULT_STYLE_PROPS } from '@loom/evaluator';
 import { screenKey } from '@loom/surveyor';
+import { sanitizeKey } from './app.js';
 import { contextFromUrl, injectStylesheets, reuseLegacyAssets } from './assets.js';
 import { createCrawlQueryTool, createReadFileTool } from './builder-tools.js';
 import { openCrawlDb } from './crawl-db.js';
@@ -79,6 +80,9 @@ export type RunOptions = {
   loadMs?: number;
   /** Save a per-screen prep artifact (data endpoints + runtime links + states) into this folder. */
   screensDir?: string;
+  /** Build this screen as part of the connected app (writes a shim App.tsx so the per-screen check still
+   * renders it; `rep app` later assembles the router). The component goes to src/screens/<key>.tsx. */
+  intoApp?: boolean;
   /** Runtime crawl DB (`rep crawl`) — feeds the builder the real user paths + data provenance + read tools. */
   crawlDbPath?: string;
   /** Where the crawl wrote response bodies (for the read_file tool). Default `.loom/crawl-bodies`. */
@@ -373,6 +377,13 @@ export async function runReplicate(opts: RunOptions): Promise<ReplicateResult> {
       guards: { maxWallClockMs: 12 * 60_000, noProgressLimit: 8, maxTokens: 400_000 },
     });
     log(`    wrote ${r.filesWritten.length} file(s) · ${r.usage.outputTokens ?? 0} out tok`);
+    if (opts.intoApp) {
+      // Render just this screen for the per-screen check; `rep app` replaces App.tsx with the router later.
+      writeFileSync(
+        join(opts.appDir, 'src', 'App.tsx'),
+        `import S from './screens/${sanitizeKey(opts.screenKey)}';\nexport default S;\n`,
+      );
+    }
     log(`  ⚙ ${buildCmd}…`);
     const b = runAppBuild(opts.appDir, buildCmd);
     lastBuildError = b.ok ? undefined : b.output.slice(-2000);

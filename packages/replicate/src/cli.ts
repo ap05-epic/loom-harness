@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { OpenAiDriver } from '@loom/agents';
 import { captureDom, captureScreenshot, DEFAULT_VIEWPORT, type DomSnapshot } from '@loom/browser';
 import { discoverLegacyWebapp, mapProject, openCodeAtlas } from '@loom/cartographer';
+import { assembleApp, screenComponentPath } from './app.js';
 import { checkParity } from './check.js';
 import { runCrawl } from './crawl.js';
 import { openCrawlDb } from './crawl-db.js';
@@ -42,6 +43,8 @@ function loginFieldsFromEnv(): LoginField[] {
 const MAP_USAGE = 'usage: replicate map --struts <struts-config.xml> --out <codeatlas.db>';
 const GRAPH_USAGE =
   'usage: replicate graph --atlas <codeatlas.db> [--json <out.json>] [--dot <out.dot>]  (prints the nav tree by default)';
+const APP_USAGE =
+  'usage: replicate app --atlas <codeatlas.db> --app <reactAppDir>  (assembles the converted src/screens/* into a navigable App.tsx router)';
 const LOGIN_USAGE =
   'usage: replicate login --legacy <loginUrl> [--out .loom/auth.json] [--user-sel <css>] [--pass-sel <css>] ' +
   '[--fa-sel <css>] [--submit-sel <css>] [--success-sel <css>]  (creds from env: BAA_USER, BAA_PASS, BAA_FA)';
@@ -57,7 +60,7 @@ const CHECK_USAGE =
 const RUN_USAGE =
   'usage: replicate run --screen <key> --atlas <codeatlas.db> --app <reactAppDir> ' +
   '(--legacy <url> | --login <loginUrl> [--legacy <post-login target>]) ' +
-  '[--webapp <dir>] [--reuse-assets] [--crawl-db .loom/crawl.db] [--fa-hint <regex>] [--load-ms 15000] [--screens .loom/screens | --no-screens] ' +
+  '[--webapp <dir>] [--reuse-assets] [--crawl-db .loom/crawl.db] [--into-app] [--fa-hint <regex>] [--load-ms 15000] [--screens .loom/screens | --no-screens] ' +
   '[--build "npx vite build"] [--serve dist] [--route /] ' +
   '[--component src/App.tsx] [--threshold 1] [--max-iterations 12] [--visual-gate] [--shots .loom/shots | --no-shots] [--model gpt-5.4]  (FA from env BAA_FA)';
 
@@ -126,6 +129,35 @@ function graph(): number {
       console.log(`✓ DOT → ${dot}`);
     }
     if (!json && !dot) console.log(printNavTree(tree));
+    return 0;
+  } finally {
+    atlas.close();
+  }
+}
+
+/**
+ * `replicate app` — assemble the converted screens (`src/screens/*.tsx`, written by `rep run --into-app`)
+ * into a navigable React router (`src/App.tsx`): clicking a link routes in-app like the legacy flow, and
+ * each screen still fetches its own live data. Deterministic, no model.
+ */
+function app(): number {
+  const atlasPath = arg('atlas');
+  const appDir = arg('app');
+  if (!atlasPath || !appDir) {
+    console.error(APP_USAGE);
+    return 2;
+  }
+  const atlas = openCodeAtlas(atlasPath);
+  try {
+    const { screens, appPath } = assembleApp(appDir, atlas);
+    if (screens.length === 0) {
+      console.log(
+        '  no converted screens in src/screens/ — convert some with `rep run --screen <key> --into-app` first.',
+      );
+      return 0;
+    }
+    console.log(`✓ assembled ${screens.length} screen(s) → ${appPath}`);
+    for (const s of screens) console.log(`   #/${s.route}  ← ${s.key}`);
     return 0;
   } finally {
     atlas.close();
@@ -479,7 +511,8 @@ async function run(): Promise<number> {
       buildCmd: arg('build'),
       serveSubdir: arg('serve'),
       route: arg('route'),
-      componentPath: arg('component'),
+      componentPath: has('into-app') ? screenComponentPath(screen) : arg('component'),
+      intoApp: has('into-app'),
       jspSource,
       webappDir: webapp,
       reuseAssets: has('reuse-assets'),
@@ -535,24 +568,26 @@ const handler =
     ? async (): Promise<number> => map()
     : cmd === 'graph'
       ? async (): Promise<number> => graph()
-      : cmd === 'login'
-        ? login
-        : cmd === 'shot'
-          ? shot
-          : cmd === 'nav'
-            ? nav
-            : cmd === 'crawl'
-              ? crawl
-              : cmd === 'check'
-                ? check
-                : cmd === 'run'
-                  ? run
-                  : async (): Promise<number> => {
-                      console.error(
-                        `${MAP_USAGE}\n${GRAPH_USAGE}\n${LOGIN_USAGE}\n${SHOT_USAGE}\n${NAV_USAGE}\n${CRAWL_USAGE}\n${CHECK_USAGE}\n${RUN_USAGE}`,
-                      );
-                      return 2;
-                    };
+      : cmd === 'app'
+        ? async (): Promise<number> => app()
+        : cmd === 'login'
+          ? login
+          : cmd === 'shot'
+            ? shot
+            : cmd === 'nav'
+              ? nav
+              : cmd === 'crawl'
+                ? crawl
+                : cmd === 'check'
+                  ? check
+                  : cmd === 'run'
+                    ? run
+                    : async (): Promise<number> => {
+                        console.error(
+                          `${MAP_USAGE}\n${GRAPH_USAGE}\n${APP_USAGE}\n${LOGIN_USAGE}\n${SHOT_USAGE}\n${NAV_USAGE}\n${CRAWL_USAGE}\n${CHECK_USAGE}\n${RUN_USAGE}`,
+                        );
+                        return 2;
+                      };
 
 handler().then(
   (code) => process.exit(code),
