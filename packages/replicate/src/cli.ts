@@ -5,6 +5,7 @@ import { captureDom, captureScreenshot, DEFAULT_VIEWPORT, type DomSnapshot } fro
 import { discoverLegacyWebapp, mapProject, openCodeAtlas } from '@loom/cartographer';
 import { checkParity } from './check.js';
 import { doLogin, loginAndCapture, looksLikeFailure, type LoginField } from './login.js';
+import { extractNavigation } from './nav.js';
 import { legacyNavTargets, normalizePath } from './paths.js';
 import { diffsForLlm, printReport } from './report.js';
 import { runReplicate } from './run.js';
@@ -41,6 +42,8 @@ const LOGIN_USAGE =
   '[--fa-sel <css>] [--submit-sel <css>] [--success-sel <css>]  (creds from env: BAA_USER, BAA_PASS, BAA_FA)';
 const SHOT_USAGE =
   'usage: replicate shot --legacy <url> [--login <loginUrl> (live login, creds from env) | --storage <auth.json>] [--out .loom/shots/probe.png]';
+const NAV_USAGE =
+  'usage: replicate nav --login <loginUrl> [--legacy <post-login screen>] [--out .loom/nav.json]  (creds from env: BAA_USER, BAA_PASS)';
 const CHECK_USAGE =
   'usage: replicate check --legacy <url> --replica <url> [--atlas <codeatlas.db> --screen <key>] [--storage <auth.json>] [--threshold 1] [--visual-gate] [--llm-diff]';
 const RUN_USAGE =
@@ -157,6 +160,54 @@ async function shot(): Promise<number> {
   console.log(
     `  page text  : ${text || '(no visible text in <body> — likely a FRAMESET; the real content is in child frames)'}`,
   );
+  return 0;
+}
+
+/**
+ * `replicate nav` — log in, go to a screen, and map every link/form to where it leads (the runtime
+ * click→destination map). Classifies real navigations (verifiable 1:1) vs JS‑driven actions
+ * (overlays — behavior we'd have to rebuild). Saves to `--out` + prints a readable summary. No LLM.
+ */
+async function nav(): Promise<number> {
+  const loginUrl = arg('login');
+  if (!loginUrl) {
+    console.error(NAV_USAGE);
+    return 2;
+  }
+  const fields = loginFieldsFromEnv();
+  if (fields.length === 0) {
+    console.error('set BAA_USER and BAA_PASS in the environment.');
+    return 2;
+  }
+  const out = arg('out') ?? '.loom/nav.json';
+  mkdirSync(dirname(out), { recursive: true });
+  const { dom, finalUrl } = await loginAndCapture({
+    loginUrl,
+    targetUrl: arg('legacy'),
+    fields,
+    submitSelector: arg('submit-sel') ?? 'input[type=submit], button[type=submit]',
+    successSelector: arg('success-sel'),
+    waitMs: arg('wait-ms') ? Number(arg('wait-ms')) : undefined,
+    onLog: (m) => console.error(m),
+  });
+  const links = extractNavigation(dom);
+  writeFileSync(out, JSON.stringify({ url: finalUrl, links }, null, 2));
+  const real = links.filter((l) => l.kind === 'navigation');
+  const forms = links.filter((l) => l.kind === 'form-submit');
+  const js = links.filter((l) => l.kind === 'js-action');
+  const anchors = links.length - real.length - forms.length - js.length;
+  console.log(`\n✓ mapped ${links.length} navigable element(s) on ${finalUrl} → ${out}`);
+  console.log(
+    `  ${real.length} real link(s) · ${forms.length} form(s) · ${js.length} JS-driven · ${anchors} anchor(s)\n`,
+  );
+  for (const l of real.slice(0, 40)) console.log(`  🔗 ${l.label}  →  ${l.target}`);
+  for (const l of forms.slice(0, 10)) console.log(`  📝 ${l.label}  →  ${l.target}`);
+  if (js.length > 0) {
+    console.log(
+      `\n  ⚡ ${js.length} JS-driven action(s) (overlays etc.) — not simple links; e.g.:`,
+    );
+    for (const l of js.slice(0, 5)) console.log(`     ${l.label}  →  ${l.target.slice(0, 70)}`);
+  }
   return 0;
 }
 
@@ -336,16 +387,18 @@ const handler =
       ? login
       : cmd === 'shot'
         ? shot
-        : cmd === 'check'
-          ? check
-          : cmd === 'run'
-            ? run
-            : async (): Promise<number> => {
-                console.error(
-                  `${MAP_USAGE}\n${LOGIN_USAGE}\n${SHOT_USAGE}\n${CHECK_USAGE}\n${RUN_USAGE}`,
-                );
-                return 2;
-              };
+        : cmd === 'nav'
+          ? nav
+          : cmd === 'check'
+            ? check
+            : cmd === 'run'
+              ? run
+              : async (): Promise<number> => {
+                  console.error(
+                    `${MAP_USAGE}\n${LOGIN_USAGE}\n${SHOT_USAGE}\n${NAV_USAGE}\n${CHECK_USAGE}\n${RUN_USAGE}`,
+                  );
+                  return 2;
+                };
 
 handler().then(
   (code) => process.exit(code),
