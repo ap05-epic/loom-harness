@@ -242,14 +242,20 @@ export async function runCrawl(opts: CrawlOptions): Promise<CrawlSummary> {
     redactLog('  ◆ phase: no-fa');
     await crawlPhase('no-fa');
 
-    // PHASE 2 — FA-selected
-    if (opts.fa && !truncated) {
-      redactLog('  ◆ phase: entering FA gateway…');
+    // PHASE 2 — FA-selected. Re-establish the loaded landing first (the no-FA crawl wandered off, so
+    // the FA box may not be present/loaded where we ended up) — a fresh login lands on the dashboard.
+    if (opts.fa) {
+      redactLog('  ◆ phase: re-login → entering FA gateway…');
+      await loginInSession(session, opts.login, redactLog);
+      if (opts.startPath) await session.navigate(opts.startPath);
+      await session.awaitStable(loadMs);
       if (await enterFaGateway(session, opts.fa, redactLog)) {
+        await session.awaitStable(loadMs);
         const tag = `fa:${createHash('sha256').update(opts.fa.value).digest('hex').slice(0, 8)}`;
+        redactLog(`  ◆ phase: ${tag}`);
         await crawlPhase(tag);
       } else {
-        redactLog('  ⚠ FA box not found — mapped the no-FA state only (tune --fa-hint)');
+        redactLog('  ⚠ FA box not found — mapped the no-FA state only (pass --fa-sel <css>)');
       }
     }
 

@@ -95,6 +95,8 @@ export type FaGateway = {
   value: string;
   /** How to find the FA box by its label (default matches "FA Number", "wire", "quick search"). */
   hint?: RegExp;
+  /** Explicit CSS selector for the FA input — use when it has no useful label (the reliable path). */
+  fieldSelector?: string;
   /** Explicit submit selector, if the auto-detected submit control isn't right. */
   submitSelector?: string;
 };
@@ -137,38 +139,72 @@ async function captureScreen(session: CrawlSession): Promise<ScreenCapture> {
  * and submit. Returns false (with a diagnostic) if no FA box is found — the caller then keeps the no-FA
  * capture rather than failing the run.
  */
+async function submitFa(
+  session: CrawlSession,
+  fa: FaGateway,
+  cands: Array<{ ref: string; label: string; kind: string }> | undefined,
+  log: (m: string) => void,
+): Promise<void> {
+  if (fa.submitSelector) {
+    log(`  ⏎ submit (${fa.submitSelector})`);
+    await session.click(fa.submitSelector).catch(() => undefined);
+    return;
+  }
+  const all = cands ?? (await session.enumerateCandidates());
+  const submit = all.find(
+    (c) => c.kind !== 'textbox' && /submit|search|go|ok|enter|continue/i.test(c.label),
+  );
+  if (submit) {
+    log(`  ⏎ submit (${submit.label})`);
+    await session.clickCandidate(submit.ref);
+  } else {
+    log('  ⚠ no submit control found after FA — relying on form auto-submit');
+  }
+}
+
 export async function enterFaGateway(
   session: CrawlSession,
   fa: FaGateway,
   log: (m: string) => void,
 ): Promise<boolean> {
-  const hint = fa.hint ?? /fa\s*(number|#)|wire|quick\s*search|account/i;
-  const cands = await session.enumerateCandidates();
-  const textboxes = cands.filter((c) => c.kind === 'textbox');
+  // Wait for the landing (late AJAX like BAA's quick-search) to fully load before looking for the box.
+  await session.awaitStable();
+
+  // Explicit selector wins — the reliable path when the FA input has no useful label.
+  if (fa.fieldSelector) {
+    try {
+      await session.fill(fa.fieldSelector, fa.value);
+      log(`  ✎ FA → ${fa.fieldSelector}`);
+    } catch {
+      log(`  ⚠ FA field selector "${fa.fieldSelector}" not found on the page`);
+      return false;
+    }
+    await submitFa(session, fa, undefined, log);
+    return true;
+  }
+
+  const hint = fa.hint ?? /fa\s*(number|num|#)|wire|advisor|quick\s*search|account/i;
+  let cands = await session.enumerateCandidates();
+  let textboxes = cands.filter((c) => c.kind === 'textbox');
+  if (textboxes.length === 0) {
+    await session.awaitStable(); // late hydration — wait once more, then re-enumerate
+    cands = await session.enumerateCandidates();
+    textboxes = cands.filter((c) => c.kind === 'textbox');
+  }
+  // hint match → else the first textbox that isn't an obvious data-table/search filter.
   const box =
     textboxes.find((c) => hint.test(c.label)) ??
-    (textboxes.length === 1 ? textboxes[0] : undefined);
+    textboxes.find((c) => !/length|search|filter|page|rows/i.test(c.label));
   if (!box) {
     log(
-      `  ⚠ FA box not found (tune --fa-hint). textboxes: ${textboxes.map((c) => c.label).join(' | ') || '(none)'}`,
+      `  ⚠ FA box not found — pass --fa-sel <css>, or tune --fa-hint. textboxes seen: ` +
+        `${textboxes.map((c) => c.label || '(unlabeled)').join(' | ') || '(none)'}`,
     );
     return false;
   }
-  log(`  ✎ FA → ${box.label}`);
+  log(`  ✎ FA → ${box.label || '(unlabeled textbox)'}`);
   await session.fillCandidate(box.ref, fa.value);
-  if (fa.submitSelector) {
-    await session.click(fa.submitSelector);
-  } else {
-    const submit = cands.find(
-      (c) => c.kind !== 'textbox' && /submit|search|go|ok|enter|continue/i.test(c.label),
-    );
-    if (submit) {
-      log(`  ⏎ submit (${submit.label})`);
-      await session.clickCandidate(submit.ref);
-    } else {
-      log('  ⚠ no submit control found after FA — relying on form auto-submit');
-    }
-  }
+  await submitFa(session, fa, cands, log);
   return true;
 }
 

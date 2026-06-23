@@ -51,7 +51,7 @@ const NAV_USAGE =
   'usage: replicate nav --login <loginUrl> [--legacy <post-login screen>] [--out .loom/nav.json]  (creds from env: BAA_USER, BAA_PASS)';
 const CRAWL_USAGE =
   'usage: replicate crawl --login <loginUrl> [--start <path>] [--db .loom/crawl.db] [--bodies <dir>] [--shots <dir>] ' +
-  '[--fa-hint <regex>] [--follow-js] [--max-states N] [--max-actions N] [--max-depth N] [--load-ms 15000] [--deny <regex>] [--print]  (creds + BAA_FA from env)';
+  '[--fa-hint <regex>] [--fa-sel <css>] [--fa-submit-sel <css>] [--follow-js] [--max-states N] [--max-actions N] [--max-depth N] [--load-ms 15000] [--deny <regex>] [--print]  (creds + BAA_FA from env)';
 const CHECK_USAGE =
   'usage: replicate check --legacy <url> --replica <url> [--atlas <codeatlas.db> --screen <key>] [--storage <auth.json>] [--threshold 1] [--visual-gate] [--llm-diff]';
 const RUN_USAGE =
@@ -321,6 +321,7 @@ async function crawl(): Promise<number> {
         ? {
             value: faValue,
             hint: arg('fa-hint') ? new RegExp(arg('fa-hint')!, 'i') : undefined,
+            fieldSelector: arg('fa-sel'),
             submitSelector: arg('fa-submit-sel'),
           }
         : undefined,
@@ -493,6 +494,7 @@ async function run(): Promise<number> {
         ? {
             value: process.env.BAA_FA,
             hint: arg('fa-hint') ? new RegExp(arg('fa-hint')!, 'i') : undefined,
+            fieldSelector: arg('fa-sel'),
             submitSelector: arg('fa-submit-sel'),
           }
         : undefined,
